@@ -4810,6 +4810,22 @@ void OpenUpdateToastRelease() {
   SetUpdateToastShowing(false);
 }
 
+// Top-centre toasts stack downwards in draw order instead of overlapping: each takes the
+// next free y and, once drawn, pushes it below itself. Reset at the start of every frame.
+float sTopToastNextY = 0.f;
+
+void BeginTopToastStack() { sTopToastNextY = 16.f; }
+
+void PlaceTopToast(const ImGuiViewport* viewport) {
+  ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + sTopToastNextY),
+                          ImGuiCond_Always, ImVec2(0.5f, 0.f));
+}
+
+// Call between Begin and End of a toast placed with PlaceTopToast.
+void TopToastPlaced(const ImGuiViewport* viewport) {
+  sTopToastNextY = ImGui::GetWindowPos().y - viewport->Pos.y + ImGui::GetWindowSize().y + 8.f;
+}
+
 void DrawUpdateToast() {
   static double sShownAt = -1.0;
   SetUpdateToastShowing(false);
@@ -4829,8 +4845,7 @@ void DrawUpdateToast() {
     return;
   }
   const ImGuiViewport* viewport = ImGui::GetMainViewport();
-  ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + 24.f), ImGuiCond_Always,
-                          ImVec2(0.5f, 0.f));
+  PlaceTopToast(viewport);
   ImGui::SetNextWindowSize(ImVec2(std::min(viewport->Size.x - 32.f, 560.f), 0.f));
   ImGui::SetNextWindowBgAlpha(0.8f);
   if (ImGui::Begin("##update-toast", nullptr,
@@ -4838,6 +4853,7 @@ void DrawUpdateToast() {
                        ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings)) {
     ImGui::TextWrapped("Version %s is out (this is %s). Click or tap here to open its release page.",
                        PortUpdateCheck::Latest().version.c_str(), MP_BUILD_VERSION);
+    TopToastPlaced(viewport);
     const ImVec2 pos = ImGui::GetWindowPos();
     const ImVec2 size = ImGui::GetWindowSize();
     if (viewport->Size.x > 0.f && viewport->Size.y > 0.f) {
@@ -4900,8 +4916,7 @@ void DrawShaderCompilationToast() {
   const uint32_t total = done + stats->queuedPipelines;
   const ImGuiViewport* viewport = ImGui::GetMainViewport();
   // Top centre: the Android touch overlay has its pause/F1 buttons in the bottom corners.
-  ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + 16.f), ImGuiCond_Always,
-                          ImVec2(0.5f, 0.f));
+  PlaceTopToast(viewport);
   ImGui::SetNextWindowBgAlpha(0.7f);
   // Sized to its text: the font scale differs per platform (Android's is larger).
   if (ImGui::Begin("##shader-compilation-toast", nullptr,
@@ -4915,6 +4930,7 @@ void DrawShaderCompilationToast() {
     ImGui::TextUnformatted(label);
     ImGui::ProgressBar(total != 0 ? static_cast<float>(done) / static_cast<float>(total) : 0.f,
                        ImVec2(width, std::max(6.f, ImGui::GetFontSize() * 0.4f)), "");
+    TopToastPlaced(viewport);
   }
   ImGui::End();
 }
@@ -4974,8 +4990,7 @@ void DrawDiscReadFailedAlert() {
     return;
   }
   const ImGuiViewport* viewport = ImGui::GetMainViewport();
-  ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + 24.f), ImGuiCond_Always,
-                          ImVec2(0.5f, 0.f));
+  PlaceTopToast(viewport);
   ImGui::SetNextWindowSize(ImVec2(std::min(viewport->Size.x - 32.f, 640.f), 0.f));
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.6f, 0.05f, 0.05f, 0.92f));
   ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.f, 0.35f, 0.35f, 1.f));
@@ -4990,6 +5005,7 @@ void DrawDiscReadFailedAlert() {
     ImGui::SetWindowFontScale(1.f);
     ImGui::TextWrapped("Part of it couldn't be read. If the game stops again, copy the image again or check it in "
                        "Dolphin (Properties > Verify).");
+    TopToastPlaced(viewport);
   }
   ImGui::End();
   ImGui::PopStyleVar(2);
@@ -8781,10 +8797,12 @@ void DrawUI() {
   FinishRemasteredImport();
   DrawMenuHintToast();
   DrawStaleImportToast();
-  DrawUpdateToast();
-  DrawDiscReadFailedAlert();
   HoldBackgroundShadersOnFrontEnd();
+  // Top centre, stacked in this order.
+  BeginTopToastStack();
+  DrawDiscReadFailedAlert();
   DrawShaderCompilationToast();
+  DrawUpdateToast();
   if (sTouchLayoutSavePending.exchange(false, std::memory_order_acq_rel)) {
     MarkDirty();
     SaveSettings();
