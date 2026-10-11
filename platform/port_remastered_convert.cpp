@@ -1604,6 +1604,26 @@ uint32_t ShaderFamily(uint32_t shader) {
     if (t.copy == shader) return t.of;
   return shader;
 }
+
+// These source-confirmed lightmapped shader families read TEXCOORD_1.zw, which
+// the converter flattens to logical coord 3. Other families keep the established
+// TEXCOORD_0.zw (logical coord 1) default. Call this with RemMaterial::family so
+// exact shader twins inherit their source family's coordinate rule.
+constexpr uint32_t kLightmapCoord3Families[] = {
+    0x41A12C9E, 0x72B34E42, 0x9AB899E7, 0xA978D507, 0xB9E899F3,
+    0xD363D694, 0xD37039F7, 0xD6AA2A3A, 0xDF0677FF, 0xDFEC1A87,
+    0xE538B757, 0xE9DF2188, 0xF22FEB5B, 0x557A7DE4, 0xF84AC32D,
+};
+
+size_t LightmapSourceCoordinate(uint32_t family) {
+  for (const uint32_t coord3Family : kLightmapCoord3Families) {
+    if (family == coord3Family) {
+      return 3;
+    }
+  }
+  return 1;
+}
+
 // DFC2A7DC folds to exactly DF3E3423's perm 002_0 (same registers, same outputs; kb material/dfc2a7dc.md).
 constexpr uint32_t kShaderXraySkinned2 = 0xDFC2A7DC;
 constexpr bool IsXraySkinned(uint32_t shader) { return shader == kShaderXraySkinned || shader == kShaderXraySkinned2; }
@@ -4451,9 +4471,7 @@ void Converter::State::Convert(const Model& model, const ConvertOptions& opt) {
     const int rmat = std::get<0>(key);
     const RetailMaterial& pm = retail.mats[rmat];
     RemMaterial rem = mats[std::get<1>(key)];
-    // The projected-blend shader's lightmap input is TEXCOORD_1.zw (converter
-    // coord 3); ordinary lightmapped PBR shaders use TEXCOORD_0.zw (coord 1).
-    const size_t lightmapCoord = rem.family == kShaderProjBlend ? 3 : 1;
+    const size_t lightmapCoord = LightmapSourceCoordinate(rem.family);
     // LMUV is one descriptor shared by every primitive in this output-material
     // group. Emit it only when each such primitive's buffer has the selected
     // channel; otherwise uvSet() would silently substitute UV0 for the missing

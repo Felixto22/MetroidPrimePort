@@ -663,6 +663,8 @@ stamp is missing or lower than the build's `kImportVersion` is stale, so the log
 once per launch, and the Mods and import panels say "re-import needed". Bump `kImportVersion` in
 `port_remastered_import.h` whenever a change needs a re-import to take effect. The movies-only import
 leaves the stamp alone.
+Converter 52 extends correct room lightmap UV selection to 14 additional Remastered shader
+families (15 covered total); existing Remastered-model imports need re-importing.
 
 The port reads the image itself (`platform/port_remastered_nsp.cpp`, `_pak`,
 `_txtr`, `_cmdl`), and `_convert` writes a CMDL (plus CSKR for skinned models)
