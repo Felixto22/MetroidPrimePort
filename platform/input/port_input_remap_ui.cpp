@@ -1469,8 +1469,8 @@ void Draw() {
   if (ImGui::Checkbox("Separate menu buttons", &menuStandard)) PortDebug::SetMenuStandardButtons(menuStandard);
   ImGui::SetItemTooltip("On: menus and the map use the controller's \"Menus and map\" rows (by default its own "
                         "buttons: A confirms, B backs out, the triggers page and zoom). Start and the map "
-                        "button keep their gameplay inputs. Bindings set for Menu or Map under Advanced still "
-                        "apply.\nOff: menus and the map follow your gameplay bindings, and the Menus and map "
+                        "button keep their gameplay inputs. Keys and mouse buttons on those rows replace their "
+                        "gameplay action there. Bindings set for Menu or Map under Advanced still apply.\nOff: menus and the map follow your gameplay bindings, and the Menus and map "
                         "rows do nothing.");
   ImGui::Separator();
 

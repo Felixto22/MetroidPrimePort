@@ -195,7 +195,9 @@
   A/B/X/Y, shoulders, triggers and D-pad (A confirms, B backs out, the triggers page and
   zoom), and they can be rebound like any row; the prompts there follow them. Start and the
   map button keep their gameplay inputs (a Menu row on either input is ignored); bindings
-  set for Menu or Map under Advanced still apply; keyboard and touch are unchanged. With
+  set for Menu or Map under Advanced still apply. Keyboard and mouse inputs bound to the
+  rows apply in menus and the map with or without a controller, replacing what that key
+  does in gameplay there; touch is unchanged. With
   the option off, menus and the map follow the gameplay bindings and the rows do nothing.
   It binds any action to an input or a chord of up to four
   (hold the first ones, press the last; or "Any order" within the chord window). The editor's

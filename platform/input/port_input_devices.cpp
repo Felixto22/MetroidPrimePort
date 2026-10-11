@@ -920,16 +920,17 @@ static void BindMenuDefaults(Profile& p) {
   }
 }
 
-// Issue #57: "Separate menu buttons" applies to a real pad without touch.
-static bool MenuButtonsActive() {
-  return PortDebug::MenuStandardButtons() && !PortDebug::TouchActive() && RealPad() != nullptr;
-}
+// Issue #57: "Separate menu buttons" applies without touch. Issue #84: also without
+// a pad, so keyboard and mouse inputs bound to the Menu rows work (the default rows
+// are pad inputs, inert then).
+static bool MenuButtonsActive() { return PortDebug::MenuStandardButtons() && !PortDebug::TouchActive(); }
 
 // With the option on, menus and the map read the Menu rows instead of the gameplay
 // layout: pad bindings meant for everywhere stop applying there for the buttons
-// those rows cover (bindings the user scoped to menus or the map, Start/Z, the
-// sticks, the keyboard and touch are left alone). Menu rows apply only in menus
-// and the map, and never on Start's or Z's input. With it off, the rows do
+// those rows cover, and keyboard and mouse bindings for everywhere stop applying
+// there on an input a Menu row uses (bindings the user scoped to menus or the map,
+// Start/Z, the sticks and touch are left alone). Menu rows apply only in menus and
+// the map, and never on Start's or Z's input. With it off, the rows do
 // nothing. Only the game's poll applies this, so the Remap page lists the bindings
 // as saved.
 static void ApplyMenuButtons(Profile& p) {
@@ -945,17 +946,27 @@ static void ApplyMenuButtons(Profile& p) {
       if (b.contexts == 0) b.contexts = kMenus;
       continue;
     }
-    if (b.count != 1 || !IsPadFamily(b.inputs[0]) || (b.contexts & kMenus) == 0) continue;
+    if (b.count != 1 || (b.contexts & kMenus) == 0) continue;
     if (b.action == Action::PadStart || b.action == Action::PadZ) {
       kept.push_back(b.inputs[0]);
-    } else if (FindMenuAction(b.action, false) != nullptr && b.contexts == PortInput::kCtxAll) {
+    } else if (IsPadFamily(b.inputs[0]) && FindMenuAction(b.action, false) != nullptr &&
+               b.contexts == PortInput::kCtxAll) {
       b.contexts &= ~kMenus;
     }
   }
   std::erase_if(p.bindings, [&](const Binding& b) {
-    return isMenu(b) && b.count == 1 && IsPadFamily(b.inputs[0]) &&
-           std::find(kept.begin(), kept.end(), b.inputs[0]) != kept.end();
+    return isMenu(b) && b.count == 1 && std::find(kept.begin(), kept.end(), b.inputs[0]) != kept.end();
   });
+  // Issue #84: a key or mouse button on a Menu row replaces what it does in
+  // gameplay while in menus and the map, rather than doing both.
+  std::vector< Input > rows;
+  for (const Binding& b : p.bindings) {
+    if (isMenu(b) && b.count == 1 && !IsPadFamily(b.inputs[0])) rows.push_back(b.inputs[0]);
+  }
+  for (Binding& b : p.bindings) {
+    if (isMenu(b) || b.count != 1 || b.contexts != PortInput::kCtxAll) continue;
+    if (std::find(rows.begin(), rows.end(), b.inputs[0]) != rows.end()) b.contexts &= ~kMenus;
+  }
 }
 
 // A single pad input as the native button the prompts look up, or invalid.
