@@ -62,7 +62,9 @@ struct PromptKey {
 };
 constexpr PromptKey kKeys[] = {
     {PAD_BUTTON_A, 32, 32, 0xbb21e8755f36b2f0ull, "5"},   // AButtonIn
+    {PAD_BUTTON_A, 32, 32, 0x7a49be0e828a6d9aull, "14"},  // AButtonOut, the scan box's and message screen's model
     {PAD_BUTTON_B, 32, 32, 0xe6dbfd18d4666ee7ull, "5"},   // BButtonIn
+    {PAD_BUTTON_B, 32, 32, 0xcf85aefc93af603full, "14"},  // BButtonOut
     {PAD_BUTTON_X, 32, 32, 0x818890ce3f3a949bull, "5"},   // XButtonOut, "Press X to ... Morph Ball"
     {PAD_BUTTON_Y, 32, 32, 0x281ae5aa517797edull, "5"},   // YButtonOut, the pause and map screens
     {PAD_BUTTON_START, 32, 32, 0x1ff9d2b310c0b706ull, "14"},  // StartButtonOut, the pause Return

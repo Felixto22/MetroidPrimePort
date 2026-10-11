@@ -3901,10 +3901,14 @@ void UpdateControllerNav() {
                  held(SDL_GAMEPAD_BUTTON_DPAD_LEFT) || axis(SDL_GAMEPAD_AXIS_LEFTX) < -kStickThreshold);
   io.AddKeyEvent(ImGuiKey_GamepadDpadRight,
                  held(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) || axis(SDL_GAMEPAD_AXIS_LEFTX) > kStickThreshold);
-  io.AddKeyEvent(ImGuiKey_GamepadFaceDown, held(SDL_GAMEPAD_BUTTON_SOUTH));
-  io.AddKeyEvent(ImGuiKey_GamepadFaceRight, held(SDL_GAMEPAD_BUTTON_EAST));
-  io.AddKeyEvent(ImGuiKey_GamepadFaceLeft, held(SDL_GAMEPAD_BUTTON_WEST));
-  io.AddKeyEvent(ImGuiKey_GamepadFaceUp, held(SDL_GAMEPAD_BUTTON_NORTH));
+  // ImGui activates with FaceDown and cancels with FaceRight. On a Nintendo
+  // pad (A on the right, as the game's default mapping there) confirm on A.
+  const PADControllerType padType = pad != nullptr ? PADGetControllerTypeForIndex(0) : PAD_TYPE_UNKNOWN;
+  const bool nintendo = padType == PAD_TYPE_SWITCH_PROCON || padType == PAD_TYPE_JOYCON_PAIR;
+  io.AddKeyEvent(ImGuiKey_GamepadFaceDown, held(nintendo ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_SOUTH));
+  io.AddKeyEvent(ImGuiKey_GamepadFaceRight, held(nintendo ? SDL_GAMEPAD_BUTTON_SOUTH : SDL_GAMEPAD_BUTTON_EAST));
+  io.AddKeyEvent(ImGuiKey_GamepadFaceLeft, held(nintendo ? SDL_GAMEPAD_BUTTON_NORTH : SDL_GAMEPAD_BUTTON_WEST));
+  io.AddKeyEvent(ImGuiKey_GamepadFaceUp, held(nintendo ? SDL_GAMEPAD_BUTTON_WEST : SDL_GAMEPAD_BUTTON_NORTH));
   io.AddKeyEvent(ImGuiKey_GamepadL1, held(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
   io.AddKeyEvent(ImGuiKey_GamepadR1, held(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER));
 
