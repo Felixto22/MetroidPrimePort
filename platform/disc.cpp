@@ -15,12 +15,10 @@ uint32_t ReadBig32(const uint8_t* data) {
 
 }
 
-std::vector<uint8_t> PortReadDolResource(uint32_t address, uint32_t length) {
-  s32 dolSize = 0;
-  const uint8_t* dol = DVDGetDOLLocation(&dolSize);
-  if (dol == nullptr || dolSize < 0x100) {
-    throw std::runtime_error("Could not read the mounted disc's DOL");
-  }
+namespace {
+// The resource at its section address, or false if no DOL section holds it.
+bool ReadDolAt(const uint8_t* dol, s32 dolSize, uint32_t address, uint32_t length,
+               std::vector<uint8_t>& out) {
   for (uint32_t i = 0; i < 18; ++i) {
     const uint32_t sectionOffset = ReadBig32(dol + i * 4);
     const uint32_t sectionAddress = ReadBig32(dol + 0x48 + i * 4);
@@ -30,25 +28,40 @@ std::vector<uint8_t> PortReadDolResource(uint32_t address, uint32_t length) {
       continue;
     const uint64_t start = uint64_t(sectionOffset) + address - sectionAddress;
     if (start > static_cast<uint32_t>(dolSize) || length > dolSize - start)
-      break;
-    return {dol + start, dol + start + length};
+      return false;
+    out.assign(dol + start, dol + start + length);
+    return true;
   }
-  throw std::runtime_error("Expected embedded resource is absent from the disc's DOL");
+  return false;
+}
+} // namespace
+
+std::vector<uint8_t> PortReadDolResource(uint32_t address, uint32_t length) {
+  s32 dolSize = 0;
+  const uint8_t* dol = DVDGetDOLLocation(&dolSize);
+  if (dol == nullptr || dolSize < 0x100) {
+    throw std::runtime_error("Could not read the mounted disc's DOL");
+  }
+  std::vector<uint8_t> data;
+  if (!ReadDolAt(dol, dolSize, address, length, data)) {
+    throw std::runtime_error("Expected embedded resource is absent from the disc's DOL");
+  }
+  return data;
 }
 
 std::vector<uint8_t> PortFindDolResource(uint32_t address, uint32_t length, const uint8_t* signature,
                                          size_t signatureLength) {
-  try {
-    auto data = PortReadDolResource(address, length);
-    if (signatureLength <= data.size() && std::memcmp(data.data(), signature, signatureLength) == 0)
-      return data;
-  } catch (const std::runtime_error&) {
-  }
   s32 dolSize = 0;
   const uint8_t* dol = DVDGetDOLLocation(&dolSize);
-  if (dol == nullptr || dolSize <= 0 || signatureLength == 0) {
+  if (dol == nullptr || dolSize < 0x100 || signatureLength == 0) {
     throw std::runtime_error("Could not read the mounted disc's DOL");
   }
+  // Not via PortReadDolResource: other discs miss the 1.00 address, and a
+  // throw there is logged (port_crash) even though it is caught.
+  std::vector<uint8_t> data;
+  if (ReadDolAt(dol, dolSize, address, length, data) && signatureLength <= data.size() &&
+      std::memcmp(data.data(), signature, signatureLength) == 0)
+    return data;
   const uint8_t* end = dol + dolSize;
   const uint8_t* found = std::search(dol, end, signature, signature + signatureLength);
   if (found == end || length > static_cast<size_t>(end - found)) {
