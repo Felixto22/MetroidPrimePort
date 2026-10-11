@@ -194,6 +194,7 @@ set(MP_PORT_SOURCES
     platform/port_savestate.cpp
     platform/port_savestate_format.cpp
     platform/port_skip_cutscenes.cpp
+    platform/port_revision_scripts.cpp
     platform/port_skip_streams.cpp
     platform/port_skip_cutscenes_ops.cpp
     platform/port_gci.cpp
@@ -578,6 +579,9 @@ if(MP_BUILD_TESTS)
     add_executable(port_skip_streams_tests tests/port_skip_streams.cpp
         platform/port_skip_streams.cpp platform/port_skip_cutscenes_ops.cpp)
     target_include_directories(port_skip_streams_tests PRIVATE platform/include platform)
+    add_executable(port_revision_scripts_tests tests/port_revision_scripts.cpp
+        platform/port_revision_scripts.cpp platform/port_skip_cutscenes_ops.cpp)
+    target_include_directories(port_revision_scripts_tests PRIVATE platform/include platform)
     add_executable(port_disc_tests tests/port_disc.cpp platform/disc.cpp)
     target_include_directories(port_disc_tests PRIVATE platform/include extern/aurora/include)
     target_compile_definitions(port_disc_tests PRIVATE TARGET_PC)
@@ -750,7 +754,7 @@ if(MP_BUILD_TESTS)
     add_test(NAME port_save_convert_tests COMMAND port_save_convert_tests "${PORT_SAVE_FIXTURES}")
     set_tests_properties(port_save_convert_tests PROPERTIES TIMEOUT 120 LABELS port)
     aurora_copy_runtime_dlls(port_save_convert_tests)
-    foreach(test IN ITEMS port_remastered_report_tests port_buffer_tests port_ai_tests port_randomizer_tests port_apclient_tests port_ap_solo_tests port_ap_logic_tests port_rando_gen_tests port_musyx_tests port_musyx_charge_loop_tests port_disc_tests port_skip_streams_tests port_mouse_tests port_touch_pad_tests port_json_tests port_ws_tests port_mods_tests port_pal_languages_tests port_actor_collision_bounds_tests port_room_env_tests port_room_geo_tests port_hd_font_tests port_hud_bars_tests port_remastered_astc_tests port_remastered_hud_tests port_remastered_movie_tests port_gallery_tests port_remastered_nso_tests port_remastered_text_tests port_remastered_uv_tests port_remastered_anuv_tests port_remastered_lits_tests port_remastered_blend_tests port_remastered_image_tests port_remastered_effect_tests port_remastered_effect_convert_tests port_remastered_effect_import_tests port_importers_tests port_custom_res_tests port_hold_toggle_tests port_input_engine_tests port_input_bindings_tests port_env_tests port_tick_pair_tests port_presentation_rules_tests port_livesplit_tests port_discord_tests port_update_check_tests port_savestate_tests port_timing_tests port_audio_math_tests)
+    foreach(test IN ITEMS port_remastered_report_tests port_buffer_tests port_ai_tests port_randomizer_tests port_apclient_tests port_ap_solo_tests port_ap_logic_tests port_rando_gen_tests port_musyx_tests port_musyx_charge_loop_tests port_disc_tests port_skip_streams_tests port_revision_scripts_tests port_mouse_tests port_touch_pad_tests port_json_tests port_ws_tests port_mods_tests port_pal_languages_tests port_actor_collision_bounds_tests port_room_env_tests port_room_geo_tests port_hd_font_tests port_hud_bars_tests port_remastered_astc_tests port_remastered_hud_tests port_remastered_movie_tests port_gallery_tests port_remastered_nso_tests port_remastered_text_tests port_remastered_uv_tests port_remastered_anuv_tests port_remastered_lits_tests port_remastered_blend_tests port_remastered_image_tests port_remastered_effect_tests port_remastered_effect_convert_tests port_remastered_effect_import_tests port_importers_tests port_custom_res_tests port_hold_toggle_tests port_input_engine_tests port_input_bindings_tests port_env_tests port_tick_pair_tests port_presentation_rules_tests port_livesplit_tests port_discord_tests port_update_check_tests port_savestate_tests port_timing_tests port_audio_math_tests)
         add_test(NAME ${test} COMMAND ${test})
         set_tests_properties(${test} PROPERTIES TIMEOUT 15 LABELS port)
         aurora_copy_runtime_dlls(${test})

@@ -222,6 +222,9 @@ bool sTrackerProgress = false;
 int sApSuitDamage = 1;
 bool sCheats = false;
 bool sSkippableCutscenes = false;
+// The stored choice only. Randomizer and Archipelago games force it on at use
+// (PortSkipCutscenes::Forced), which the getter does not fold in.
+bool sRevision100Compatibility = false;
 std::string sTextLanguage;
 int sElevatorRide = PortDebug::kElevatorRide_Original;
 bool sSaveStateHotkeys = true;
@@ -602,6 +605,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sTextLanguage = value;
   } else if (key == "skippable_cutscenes") {
     sSkippableCutscenes = ParseBool(value);
+  } else if (key == "revision_100_compatibility") {
+    sRevision100Compatibility = ParseBool(value);
   } else if (key == "elevator_ride") {
     const int mode = std::atoi(value.c_str());
     sElevatorRide = mode >= PortDebug::kElevatorRide_Original && mode <= PortDebug::kElevatorRide_Skip
@@ -785,6 +790,7 @@ std::string SettingsText() {
   file << "ap_suit_damage=" << sApSuitDamage << '\n';
   file << "cheats=" << (sCheats ? 1 : 0) << '\n';
   file << "skippable_cutscenes=" << (sSkippableCutscenes ? 1 : 0) << '\n';
+  file << "revision_100_compatibility=" << (sRevision100Compatibility ? 1 : 0) << '\n';
   file << "text_language=" << sTextLanguage << '\n';
   file << "elevator_ride=" << sElevatorRide << '\n';
   file << "savestate_hotkeys=" << (sSaveStateHotkeys ? 1 : 0) << '\n';
@@ -1562,6 +1568,17 @@ bool SkippableCutscenes() {
 void SetSkippableCutscenes(bool enabled) {
   EnsureInitialized();
   sSkippableCutscenes = enabled;
+  MarkDirty();
+}
+
+bool Revision100Compatibility() {
+  EnsureInitialized();
+  return sRevision100Compatibility;
+}
+
+void SetRevision100Compatibility(bool enabled) {
+  EnsureInitialized();
+  sRevision100Compatibility = enabled;
   MarkDirty();
 }
 
@@ -5436,6 +5453,21 @@ void DrawCutscenesSection() {
            "half the time. What a scan records is unchanged.");
   EndOriginalLocked(locked);
 
+  // Not under the Original experience lock: the stored choice applies there too.
+  ImGui::SeparatorText("Revision compatibility");
+  const bool revisionForced = PortSkipCutscenes::Forced();
+  bool revisionCompat = sRevision100Compatibility || revisionForced;
+  ImGui::BeginDisabled(revisionForced);
+  if (ImGui::Checkbox("1.00 sequence-break compatibility", &revisionCompat)) {
+    SetRevision100Compatibility(revisionCompat);
+  }
+  ImGui::EndDisabled();
+  ItemHelp("Restores supported revision-specific sequence-break behavior on newer/PAL discs. "
+           "Requires reloading the game. Automatically enabled for randomizer and Archipelago games.");
+  if (revisionForced) {
+    SameLineAfterHelp();
+    ImGui::TextDisabled("(automatic in randomizer and Archipelago games)");
+  }
 }
 
 void DrawUnlocksSection() {

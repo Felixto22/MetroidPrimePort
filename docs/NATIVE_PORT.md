@@ -407,6 +407,19 @@ Where FUSE itself is unavailable, such as in a container, run the AppImage
 with `APPIMAGE_EXTRACT_AND_RUN=1` (or `--appimage-extract-and-run`), which
 unpacks to a temporary directory instead of mounting.
 
+### 1.00 sequence-break compatibility
+
+F1 > Game > Cutscenes > "1.00 sequence-break compatibility" (INI key
+`revision_100_compatibility`, default false; forced on in randomizer and
+Archipelago games, reload needed) puts back what 1.00 sequence breaks rely on.
+`platform/port_revision_scripts.cpp` adds room-script ops (applied through
+`PortSkipCutscenes::PatchArea`, whose op stream it shares) for the rev2 locks.
+It reads the setting at use through
+`PortDebug::Revision100Compatibility() || PortSkipCutscenes::Forced()`. Only the
+named script locks are fixed; missing 1.00 geometry (e.g. the Ruined Shrine
+root) is not restored. Unit test: `port_revision_scripts_tests`. Ordinary
+cutscene skipping is independent.
+
 ### Controls and settings
 
 Moved to `docs/SETTINGS.md`; the debug console now lives in `docs/CONSOLE.md`.

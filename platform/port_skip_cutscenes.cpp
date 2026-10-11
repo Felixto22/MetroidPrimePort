@@ -6,6 +6,7 @@
 #include "port_disc.h"
 #include "port_log.h"
 #include "port_randomizer.h"
+#include "port_revision_scripts.h"
 
 #include <algorithm>
 
@@ -127,33 +128,6 @@ std::vector< uint8_t > TempleOps() {
   return std::move(w.ops);
 }
 
-const uint32_t kGeothermalCore = 0xC0498676;
-
-// PAL's Geothermal Core puts a Power Bomb rock and a door blocker in front of
-// Plasma Processing, which USA 1.00 (and so the randomizer logic, built from
-// USA) reaches without Power Bombs. Drop the rock's whole set (generator,
-// debris, effect, rumble, memory relay, scan point, blocker), so a PAL disc
-// plays this room as the USA one; the missile drops added next to it stay.
-std::vector< uint8_t > GeothermalCorePalOps() {
-  OpWriter w;
-  for (uint32_t id = 0x001403AA; id <= 0x001403B5; ++id)
-    w.remove(id);
-  return std::move(w.ops);
-}
-
-const uint32_t kArboretum = 0x18AB6106;
-
-// USA 1.01 and 1.02 add an invisible platform over Arboretum's runic gate, so
-// the gate can't be bomb jumped over before it opens; the randomizer logic's
-// "Arboretum Scan Gate Skip" (built from 1.00) needs that jump. Drop it, and
-// the gate's message that turns it off, so such a disc plays this room as 1.00.
-std::vector< uint8_t > ArboretumUsaRevisionOps() {
-  OpWriter w;
-  w.conn(3, 0x00130140, 5 /* Inactive */, 4 /* Deactivate */, 0x001302AA);
-  w.remove(0x001302AA);
-  return std::move(w.ops);
-}
-
 bool PatchScripts(uint32_t mreaId, const uint8_t* scly, size_t size, std::vector< uint8_t >& out);
 
 } // namespace
@@ -166,26 +140,21 @@ bool PatchArea(uint32_t mreaId, const uint8_t* scly, size_t size, std::vector< u
   out.clear();
   if (Active())
     PatchScripts(mreaId, scly, size, out);
-  if (mreaId == kGeothermalCore && PortDisc::Current() == PortDisc::Version::Pal) {
-    const std::vector< uint8_t > ops = GeothermalCorePalOps();
+  // Revision compatibility (USA 1.00 behaviour on later discs), after the
+  // patches above. Randomized games always want it; otherwise it's the
+  // setting. A miss keeps what the patches above made.
+  if (PortDebug::Revision100Compatibility() || Forced()) {
+    const PortDisc::Version version = PortDisc::Current();
     const bool patched = !out.empty();
     std::vector< uint8_t > fixed;
-    if (ApplyOps(patched ? out.data() : scly, patched ? out.size() : size, ops.data(), ops.size(),
-                 fixed) == 0)
+    int misses = 0;
+    const PortRevisionScripts::Result result = PortRevisionScripts::Apply(
+        version, mreaId, patched ? out.data() : scly, patched ? out.size() : size, fixed, &misses);
+    if (result == PortRevisionScripts::Result::Patched)
       out.swap(fixed);
-    else
-      PortLog::Write("PAL: Geothermal Core Power Bomb rock doesn't match, left as is\n");
-  }
-  if (mreaId == kArboretum && (PortDisc::Current() == PortDisc::Version::Usa101 ||
-                               PortDisc::Current() == PortDisc::Version::Usa102)) {
-    const std::vector< uint8_t > ops = ArboretumUsaRevisionOps();
-    const bool patched = !out.empty();
-    std::vector< uint8_t > fixed;
-    if (ApplyOps(patched ? out.data() : scly, patched ? out.size() : size, ops.data(), ops.size(),
-                 fixed) == 0)
-      out.swap(fixed);
-    else
-      PortLog::Write("USA 1.01/1.02: Arboretum gate platform doesn't match, left as is\n");
+    else if (result == PortRevisionScripts::Result::Missed)
+      PortLog::Write("revision scripts: %s (room %08X) doesn't match (%d), left as is\n",
+                     PortRevisionScripts::Describe(version, mreaId), mreaId, misses);
   }
   return !out.empty();
 }

@@ -249,6 +249,10 @@ void SetApSuitDamage(int mode);
 // (PortSkipCutscenes::Active).
 bool SkippableCutscenes();
 void SetSkippableCutscenes(bool enabled);
+// The stored 1.00 sequence-break compatibility choice (raw, not the effective
+// policy). Randomizer and Archipelago games force it on at use.
+bool Revision100Compatibility();
+void SetRevision100Compatibility(bool enabled);
 // The language of the game's text: "" for the disc's English, else one of the
 // codes in PortRemastered::kTextLanguages, which a Remastered import adds to the
 // string tables. A table without it shows English. Read at every
