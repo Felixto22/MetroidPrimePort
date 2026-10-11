@@ -3365,6 +3365,51 @@ void CStateManager::DrawWorld() const {
 #endif
   bool morphingPlayerVisible = false;
   rstl::reserved_vector< const CActor*, 1024 > thermalActors;
+#ifdef TARGET_PC
+  // Remastered's sun-shadow caster query has no camera frustum or PVS test; a model casts while
+  // its actor is active and its area is rendered. So an actor of a rendered area that the PVS or
+  // the frustum rejects still casts, as a base model only (no particles, blob shadow or sorted
+  // draw). Player, collision-only view and the room-geometry exclusions as for the visible draw;
+  // renderFirst actors drew already.
+  static const bool sShadowOffscreen = [] {
+    const char* env = getenv("MP_SHADOW_OFFSCREEN_ACTORS");
+    return env == nullptr || atoi(env) != 0;
+  }();
+  static const bool sShadowCheck = [] {
+    const char* env = getenv("MP_SHADOW_ACTOR_CHECK");
+    return env != nullptr && atoi(env) != 0;
+  }();
+  uint portShadowEligible = 0;
+  uint portShadowDrawn = 0;
+  const auto portShadowOffscreen = [&](const CActor& actor, int areaIdx) {
+    if (!sShadowOffscreen || !portShadow || thermal || portCollisionOnly || &actor == x84c_player ||
+        (portRoomGeo[areaIdx] && PortRoomGeo::Hides(*areas[areaIdx], actor.GetEditorId().Value())) ||
+        PortRoomGeo::HidesSky(*areas[areaIdx], actor)) {
+      return;
+    }
+    for (const TUniqueId* f = renderFirst.begin(); f != renderFirst.end(); ++f) {
+      if (*f == actor.GetUniqueId()) {
+        return;
+      }
+    }
+    ++portShadowEligible;
+    CPortActorRenderScope presented(actor);
+    if (actor.PortRenderShadowCaster(*this)) {
+      if (sShadowCheck && portShadowDrawn == 0) {
+        static bool sLogged = false;
+        if (!sLogged) {
+          sLogged = true;
+          const CAABox b = actor.GetModelData()->GetBounds(actor.GetTransform());
+          fprintf(stderr, "shadow-actor-check: first offscreen model draw id=%d bounds=(%.1f %.1f %.1f)-(%.1f %.1f %.1f)\n",
+                  actor.GetUniqueId().Value(), b.GetMinPoint().GetX(), b.GetMinPoint().GetY(),
+                  b.GetMinPoint().GetZ(), b.GetMaxPoint().GetX(), b.GetMaxPoint().GetY(),
+                  b.GetMaxPoint().GetZ());
+        }
+      }
+      ++portShadowDrawn;
+    }
+  };
+#endif
   for (int i = 0; i < areas.size(); ++i) {
     const CGameArea& area = *areas[i];
     const CPVSVisSet& set = visibility[i];
@@ -3381,6 +3426,9 @@ void CStateManager::DrawWorld() const {
         const TUniqueId id = actor->GetUniqueId();
         if (!thermal && const_cast< CGameArea& >(area).LookupPVSUniqueID(id) == id) {
           if (set.GetVisible(const_cast< CGameArea& >(area).LookupPVSID(id)) == kVSS_EndOfTree) {
+#ifdef TARGET_PC
+            portShadowOffscreen(*actor, i);
+#endif
             continue;
           }
         }
@@ -3413,6 +3461,11 @@ void CStateManager::DrawWorld() const {
 #endif
             actor->AddToRenderer(frustum, *this);
           }
+#ifdef TARGET_PC
+          if (actor->GetPreRenderClipped()) {
+            portShadowOffscreen(*actor, i);
+          }
+#endif
           if (thermal && (actor->GetThermalFlags() & 2) != 0) {
             thermalActors.push_back(actor);
           }
@@ -3456,6 +3509,11 @@ void CStateManager::DrawWorld() const {
   }
 
 #ifdef TARGET_PC
+  if (sShadowCheck && portShadow && CGraphics::GetFrameCounter() % 300 == 0) {
+    fprintf(stderr, "shadow-actor-check: frame %u offscreen eligible=%u model draws=%u\n",
+            static_cast< uint >(CGraphics::GetFrameCounter()), portShadowEligible,
+            portShadowDrawn);
+  }
   if (portShadow) {
     GXPortSetShadowCaster(false);
     GXPortRenderShadowMap();

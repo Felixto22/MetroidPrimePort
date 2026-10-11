@@ -103,6 +103,12 @@ public:
   void DrawTouchBounds() const;
   bool IsModelOpaque(const CStateManager& mgr) const;
   void RenderInternal(const CStateManager& mgr) const;
+#ifdef TARGET_PC
+  // Port: draws only the base model into the sun's shadow map (no particles, blob shadow or
+  // sorted submission). True when the model draw was issued (the pipeline may still reject a blended or cutout draw);
+  // false when there was nothing to draw or the box is outside the map.
+  bool PortRenderShadowCaster(const CStateManager& mgr) const;
+#endif
   void CreateShadowIfNeeded();
 
   const CTransform4f& GetTransform() const { return x34_transform; }

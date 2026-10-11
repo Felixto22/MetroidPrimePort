@@ -413,6 +413,41 @@ void CActor::RenderInternal(const CStateManager& mgr) const {
   GetModelData()->Render(which, x34_transform, x90_actorLights.get(), xb4_drawFlags);
 }
 
+#ifdef TARGET_PC
+namespace {
+// Caster-only drawing must not outlive the draw, whatever the draw does.
+struct PortCasterOnlyScope {
+  PortCasterOnlyScope() { GXPortSetShadowCasterOnly(true); }
+  ~PortCasterOnlyScope() { GXPortSetShadowCasterOnly(false); }
+};
+} // namespace
+
+bool CActor::PortRenderShadowCaster(const CStateManager& mgr) const {
+  if (!HasModelData() || NullModel() || !IsDrawEnabled() || !xe7_27_enableRender) {
+    return false;
+  }
+  const CAABox bounds = GetModelData()->GetBounds(GetTransform());
+  const float lo[3] = {bounds.GetMinPoint().GetX(), bounds.GetMinPoint().GetY(),
+                       bounds.GetMinPoint().GetZ()};
+  const float hi[3] = {bounds.GetMaxPoint().GetX(), bounds.GetMaxPoint().GetY(),
+                       bounds.GetMaxPoint().GetZ()};
+  if (!GXPortShadowBoxCasts(lo, hi)) {
+    return false;
+  }
+  PortCasterOnlyScope casterOnly;
+  if (xe5_29_globalTimeProvider) {
+    RenderInternal(mgr);
+  } else {
+    float timeSince = CGraphics::GetSecondsMod900() - xbc_time;
+    if (timeSince < 0.f && timeSince > -(1.f / 60.f))
+      timeSince = 0.f;
+    CTimeProvider tp(CMath::FastFmod(timeSince, 900.f));
+    RenderInternal(mgr);
+  }
+  return true;
+}
+#endif
+
 float CActor::GetYaw() const {
   float sq = sqrt(x34_transform.Get11() * x34_transform.Get11() +
                   x34_transform.Get01() * x34_transform.Get01());
