@@ -1,4 +1,5 @@
 #include "port_skip_cutscenes.h"
+#include "port_skip_streams.h"
 
 #include "port_apclient.h"
 #include "port_debug.h"
@@ -16,8 +17,6 @@ struct SkipRoom {
   uint32_t offset;
   uint32_t size;
 };
-
-#include "port_skip_cutscenes_data.inc"
 
 using PickupRoom = SkipRoom;
 struct PickupModelEntry {
@@ -144,11 +143,11 @@ std::vector< uint8_t > GeothermalCorePalOps() {
 
 const uint32_t kArboretum = 0x18AB6106;
 
-// USA 1.01 adds an invisible platform over Arboretum's runic gate, so the
-// gate can't be bomb jumped over before it opens; the randomizer logic's
+// USA 1.01 and 1.02 add an invisible platform over Arboretum's runic gate, so
+// the gate can't be bomb jumped over before it opens; the randomizer logic's
 // "Arboretum Scan Gate Skip" (built from 1.00) needs that jump. Drop it, and
-// the gate's message that turns it off, so a 1.01 disc plays this room as 1.00.
-std::vector< uint8_t > ArboretumUsa101Ops() {
+// the gate's message that turns it off, so such a disc plays this room as 1.00.
+std::vector< uint8_t > ArboretumUsaRevisionOps() {
   OpWriter w;
   w.conn(3, 0x00130140, 5 /* Inactive */, 4 /* Deactivate */, 0x001302AA);
   w.remove(0x001302AA);
@@ -177,15 +176,16 @@ bool PatchArea(uint32_t mreaId, const uint8_t* scly, size_t size, std::vector< u
     else
       PortLog::Write("PAL: Geothermal Core Power Bomb rock doesn't match, left as is\n");
   }
-  if (mreaId == kArboretum && PortDisc::Current() == PortDisc::Version::Usa101) {
-    const std::vector< uint8_t > ops = ArboretumUsa101Ops();
+  if (mreaId == kArboretum && (PortDisc::Current() == PortDisc::Version::Usa101 ||
+                               PortDisc::Current() == PortDisc::Version::Usa102)) {
+    const std::vector< uint8_t > ops = ArboretumUsaRevisionOps();
     const bool patched = !out.empty();
     std::vector< uint8_t > fixed;
     if (ApplyOps(patched ? out.data() : scly, patched ? out.size() : size, ops.data(), ops.size(),
                  fixed) == 0)
       out.swap(fixed);
     else
-      PortLog::Write("USA 1.01: Arboretum gate platform doesn't match, left as is\n");
+      PortLog::Write("USA 1.01/1.02: Arboretum gate platform doesn't match, left as is\n");
   }
   return !out.empty();
 }
@@ -193,22 +193,11 @@ bool PatchArea(uint32_t mreaId, const uint8_t* scly, size_t size, std::vector< u
 namespace {
 
 bool PatchScripts(uint32_t mreaId, const uint8_t* scly, size_t size, std::vector< uint8_t >& out) {
-  // PAL lays some rooms out differently: its own streams, where the USA one
-  // doesn't do the same there.
-  const SkipRoom* room = nullptr;
-  const uint8_t* skipOps = kSkipOps;
-  if (PortDisc::Current() == PortDisc::Version::Pal) {
-    room = FindRoom(kSkipRoomsPal, kSkipRoomsPal + sizeof(kSkipRoomsPal) / sizeof(kSkipRoomsPal[0]),
-                    mreaId);
-    skipOps = kSkipOpsPal;
-  }
-  if (room == nullptr) {
-    room = FindRoom(kSkipRooms, kSkipRooms + sizeof(kSkipRooms) / sizeof(kSkipRooms[0]), mreaId);
-    skipOps = kSkipOps;
-  }
+  SkipStream stream;
+  const bool hasSkip = SkipStreamFor(PortDisc::Current(), mreaId, stream);
   bool skipped = false;
-  if (room != nullptr) {
-    const int misses = ApplyOps(scly, size, skipOps + room->offset, room->size, out);
+  if (hasSkip) {
+    const int misses = ApplyOps(scly, size, stream.ops, stream.size, out);
     if (misses != 0) {
       // A mod replaced the room, or the disc isn't one the streams were made
       // from: the patch could leave the script half-edited, so keep the room
@@ -233,7 +222,8 @@ bool PatchScripts(uint32_t mreaId, const uint8_t* scly, size_t size, std::vector
     // Archipelago games start with Samus already out of the ship, as
     // randomprime's patch_landing_site_cutscene_triggers does.
     std::vector< uint8_t > landed;
-    if (ApplyOps(out.data(), out.size(), kLandingOps, sizeof(kLandingOps), landed) == 0)
+    const SkipStream landing = LandingStream();
+    if (ApplyOps(out.data(), out.size(), landing.ops, landing.size, landed) == 0)
       out.swap(landed);
     else
       PortLog::Write("skippable cutscenes: Landing Site intro skip doesn't match, left as is\n");

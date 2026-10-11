@@ -1,5 +1,4 @@
 #include "port_disc.h"
-#include "port_env.h"
 
 #include <dolphin/dvd.h>
 #include <algorithm>
@@ -169,9 +168,8 @@ const char* Name(Version version) {
 }
 
 bool IsAccepted(Version version) {
-  if (version == Version::Usa100 || version == Version::Usa101 || version == Version::Pal)
-    return true;
-  return version != Version::Unknown && port::EnvFlag("MP_DISC_ANY_VERSION");
+  return version == Version::Usa100 || version == Version::Usa101 || version == Version::Usa102 ||
+         version == Version::Pal;
 }
 
 } // namespace PortDisc

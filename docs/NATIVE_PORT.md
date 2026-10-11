@@ -94,12 +94,13 @@ image. Otherwise, when no disc is found it opens the platform's file dialog and
 remembers the answer as `disc_path` in the settings file. There is no prompt
 when the port has no window to show one on, or with `MP_NO_DISC_DIALOG=1`
 (for scripted runs that do have a window, as on a build runner). The disc must
-identify as **GM8E01, disc 0, revision 0 or 1** (USA 1.00 or 1.01) or **GM8P01** (PAL).
+identify as **GM8E01, disc 0, revision 0, 1 or 2** (USA 1.00, 1.01 or 1.02) or **GM8P01** (PAL).
 PAL support is experimental: a PAL disc runs the same 1.00 code on its own data, at 60 Hz, with every port
 feature (Remastered import, randomizer, Archipelago, cutscene skips) and its
 languages; its saves are kept apart from USA ones. USA 1.01 runs the same
 way; its data differs from 1.00 only in a few rooms' scripts and one credits
-name. USA 1.02 is only taken with `MP_DISC_ANY_VERSION=1` (untested); Japanese, Korean and Wii discs
+name. USA 1.02 runs the same way (its rooms' scripts differ more, and the
+cutscene skips and the Arboretum gate fix have 1.02 variants); Japanese, Korean and Wii discs
 are rejected. Nod/Aurora supports additional image
 containers, but the same retail content is required.
 
