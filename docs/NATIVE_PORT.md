@@ -1096,6 +1096,15 @@ unpacks to a temporary directory instead of mounting.
   The opacity is the crosshair's alpha, so 100% draws it at full strength (the
   game's own alpha is 19%).
   Original experience ignores both.
+- Secondary crosshairs (Video > Display, `secondary_crosshairs`, `MP_SECONDARY_CROSSHAIRS`,
+  default on): off hides the next-target reticles: the combat visor's seeker and the
+  X-ray ring and thermal crosshair on the target Lock-On would pick. The lock-on
+  reticle and the scan visor's target box stay. On under Original experience.
+- Auto-aim (Controls > Options > Aiming, `auto_aim`, `MP_AUTO_AIM`, default on):
+  off clears the gun's aim target unless Lock-On holds one, so free-aimed shots go
+  straight to where you aim instead of turning toward the enemy nearest the screen
+  centre (the decomp's `gkAutoAimAtOrbitedObject` behaviour). On under Original
+  experience.
 - Hide helmet and hide visor effects (Video > Display and pause Options > Visor,
   persisted as `hide_helmet` and `hide_visor_effects`, off by default): the
   first drops the helmet frame (the dome and the lights at the bottom); the

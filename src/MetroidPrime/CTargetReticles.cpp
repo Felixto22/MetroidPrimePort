@@ -1062,6 +1062,9 @@ void CCompoundTargetReticle::DrawNextLockOnGroup(const CMatrix3f& rot,
   float radius = x174_nextGroupInterp.GetRadiusWorld();
   float factor = x174_nextGroupInterp.GetFactor();
   float visorFactor = mgr.GetPlayerState()->GetVisorTransitionFactor();
+  // Port: F1 "Secondary crosshairs" off hides the seeker and the X-ray/thermal next-target
+  // reticles; the scan visor's box below stays (it shows what a scan would pick).
+  const bool portSecondary = PortDebug::SecondaryCrosshairs();
 
   bool scanRet = false;
   bool xrayRet = false;
@@ -1085,7 +1088,7 @@ void CCompoundTargetReticle::DrawNextLockOnGroup(const CMatrix3f& rot,
 
   float minVpClampScale = x174_nextGroupInterp.GetMinViewportClampScale();
 
-  if (!xrayRet && factor > 0.f) {
+  if (portSecondary && !xrayRet && factor > 0.f) {
     const_cast< TCachedToken< CModel >& >(x40_seeker).TryCache();
     if (CModel* const model = x40_seeker.GetObject()) {
       float scale = CalculateClampedScale(position, radius,
@@ -1105,7 +1108,7 @@ void CCompoundTargetReticle::DrawNextLockOnGroup(const CMatrix3f& rot,
     }
   }
 
-  if (xrayRet) {
+  if (portSecondary && xrayRet) {
     const_cast< TCachedToken< CModel >& >(xac_xrayRetRing).TryCache();
     if (CModel* const model = xac_xrayRetRing.GetObject()) {
       float scale = CalculateClampedScale(position, radius,
@@ -1126,7 +1129,7 @@ void CCompoundTargetReticle::DrawNextLockOnGroup(const CMatrix3f& rot,
     }
   }
 
-  if (thermalRet) {
+  if (portSecondary && thermalRet) {
     const_cast< TCachedToken< CModel >& >(xb8_thermalReticle).TryCache();
     if (CModel* const model = xb8_thermalReticle.GetObject()) {
       float scale = CalculateClampedScale(position, radius,

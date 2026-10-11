@@ -197,6 +197,8 @@ PortDebug::EAspectMode sAspectMode = PortDebug::kAspect_Window;
 bool sHudWide = true;
 bool sCinemaBars = false;
 bool sSharpScanWindow = false;
+bool sAutoAim = true;
+bool sSecondaryCrosshairs = true;
 // Index into kPromptGlyphs; 0 = follow the input in use. Atomic: PortPrompts reads it off the UI thread.
 std::atomic< int > sPromptGlyphs{0};
 constexpr const char* kPromptGlyphs[] = {"auto", "xbox", "playstation", "switch", "gamecube", "keyboard"};
@@ -533,6 +535,10 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sCinemaBars = ParseBool(value);
   } else if (key == "sharp_scan_window") {
     sSharpScanWindow = ParseBool(value);
+  } else if (key == "auto_aim") {
+    sAutoAim = ParseBool(value);
+  } else if (key == "secondary_crosshairs") {
+    sSecondaryCrosshairs = ParseBool(value);
   } else if (key == "prompt_glyphs") {
     for (int i = 0; i < int(std::size(kPromptGlyphs)); ++i) {
       if (value == kPromptGlyphs[i]) {
@@ -740,6 +746,8 @@ std::string SettingsText() {
   file << "hud_wide=" << (sHudWide ? 1 : 0) << '\n';
   file << "cinema_bars=" << (sCinemaBars ? 1 : 0) << '\n';
   file << "sharp_scan_window=" << (sSharpScanWindow ? 1 : 0) << '\n';
+  file << "auto_aim=" << (sAutoAim ? 1 : 0) << '\n';
+  file << "secondary_crosshairs=" << (sSecondaryCrosshairs ? 1 : 0) << '\n';
   file << "prompt_glyphs=" << kPromptGlyphs[sPromptGlyphs.load(std::memory_order_relaxed)] << '\n';
   file << "show_shader_compilation=" << (sShowShaderCompilation ? 1 : 0) << '\n';
   file << "show_menu_hint=" << (sShowMenuHint ? 1 : 0) << '\n';
@@ -1042,6 +1050,8 @@ void EnsureInitialized() {
   sHudWide = port::EnvFlag("MP_HUD_WIDE", sHudWide);
   sCinemaBars = port::EnvFlag("MP_CINEMA_BARS", sCinemaBars);
   sSharpScanWindow = port::EnvFlag("MP_SHARP_SCAN_WINDOW", sSharpScanWindow);
+  sAutoAim = port::EnvFlag("MP_AUTO_AIM", sAutoAim);
+  sSecondaryCrosshairs = port::EnvFlag("MP_SECONDARY_CROSSHAIRS", sSecondaryCrosshairs);
   PortInput::ApplyEnvOverrides();
   if (port::EnvFlag("MP_DISABLE_AI_AUDIO")) {
     sAiAudioEnabled = false;
@@ -1430,6 +1440,16 @@ void SetHudScale(int percent) {
   EnsureInitialized();
   sHudScale = std::clamp(percent, kHudScaleMin, kHudScaleMax);
   MarkDirty();
+}
+
+bool AutoAim() {
+  EnsureInitialized();
+  return sAutoAim || sOriginalExperience;
+}
+
+bool SecondaryCrosshairs() {
+  EnsureInitialized();
+  return sSecondaryCrosshairs || sOriginalExperience;
 }
 
 int CrosshairOpacity() {
@@ -5665,6 +5685,12 @@ void DrawVideoDisplay() {
     MarkDirty();
   }
   ImGui::EndDisabled();
+  if (ImGui::Checkbox("Secondary crosshairs", &sSecondaryCrosshairs)) {
+    MarkDirty();
+  }
+  ImGui::SetItemTooltip("The reticle on the target Lock-On would pick (combat visor), and the ring or\n"
+                        "crosshair on it in the X-Ray and Thermal visors. Off hides them; the lock-on\n"
+                        "reticle and the scan visor's target boxes stay.");
   bool hideHelmet = sHideHelmet;
   if (ImGui::Checkbox("Hide helmet", &hideHelmet)) {
     SetHideHelmet(hideHelmet);
@@ -6083,6 +6109,14 @@ void DrawControlsOptions() {
   ImGui::SetItemTooltip("Each takes the other's D-pad direction, as in Metroid Prime\n"
                         "Remastered's Dual Sticks layout. The Remastered controller preset\n"
                         "turns it on and the other presets off.");
+
+  ImGui::SeparatorText("Aiming");
+  if (ImGui::Checkbox("Auto-aim", &sAutoAim)) {
+    MarkDirty();
+  }
+  ItemHelp("On, as the original: without Lock-On, the arm cannon turns toward the enemy nearest the "
+           "middle of the screen and shots home in on it. Off, shots go where you aim; Lock-On still "
+           "aims at its target.");
 
   ImGui::SeparatorText("Morph ball");
   bool fastMorph = sInput.fastMorph;

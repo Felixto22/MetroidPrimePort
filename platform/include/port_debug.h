@@ -204,6 +204,12 @@ const int kCrosshairOpacityMin = 0;
 const int kCrosshairOpacityMax = 100;
 int CrosshairOpacity();
 bool CrosshairColor(float rgb[3]);
+// Auto-aim: without Lock-On the gun picks the target nearest the screen centre
+// (CPlayer::UpdateAimTarget). Off = aim only at a locked target. On under Original experience.
+bool AutoAim();
+// The next-target reticles (combat seeker, X-ray ring, thermal crosshair). Off hides them;
+// lock-on and scan reticles stay. On under Original experience.
+bool SecondaryCrosshairs();
 // Hide the helmet frame (the visor rim and its glow and lights).
 bool HideHelmet();
 void SetHideHelmet(bool enabled);
