@@ -217,7 +217,9 @@ the tick right before.
     ticks.
   - Remastered's shader clock (`CGraphics::GetSimTime`: wind, Phazon) reads
     the presented time; `CStateManager::PreRender` sets the lag and
-    `main.cpp` clears it after the draw. The last two follow the particle
+    `main.cpp` clears it after the draw. The retail material clock
+    (`CStateManager::DrawWorld`'s `CTimeProvider`: UV scroll/rotate, gun
+    glow) lags by the same amount. The last three follow the particle
     toggle.
   - The other `ConvertToScreenSpace` users are game logic (AI sight,
     flamethrower cap fade, scan targeting) and stay on the sim camera.

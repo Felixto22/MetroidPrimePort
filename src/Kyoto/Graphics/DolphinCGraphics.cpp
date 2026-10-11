@@ -1469,6 +1469,8 @@ float CGraphics::GetSimTime() {
 
 void CGraphics::SetSimTimePresentLag(float seconds) { sSimTimePresentLag = seconds; }
 
+float CGraphics::GetSimTimePresentLag() { return static_cast< float >(sSimTimePresentLag); }
+
 float CGraphics::GetLastSimTimeStep() {
   return static_cast< float >(static_cast< double >(sLastSimTickAdd) / 600.0);
 }

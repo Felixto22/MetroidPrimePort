@@ -3230,7 +3230,15 @@ void CStateManager::DrawWorld() const {
   if (!portZoomed)
     PortCaptureProbeFace();
 #endif
+#ifdef TARGET_PC
+  // Port: material UV animations read the presented time between ticks (smooth frames).
+  float portPresentedTime = xf14_curTimeMod900 - CGraphics::GetSimTimePresentLag();
+  if (portPresentedTime < 0.f)
+    portPresentedTime += 900.f;
+  const CTimeProvider timeProvider(portPresentedTime);
+#else
   const CTimeProvider timeProvider(xf14_curTimeMod900);
+#endif
   const CViewport backupViewport = CGraphics::GetViewport();
   const CFrustumPlanes frustum = SetupViewForDraw(backupViewport);
   const CTransform4f backupViewMatrix = CGraphics::GetViewMatrix();

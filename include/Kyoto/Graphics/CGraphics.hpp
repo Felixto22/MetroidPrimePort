@@ -331,6 +331,7 @@ public:
   // Port: a presented frame between ticks reads the clock this many seconds
   // behind the last tick (the game sets it while drawing, 0 otherwise).
   static void SetSimTimePresentLag(float seconds);
+  static float GetSimTimePresentLag();
   // Seconds the last TickSimTime added.
   static float GetLastSimTimeStep();
   static const CProjectionState& GetProjectionState();
