@@ -3728,7 +3728,17 @@ void CStateManager::DrawSpaceWarp(const CVector3f& point, float strength) const 
   }
 
   const CGameCamera& curCam = x870_cameraManager->GetCurrentCamera(*this);
+#ifdef TARGET_PC
+  // The scene is drawn from the presented camera: carry the point into the
+  // sim camera's frame as the presented one sees it, so the warp stays on it
+  // between ticks. Identity when frames aren't blended.
+  const CVector3f simPoint = x870_cameraManager->GetSimulationCameraTransform(*this) *
+                             (x870_cameraManager->GetCurrentCameraTransform(*this).GetQuickInverse() *
+                              point);
+  gpRender->DrawSpaceWarp(curCam.ConvertToScreenSpace(simPoint), strength);
+#else
   gpRender->DrawSpaceWarp(curCam.ConvertToScreenSpace(point), strength);
+#endif
 }
 
 void CStateManager::TouchSky() const { x850_world->TouchSky(); }

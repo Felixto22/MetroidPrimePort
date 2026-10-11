@@ -205,9 +205,12 @@ the tick right before.
     space once per tick, so they are drawn one step back, scaled by `1 - t`:
     the grid transform for rain and underwater, and each particle's own snow
     force for snow.
-  - Still at tick rate: the morph-ball glow, water ripples, and the
-    `ConvertToScreenSpace` users (`DrawSpaceWarp`, `CNewFlameThrower`,
-    `CPatternedAiFunctions`).
+  - `CStateManager::DrawSpaceWarp` (charged shots, Flicker Bats, Chozo
+    Ghosts, Metroid Prime) projects its point as the presented camera sees
+    it; charged shots and Flicker Bats pass their presented position.
+  - Still at tick rate: the morph-ball glow and water ripples. The other
+    `ConvertToScreenSpace` users are game logic (AI sight, flamethrower cap
+    fade, scan targeting) and stay on the sim camera.
 
 ### 4. First-person view and look input (done)
 
