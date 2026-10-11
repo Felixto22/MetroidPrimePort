@@ -975,43 +975,63 @@ static u32 PromptNative(const Input& in) {
   return PAD_NATIVE_BUTTON_INVALID;
 }
 
-// The Menu rows of the polled profile as a button mapping, for the prompts (L/R
-// fall back to their analog row). Set by Poll, read wherever prompts are drawn.
-static std::mutex sMenuPromptMutex;
-static bool sMenuPromptValid = false;
-static PADDefaultMapping sMenuPrompt;
+u32 PromptNativeButton(const Input& in) { return PromptNative(in); }
 
-static void UpdateMenuPrompt(const Profile& p) {
-  PADDefaultMapping m{};
-  for (PADButtonMapping& slot : m.buttons) slot.nativeButton = PAD_NATIVE_BUTTON_INVALID;
-  u32 n = 0;
-  for (const SMenuAction& a : kMenuActions) {
-    if (a.padButton == 0) continue;
-    PADButtonMapping& slot = m.buttons[n++];
-    slot.padButton = static_cast< PADButton >(a.padButton);
-    const Action analog =
-        a.menu == Action::MenuL ? Action::MenuLAnalog : a.menu == Action::MenuR ? Action::MenuRAnalog : Action::None;
-    for (const Action want : {a.menu, analog}) {
-      for (const Binding& b : p.bindings) {
-        if (want == Action::None || b.action != want || b.count != 1) continue;
-        slot.nativeButton = PromptNative(b.inputs[0]);
-        if (slot.nativeButton != PAD_NATIVE_BUTTON_INVALID) break;
-      }
-      if (slot.nativeButton != PAD_NATIVE_BUTTON_INVALID) break;
-    }
+// The polled profile's single-input bindings, for the prompts: Remap edits live
+// only here (controls.toml), not in Aurora's key and pad mapping tables. Set by
+// Poll, read wherever prompts are drawn.
+static std::mutex sPromptMutex;
+static std::vector< Binding > sPromptBindings;
+
+static void UpdatePromptBindings(const Profile& p) {
+  std::vector< Binding > singles;
+  for (const Binding& b : p.bindings) {
+    if (b.count == 1) singles.push_back(b);
   }
-  const bool valid = MenuButtonsActive();
-  std::lock_guard lock(sMenuPromptMutex);
-  sMenuPrompt = m;
-  sMenuPromptValid = valid;
+  std::lock_guard lock(sPromptMutex);
+  sPromptBindings = std::move(singles);
 }
 
-bool MenuButtonMapping(PADDefaultMapping& out) {
-  if ((GameContexts() & kMenus) == 0) return false;
-  std::lock_guard lock(sMenuPromptMutex);
-  if (!sMenuPromptValid) return false;
-  out = sMenuPrompt;
-  return true;
+// The first of `actions` with a single input from `family`: one that applies in
+// the current context, else one that applies anywhere outside the user layers.
+static bool PromptInputFor(std::initializer_list< Action > actions, PortInput::Family family, Input& out) {
+  const uint16_t contexts = GameContexts();
+  std::lock_guard lock(sPromptMutex);
+  for (const uint16_t want : {contexts, static_cast< uint16_t >(~PortInput::kCtxLayers)}) {
+    for (const Action a : actions) {
+      for (const Binding& b : sPromptBindings) {
+        if (b.action == a && (b.contexts & want) != 0 && PortInput::BindingFamily(b) == family) {
+          out = b.inputs[0];
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+bool PromptButtonInput(unsigned padButton, PortInput::Family family, Input& out) {
+  // Menus and the map read the Menu rows first (present only while "Separate menu
+  // buttons" applies, scoped to those contexts); Start and Z have none. L and R
+  // fall back to their analog.
+  const SMenuAction* menu = nullptr;
+  for (const SMenuAction& m : kMenuActions) {
+    if (m.padButton == padButton) menu = &m;
+  }
+  const Action game = PadBitAction(padButton);
+  if (menu == nullptr) return PromptInputFor({game}, family, out);
+  const bool l = padButton == PAD_TRIGGER_L;
+  const bool r = padButton == PAD_TRIGGER_R;
+  if (l || r) {
+    return PromptInputFor({menu->menu, l ? Action::MenuLAnalog : Action::MenuRAnalog, game,
+                           l ? Action::LAnalog : Action::RAnalog},
+                          family, out);
+  }
+  return PromptInputFor({menu->menu, game}, family, out);
+}
+
+bool PromptAxisInput(PADAxis axis, PortInput::Family family, Input& out) {
+  return PromptInputFor({PadAxisAction(axis)}, family, out);
 }
 
 PADStatus Synthesize(const PortInput::Output& out) {
@@ -1048,7 +1068,7 @@ SPoll Poll(unsigned mouseHeld, bool focused) {
   BuildProfile(next);
   ApplyMenuButtons(next);
   if (!sInit || next != sProfile) {
-    UpdateMenuPrompt(next);
+    UpdatePromptBindings(next);
     sProfile = std::move(next);
     sRuntime.SetProfile(&sProfile);
     sInit = true;
