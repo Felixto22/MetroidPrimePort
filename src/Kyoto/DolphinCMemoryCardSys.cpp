@@ -31,6 +31,15 @@ namespace {
 // card, or that one).
 std::string sDefaultCardBase;
 std::string sCardBase;
+
+// Port: move a pre-native PAL save ("MetroidPrime A/B") into the PAL disc's own
+// format once the card folder is known.
+void MigrateLegacyPalSave() {
+  const PortGci::Report migrated = PortGci::MigrateMountedLegacyPal();
+  if (migrated.copied > 0 || !migrated.errors.empty()) {
+    PortLog::Write("memory card: %s\n", migrated.Summary("Migrated").c_str());
+  }
+}
 } // namespace
 
 namespace {
@@ -363,6 +372,7 @@ void CMemoryCardSys::Initialize() {
     // PAL, whose card aurora keeps under EUR).
     CARDInit(PortGci::GameCode(), "01");
     mIsInitialized = true;
+    MigrateLegacyPalSave();
   }
 }
 
@@ -381,6 +391,8 @@ bool CMemoryCardSys::PortSwitchCard(const char* directory) {
   sCardBase = target;
   PortLog::Write("memory card: switched to %s%s\n", target.c_str(),
                  mounted ? "" : " (no card could be mounted there)");
+  if (mounted)
+    MigrateLegacyPalSave();
   return true;
 }
 

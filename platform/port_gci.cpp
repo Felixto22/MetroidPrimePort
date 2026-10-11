@@ -717,6 +717,18 @@ fs::path MountedCardFolder() {
   return PathFromString(buffer);
 }
 
+Report MigrateMountedLegacyPal() {
+  const fs::path folder = MountedCardFolder();
+  if (folder.empty()) {
+    return {};
+  }
+  Report migrated = MigrateLegacyPal(folder);
+  if (migrated.copied > 0) {
+    MarkCardChanged();
+  }
+  return migrated;
+}
+
 void MarkCardChanged() { sCardChanged = true; }
 
 bool RemountIfChanged() {

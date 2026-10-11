@@ -101,6 +101,9 @@ DolphinCard FindDolphinCard();
 // The mounted card's GCI folder, or empty when the card is a raw image or
 // there is none.
 std::filesystem::path MountedCardFolder();
+// MigrateLegacyPal on the card folder in use (nothing off the PAL disc). Run once
+// the card API is up, and again when another card folder is switched in.
+Report MigrateMountedLegacyPal();
 // After an import: the front end's save screen remounts the card and probes it
 // again once the card is idle. Returns true (once) when it did the remount.
 void MarkCardChanged();
