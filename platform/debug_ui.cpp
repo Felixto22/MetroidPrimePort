@@ -4324,7 +4324,7 @@ void OpenCardDialog(CardPick pick) {
     SDL_ShowOpenFileDialog(done, userdata, window, nullptr, 0, nullptr, false);
 #else
     static const SDL_DialogFileFilter filters[] = {
-        {"GameCube saves (.gci, card images)", "gci;raw;mcp;sav"},
+        {"Saves (.gci, card images, Wii data.bin/save.bin)", "gci;raw;mcp;sav;bin"},
         {"All files", "*"},
     };
     SDL_ShowOpenFileDialog(done, userdata, window, filters, 2, nullptr, false);
@@ -4414,8 +4414,9 @@ void DrawMemoryCard() {
   if (ImGui::Button("Import file...")) {
     OpenCardDialog(kCardPick_Import);
   }
-  ItemHelp("Dolphin .gci saves or a whole card image (.raw). An import replaces the card's saves; "
-           "the old ones move to _replaced in the card folder.");
+  ItemHelp("Dolphin .gci saves, a whole card image (.raw) or a Wii Trilogy data.bin/save.bin. Saves of the "
+           "other release (USA/PAL) or the Trilogy are converted to this disc's format. An import replaces "
+           "the card's saves; the old ones move to _replaced in the card folder.");
 #if !defined(__ANDROID__)
   ImGui::SameLine();
   if (ImGui::Button("Import from Dolphin")) {

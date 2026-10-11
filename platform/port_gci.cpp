@@ -2,6 +2,8 @@
 
 #include <aurora/card.h>
 
+#include "port_save_convert.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
@@ -308,16 +310,114 @@ void CollectName(const char* fileName, void* userData) {
 
 } // namespace
 
+namespace {
+
+bool OnPalDisc() { return sGameCode[3] == 'P'; }
+
+// Banner and icon of a game file already in the card folder, for converted
+// saves that have none of their own.
+std::vector<uint8_t> ExistingArt(const fs::path& folder) {
+  for (const fs::path& file : GameFiles(folder)) {
+    std::vector<uint8_t> bytes;
+    std::string error;
+    if (ReadAll(file, bytes, error)) {
+      std::vector<uint8_t> art = PortSaveConvert::ArtOf(bytes.data(), bytes.size());
+      if (!art.empty()) {
+        return art;
+      }
+    }
+  }
+  return {};
+}
+
+struct Converted {
+  std::vector<uint8_t> gci;
+  std::string note;
+  uint32_t modTime = 0;
+  uint32_t newest = 0;
+};
+
+std::string ConversionNote(const PortSaveConvert::Conversion& conversion) {
+  std::string text = std::string("converted from ") + PortSaveConvert::FormatName(conversion.from);
+  if (conversion.stats.Any()) {
+    text += " (" + conversion.stats.Summary() + ")";
+  }
+  return text;
+}
+
+bool Convert(const std::vector<uint8_t>& bytes, const std::vector<uint8_t>& art, Converted& out,
+             std::string& error) {
+  PortSaveConvert::Conversion conversion;
+  if (!PortSaveConvert::ConvertToDisc(bytes.data(), bytes.size(), OnPalDisc(), art, conversion, error)) {
+    return false;
+  }
+  out.gci = std::move(conversion.gci);
+  out.note = ConversionNote(conversion);
+  out.newest = conversion.newest;
+  if (bytes.size() >= 0x2C) {
+    out.modTime = uint32_t(bytes[0x28]) << 24 | uint32_t(bytes[0x29]) << 16 | uint32_t(bytes[0x2A]) << 8 | bytes[0x2B];
+  }
+  return true;
+}
+
+bool IsNative(const std::vector<uint8_t>& bytes) {
+  return PortSaveConvert::Detect(bytes.data(), bytes.size()) == PortSaveConvert::NativeFormat(OnPalDisc());
+}
+
+// Installs a set of candidate files: when some already are the disc's format
+// only those count; otherwise the newest is converted (the converted names
+// would collide, and the game loads one save).
+void InstallCandidates(Report& report, const fs::path& folder, const std::string& name,
+                       const std::vector<std::vector<uint8_t>>& found) {
+  std::vector<std::vector<uint8_t>> native;
+  for (const auto& bytes : found) {
+    if (IsNative(bytes)) {
+      native.push_back(bytes);
+    }
+  }
+  if (!native.empty()) {
+    InstallSet(report, folder, native);
+    return;
+  }
+  const std::vector<uint8_t> art = ExistingArt(folder);
+  Converted best;
+  bool have = false;
+  for (const auto& bytes : found) {
+    Converted c;
+    std::string error;
+    if (!Convert(bytes, art, c, error)) {
+      AddError(report, name + ": " + error);
+      continue;
+    }
+    if (!have || std::make_pair(c.modTime, c.newest) > std::make_pair(best.modTime, best.newest)) {
+      best = std::move(c);
+      have = true;
+    }
+  }
+  if (!have) {
+    return;
+  }
+  InstallSet(report, folder, {best.gci});
+  report.note = report.note.empty() ? best.note : report.note + "; " + best.note;
+}
+
+} // namespace
+
 Report ImportBytes(const std::vector<uint8_t>& bytes, const std::string& name, const fs::path& folder,
                    const fs::path& scratch) {
   Report report;
   Header header;
   std::string gciError;
+  const PortSaveConvert::Format format = PortSaveConvert::Detect(bytes.data(), bytes.size());
+  if (format == PortSaveConvert::Format::WiiSave || format == PortSaveConvert::Format::WiiDataBin) {
+    InstallCandidates(report, folder, name, {bytes});
+    return report;
+  }
   if (ParseHeader(bytes.data(), bytes.size(), header, gciError)) {
-    if (!IsGameFile(header)) {
+    if (format == PortSaveConvert::Format::Unknown || header.maker != "01") {
       AddError(report, name + " is a save of another game (" + header.game + ")");
     } else {
-      InstallSet(report, folder, {bytes});
+      InstallCandidates(report, folder, name, {bytes});
     }
     return report;
   }
@@ -335,26 +435,101 @@ Report ImportBytes(const std::vector<uint8_t>& bytes, const std::string& name, c
     return report;
   }
   const std::string imagePath = PathString(image);
-  std::vector<std::string> files;
-  if (!aurora_card_raw_list(imagePath.c_str(), sGameCode, "01", CollectName, &files)) {
-    AddError(report, name + " is neither a .gci file nor a readable memory card image");
-  } else if (files.empty()) {
-    AddError(report, name + " holds no Metroid Prime save");
-  }
   std::vector<uint8_t> gci(bytes.size());
   std::vector<std::vector<uint8_t>> set;
-  for (const std::string& file : files) {
-    const size_t size = aurora_card_raw_extract(imagePath.c_str(), sGameCode, "01", file.c_str(),
-                                                gci.data(), gci.size());
-    if (size == 0 || size > gci.size()) {
-      AddError(report, "cannot extract " + file + " from " + name);
-      set.clear(); // half a save set would be worse than none
-      break;
+  bool listed = false;
+  bool failed = false;
+  // Either region's file can be converted, so look for both game codes.
+  for (const char* code : {"GM8E", "GM8P"}) {
+    std::vector<std::string> files;
+    if (!aurora_card_raw_list(imagePath.c_str(), code, "01", CollectName, &files)) {
+      continue;
     }
-    set.emplace_back(gci.begin(), gci.begin() + size);
+    listed = true;
+    for (const std::string& file : files) {
+      const size_t size = aurora_card_raw_extract(imagePath.c_str(), code, "01", file.c_str(), gci.data(),
+                                                  gci.size());
+      if (size == 0 || size > gci.size()) {
+        AddError(report, "cannot extract " + file + " from " + name);
+        failed = true;
+        break;
+      }
+      set.emplace_back(gci.begin(), gci.begin() + size);
+    }
   }
   fs::remove(image, ec);
-  InstallSet(report, folder, set);
+  if (!listed) {
+    AddError(report, name + " is neither a .gci file nor a readable memory card image");
+  } else if (set.empty() && !failed) {
+    AddError(report, name + " holds no Metroid Prime save");
+  }
+  if (failed) {
+    return report; // half a save set would be worse than none
+  }
+  InstallCandidates(report, folder, name, set);
+  return report;
+}
+
+Report MigrateLegacyPal(const fs::path& folder) {
+  Report report;
+  if (!OnPalDisc()) {
+    return report;
+  }
+  struct Old {
+    fs::path path;
+    std::vector<uint8_t> bytes;
+  };
+  std::vector<Old> legacy;
+  for (const fs::path& file : GameFiles(folder)) {
+    Header header;
+    if (!ReadHeader(file, header)) {
+      continue;
+    }
+    if (header.fileName == "MetroidPrime") {
+      return report; // already has a save in the PAL format
+    }
+    Old old;
+    std::string error;
+    if (ReadAll(file, old.bytes, error) &&
+        PortSaveConvert::Detect(old.bytes.data(), old.bytes.size()) == PortSaveConvert::Format::PalLegacyGci) {
+      old.path = file;
+      legacy.push_back(std::move(old));
+    }
+  }
+  if (legacy.empty()) {
+    return report;
+  }
+  Converted best;
+  bool have = false;
+  for (const Old& old : legacy) {
+    Converted c;
+    std::string error;
+    if (!Convert(old.bytes, {}, c, error)) {
+      AddError(report, PathString(old.path.filename()) + ": " + error);
+      continue;
+    }
+    if (!have || std::make_pair(c.modTime, c.newest) > std::make_pair(best.modTime, best.newest)) {
+      best = std::move(c);
+      have = true;
+    }
+  }
+  if (!have) {
+    return report;
+  }
+  std::string error;
+  if (!InstallGci(folder, best.gci, error)) {
+    AddError(report, error);
+    return report;
+  }
+  ++report.copied;
+  for (const Old& old : legacy) {
+    if (MoveAside(old.path, error)) {
+      ++report.replaced;
+    } else {
+      AddError(report, error);
+    }
+  }
+  report.note = best.note;
   return report;
 }
 
