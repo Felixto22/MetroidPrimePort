@@ -1279,6 +1279,17 @@ int main(int argc, char** argv) {
     // Saves are the disc's region's (a PAL save's worlds are laid out
     // differently): its game code and Dolphin's card for that region.
     PortGci::SetGameCode(PortDisc::Current() == PortDisc::Version::Pal ? "GM8P" : "GM8E");
+    // The port's earlier PAL saves (the USA container with PAL worlds) become one
+    // real PAL save; the old files are kept in _replaced.
+    if (PortDisc::Current() == PortDisc::Version::Pal) {
+        const std::filesystem::path cardFolder = PortGci::MountedCardFolder();
+        if (!cardFolder.empty()) {
+            const PortGci::Report migrated = PortGci::MigrateLegacyPal(cardFolder);
+            if (migrated.copied > 0 || !migrated.errors.empty()) {
+                PortLog::Write("metroid_prime_port: %s\n", migrated.Summary("Migrated").c_str());
+            }
+        }
+    }
     s_mountedDisc = discImage;
     aurora_dvd_set_read_error_callback(NoteDiscReadFailure);
     // A Remastered import finished in the last session becomes the mod now,
