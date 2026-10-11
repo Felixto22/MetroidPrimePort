@@ -179,6 +179,14 @@ void TestSynthetic() {
   Save pal = SyntheticSave(Layout::Pal);
   RoundTrip(pal, true, "synthetic PAL");
 
+  // A PAL save is told from the port's earlier PAL saves by its name, not its size.
+  std::vector<uint8_t> head(0x40 + 0x2000, 0);
+  std::memcpy(head.data(), "GM8P01", 6);
+  std::memcpy(head.data() + 8, "MetroidPrime A", 14);
+  Check(Detect(head.data(), head.size()) == Format::PalLegacyGci, "legacy PAL save detected by name");
+  std::memcpy(head.data() + 8, "MetroidPrime\0\0", 14);
+  Check(Detect(head.data(), head.size()) == Format::Unknown, "cut-short PAL save is not legacy");
+
   // USA -> PAL -> USA keeps everything the formats share.
   Stats stats;
   Save viaPal = usa;

@@ -665,11 +665,14 @@ bool ReadUsaContainer(const uint8_t* save, size_t size, Layout layout, int flags
 }
 
 bool ReadPalContainer(const uint8_t* gci, size_t size, Save& out, std::string& error) {
+  if (size < kHeader + 3 * kBlock) {
+    error = "the save is cut short";
+    return false;
+  }
   const uint8_t* copies[2] = {gci + kHeader + kBlock, gci + kHeader + 2 * kBlock};
   bool valid[2];
   for (int i = 0; i < 2; ++i)
     valid[i] = BE32(copies[i]) == CardCrc(copies[i], kBlock);
-  (void)size;
   int pick;
   if (!valid[0] && !valid[1]) {
     error = "both copies of the save fail their checksum";
@@ -931,8 +934,13 @@ Format Detect(const uint8_t* d, size_t size) {
   if (size >= kHeader + kBlock && d[0] == 'G' && d[1] == 'M' && d[2] == '8') {
     if (d[3] == 'E')
       return Format::UsaGci;
-    if (d[3] == 'P')
-      return size >= kHeader + 3 * kBlock ? Format::PalGci : Format::PalLegacyGci;
+    if (d[3] == 'P') {
+      // The port's earlier PAL saves are named like USA's ("MetroidPrime A"/"B").
+      const bool legacy = std::memcmp(d + 8, "MetroidPrime ", 13) == 0;
+      if (legacy)
+        return Format::PalLegacyGci;
+      return size >= kHeader + 3 * kBlock ? Format::PalGci : Format::Unknown;
+    }
   }
   return Format::Unknown;
 }
