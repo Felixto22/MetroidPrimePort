@@ -349,9 +349,13 @@ void ReadSlot(const uint8_t* d, size_t size, const SlotFmt& f, Slot& s, std::set
     s.hintTime[i] = r.Read(32);
   }
   if (f.wii) {
+    s.cine.emplace();
     for (const auto& c : CineList(Layout::Wii)) {
-      if (r.Read(1) && !r.eof && wiiCine != nullptr)
-        wiiCine->insert(c);
+      if (r.Read(1) && !r.eof) {
+        s.cine->insert(c);
+        if (wiiCine != nullptr)
+          wiiCine->insert(c);
+      }
     }
   }
   const Tab tab = TabOf(f.layout);
@@ -409,14 +413,17 @@ void ReadSlot(const uint8_t* d, size_t size, const SlotFmt& f, Slot& s, std::set
   s.present = !r.eof || s.mlvl != 0 || s.timestamp != 0;
 }
 
+// `cine`: the Trilogy's cinematics, which it keeps in each slot (Layout::Wii only).
 bool WriteSlot(const Slot& s, Layout layout, int flags, size_t slotSize, std::vector<uint8_t>& out,
-               Stats& stats) {
+               Stats& stats, const std::set<std::pair<u32, u32>>* cine = nullptr, size_t* used = nullptr) {
+  const bool wii = layout == Layout::Wii;
   const Tab tab = TabOf(layout);
   BitWriter w(slotSize * 8);
   w.pos = kSlotHeader * 8;
   w.Write(s.timestamp, 32);
   w.Write(s.hard ? 1 : 0, 1);
-  w.Write(s.init ? 1 : 0, 1);
+  if (!wii)
+    w.Write(s.init ? 1 : 0, 1);
   w.Write(s.mlvl, 32);
   w.Write(s.playHi, 32);
   w.Write(s.playLo, 32);
@@ -437,20 +444,26 @@ bool WriteSlot(const Slot& s, Layout layout, int flags, size_t slotSize, std::ve
   w.Write(s.rates[1] & 0x1FF, 9);
   for (uint8_t b : s.opts)
     w.Write(b, 8);
-  w.Write(s.sound & 3, 2);
-  w.Write(s.bright & 15, 4);
-  w.Write(s.xoff & 63, 6);
-  w.Write(s.yoff & 63, 6);
-  w.Write(s.stretch & 31, 5);
-  w.Write(s.sfx & 127, 7);
-  w.Write(s.music & 127, 7);
-  w.Write(s.hud & 255, 8);
-  w.Write(s.helmet & 255, 8);
-  for (int i = 0; i < flags; ++i)
-    w.Write(s.flags[i] ? 1 : 0, 1);
+  if (!wii) {
+    w.Write(s.sound & 3, 2);
+    w.Write(s.bright & 15, 4);
+    w.Write(s.xoff & 63, 6);
+    w.Write(s.yoff & 63, 6);
+    w.Write(s.stretch & 31, 5);
+    w.Write(s.sfx & 127, 7);
+    w.Write(s.music & 127, 7);
+    w.Write(s.hud & 255, 8);
+    w.Write(s.helmet & 255, 8);
+    for (int i = 0; i < flags; ++i)
+      w.Write(s.flags[i] ? 1 : 0, 1);
+  }
   for (int i = 0; i < 32; ++i) {
     w.Write(s.hintState[i] & 3, 2);
     w.Write(s.hintTime[i], 32);
+  }
+  if (wii) {
+    for (const auto& c : CineList(Layout::Wii))
+      w.Write(cine != nullptr && cine->count(c) ? 1 : 0, 1);
   }
   for (size_t wi = 0; wi < tab.n; ++wi) {
     const lay::WorldEntry& we = tab.w[wi];
@@ -484,12 +497,14 @@ bool WriteSlot(const Slot& s, Layout layout, int flags, size_t slotSize, std::ve
       }
     }
   }
-  if (s.hasAp && w.Fits(kApBits)) {
+  if (s.hasAp && !wii && w.Fits(kApBits)) {
     for (size_t i = 0; i < kApWords; ++i)
       w.Write(i == 0 ? kApMagic : s.ap[i], i < 11 ? 32 : 16);
   }
   if (w.overflow)
     ++stats.truncatedSlots;
+  if (used != nullptr)
+    *used = (w.pos + 7) / 8;
   out = std::move(w.bytes);
   return true;
 }
@@ -1001,6 +1016,7 @@ void Retarget(Save& save, Layout to, Stats& stats) {
   // Trilogy's category-less one is on either side).
   const auto& list = ScanList(to);
   for (Slot& s : save.slots) {
+    s.cine.reset(); // the system set carries them over
     std::set<std::pair<u32, u32>> scans;
     for (const auto& sc : s.scans) {
       bool hit = false;
@@ -1154,9 +1170,14 @@ bool WriteGci(const Save& save, bool pal, const std::vector<uint8_t>& art, int64
   return true;
 }
 
-bool ConvertToDisc(const uint8_t* data, size_t size, bool pal, const std::vector<uint8_t>& art,
-                   Conversion& out, std::string& error) {
+bool ConvertTo(const uint8_t* data, size_t size, Format target, const std::vector<uint8_t>& art,
+               Conversion& out, std::string& error) {
   out = Conversion{};
+  if (target != Format::UsaGci && target != Format::PalGci) {
+    error = std::string("cannot write ") + FormatName(target) + " saves";
+    return false;
+  }
+  const bool pal = target == Format::PalGci;
   Save save;
   std::vector<uint8_t> sourceArt;
   if (!Read(data, size, out.from, save, &sourceArt, error))
@@ -1167,6 +1188,200 @@ bool ConvertToDisc(const uint8_t* data, size_t size, bool pal, const std::vector
   }
   Retarget(save, pal ? Layout::Pal : Layout::Usa, out.stats);
   return WriteGci(save, pal, sourceArt.empty() ? art : sourceArt, 0, out.gci, out.stats, error);
+}
+
+bool ConvertToDisc(const uint8_t* data, size_t size, bool pal, const std::vector<uint8_t>& art,
+                   Conversion& out, std::string& error) {
+  return ConvertTo(data, size, NativeFormat(pal), art, out, error);
+}
+
+namespace {
+
+// The Trilogy's save.bin, beyond the slots (build/wii-save/FINDINGS.md and
+// build/s-trilogyexport-20261011/NOTES.md). A header at 4 (region id, ...,
+// one 7-byte entry per file at 0x11; the game treats a file as used when its
+// bytes 0 and 4 are set), one 600-byte summary per file that the file select
+// shows as written (MP1's part at +0x47), and at 0x76C a game-data constant the
+// load checks whenever a file is used.
+constexpr size_t kWiiEntry = 0x11;
+constexpr size_t kWiiSummary[3] = {0x64, 0x2BC, 0x514};
+constexpr size_t kWiiSummaryMp1 = 0x47;
+constexpr size_t kWiiHash = 0x76C;
+constexpr u32 kWiiHashValue = 0x4F54DF87;
+constexpr size_t kWiiCrcEnd = 0x1980C;
+constexpr u32 kFrigateMlvl = 0x158EFE17;
+
+bool WiiFileUsed(const uint8_t* bin, int i) {
+  const uint8_t* e = bin + kWiiEntry + 7 * size_t(i);
+  return e[0] != 0 && e[4] != 0;
+}
+
+// Whether a file belongs to a Mii: its summary carries the Mii's id (all 0xFF
+// otherwise), set by the Trilogy before the file has any MP1 progress.
+bool WiiFileOwned(const uint8_t* bin, int i) {
+  const uint8_t* id = bin + kWiiSummary[i] + 0x3F;
+  return std::any_of(id, id + 8, [](uint8_t b) { return b != 0xFF; });
+}
+
+// CPlayerState::CalculateItemCollectionPercentage, as CGameState's file
+// summary computes it (0 on the Frigate): the pickups, of 99, as a percentage.
+u32 ItemPercent(const Slot& s) {
+  if (s.mlvl == kFrigateMlvl)
+    return 0;
+  const auto& c = s.capacity;
+  u32 rate = c[4] / 5 + (c[7] >= 4 ? c[7] - 3 : c[7]);
+  for (int i : {1, 2, 3, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 21, 22, 24, 28})
+    rate += c[i];
+  for (int i = 29; i <= 40; ++i) // the artifacts
+    rate += c[i];
+  return rate * 100 / 99;
+}
+
+} // namespace
+
+bool WriteWii(const Save& save, const uint8_t* base, size_t size, std::vector<uint8_t>& bin, Stats& stats,
+              std::string& error) {
+  if (save.layout != Layout::Wii) {
+    error = "the save is not in the target layout";
+    return false;
+  }
+  Save probe;
+  if (!ReadWii(base, size, probe, error)) {
+    error = "the Trilogy save to write into: " + error;
+    return false;
+  }
+  bin.assign(base, base + size);
+  uint8_t* d = bin.data();
+  // A used file of the base is the model for a file it has empty.
+  int model = -1;
+  for (int i = 0; i < 3 && model < 0; ++i) {
+    if (WiiFileUsed(d, i))
+      model = i;
+  }
+  bool any = false;
+  for (int i = 0; i < 3; ++i) {
+    const Slot& s = save.slots[i];
+    if (!s.present)
+      continue; // the Trilogy file keeps what it had
+    any = true;
+    uint8_t* slot = d + kWiiSlot[i];
+    uint8_t* sum = d + kWiiSummary[i];
+    uint8_t* entry = d + kWiiEntry + 7 * size_t(i);
+    const bool used = WiiFileUsed(d, i);
+    if (!used) {
+      if (model >= 0) {
+        std::memcpy(entry, d + kWiiEntry + 7 * size_t(model), 7);
+        std::memcpy(sum, d + kWiiSummary[model], kWiiSummaryMp1);
+        std::memcpy(slot, d + kWiiSlot[model], kWiiSlotSize / 2);
+      } else {
+        static constexpr uint8_t kEntry[7] = {1, 1, 0, 0, 1, 0, 0}; // a real PAL save's
+        std::memcpy(entry, kEntry, 7);
+      }
+    }
+    // Part A: the options. Its leading 82 bytes stay zero (as in every Trilogy
+    // save); the bits after them are the system block's, then a 3-bit field
+    // the GameCube has no counterpart of, kept.
+    if (save.system.present) {
+      BitWriter w(19);
+      w.Write(save.system.fps & 3, 2);
+      w.Write(save.system.ball & 3, 2);
+      w.Write(save.system.powerBombs & 1, 1);
+      w.Write(save.system.logScan & 127, 7);
+      for (bool f : save.system.flags)
+        w.Write(f ? 1 : 0, 1);
+      w.Write(save.system.autoMapper & 3, 2);
+      uint8_t* a = slot + kPalLead;
+      a[0] = w.bytes[0];
+      a[1] = w.bytes[1];
+      a[2] = uint8_t((a[2] & 0x1F) | (w.bytes[2] & 0xE0));
+    }
+    // Part B: the slot stream, then bytes the Trilogy adds (26 of them, mostly
+    // 1 in finished games, meaning unknown), kept from the file it replaces;
+    // a new file has them zero.
+    std::vector<uint8_t> stream;
+    size_t streamUsed = 0;
+    WriteSlot(s, Layout::Wii, 0, kWiiSlotSize / 2, stream, stats, s.cine ? &*s.cine : &save.system.cine,
+              &streamUsed);
+    uint8_t* b = slot + kWiiSlotSize / 2;
+    if (!used)
+      std::memset(b, 0, kWiiSlotSize / 2);
+    std::memcpy(b, stream.data(), std::min(streamUsed, kWiiSlotSize / 2));
+    // MP1's summary: the difficulty (0 Normal, 1 Veteran; 1 when empty), a u32
+    // (-1 when empty, else 4 or 3), the item percentage, the play time (a
+    // double), the energy tanks, three bytes behind a count, a u32, the world,
+    // two bytes (a 1 in the first hides the file). Kept when the file had MP1
+    // progress: the second u32, the three bytes and the last two, whose
+    // meaning is unknown, and a difficulty above Veteran on a hard slot.
+    uint8_t* m = sum + kWiiSummaryMp1;
+    const bool hadMp1 = BE32(m + 4) != 0xFFFFFFFFu && BE32(m + 24) == 3;
+    const u32 second = hadMp1 ? BE32(m + 4) : 4;
+    const u32 difficulty = hadMp1 && s.hard && BE32(m) > 1 ? BE32(m) : (s.hard ? 1 : 0);
+    uint8_t keep[5] = {};
+    if (hadMp1) {
+      std::memcpy(keep, m + 28, 3);
+      std::memcpy(keep + 3, m + 39, 2);
+    }
+    std::memset(m, 0, 41);
+    PutBE32(m, difficulty);
+    PutBE32(m + 4, second);
+    PutBE32(m + 8, ItemPercent(s));
+    PutBE32(m + 12, s.playHi);
+    PutBE32(m + 16, s.playLo);
+    PutBE32(m + 20, s.capacity[24]);
+    PutBE32(m + 24, 3);
+    std::memcpy(m + 28, keep, 3);
+    PutBE32(m + 35, s.mlvl);
+    std::memcpy(m + 39, keep + 3, 2);
+  }
+  if (!any) {
+    error = "the save has no slots";
+    return false;
+  }
+  if (BE32(d + kWiiHash) == 0)
+    PutBE32(d + kWiiHash, kWiiHashValue);
+  PutBE32(d, Crc32(d + 4, kWiiCrcEnd - 4) ^ 0xFFFFFFFFu);
+  return true;
+}
+
+bool ConvertToTrilogy(const uint8_t* data, size_t size, const uint8_t* base, size_t baseSize, Conversion& out,
+                      std::string& error) {
+  out = Conversion{};
+  Save save;
+  if (!Read(data, size, out.from, save, nullptr, error))
+    return false;
+  // The Trilogy shows one MP1 file per Mii, the first whose summary carries the
+  // Mii's id, which only the Trilogy can write: so the newest slot goes into a
+  // file a Mii owns (the header's current one when owned, else the first).
+  int target = -1;
+  if (baseSize == kWiiSave) {
+    const u32 current = BE32(base + 8);
+    for (int i = 0; i < 3 && target < 0; ++i) {
+      if (WiiFileOwned(base, i))
+        target = i;
+    }
+    if (current < 3 && WiiFileOwned(base, int(current)))
+      target = int(current);
+  }
+  if (target < 0) {
+    error = "the Trilogy save has no Metroid Prime file yet: start Metroid Prime in the Trilogy once first";
+    return false;
+  }
+  int newest = -1;
+  for (int i = 0; i < 3; ++i) {
+    if (save.slots[i].present && (newest < 0 || save.slots[i].timestamp > save.slots[newest].timestamp))
+      newest = i;
+  }
+  if (newest < 0) {
+    error = "the save has no slots";
+    return false;
+  }
+  out.newest = save.slots[newest].timestamp;
+  Slot chosen = std::move(save.slots[newest]);
+  for (Slot& s : save.slots)
+    s = Slot{};
+  save.slots[target] = std::move(chosen);
+  Retarget(save, Layout::Wii, out.stats);
+  return WriteWii(save, base, baseSize, out.gci, out.stats, error);
 }
 
 } // namespace PortSaveConvert

@@ -439,9 +439,18 @@ other `X:\Users\<name>`: `X:\Users\<user>`); the
   Windows) and uses its `GC/USA/Card A` folder and/or `GC/MemoryCardA.USA.raw`
   (import takes the more recently written one); close Dolphin before exporting.
   Android uses the system pickers: one save dialog per file on export, so keep
-  Dolphin's names (`01-GM8E-MetroidPrime A.gci`). Logic in
-  `platform/port_gci.cpp`, covered by `port_gci_tests`. Console:
-  `gci list | import <path> | export <dir or .raw> | dolphin import|export`.
+  Dolphin's names (`01-GM8E-MetroidPrime A.gci`). "Export as" picks the release:
+  the card's files as they are, USA or PAL GameCube (the newest save converted),
+  or the Wii Trilogy, written into an existing `save.bin` (Dolphin's
+  `Wii/title/00010000/52334d45/data/save.bin`, or a decrypted one; backed up to
+  `save.bin.bak`): the newest save replaces the Metroid Prime game the Trilogy
+  last used (it shows one per Mii, so start one there and save once first);
+  Echoes/Corruption are kept. A Wii `data.bin` is console-signed and
+  cannot be written. Logic in `platform/port_gci.cpp` and
+  `platform/port_save_convert.cpp`, covered by `port_gci_tests` and
+  `port_save_convert`. Console: `gci list | import <path> | export [usa|pal]
+  <dir or .raw> | export trilogy <save.bin> | dolphin import | dolphin export
+  [usa|pal|trilogy]`.
 - Unlocks (F1 > Game > Unlocks, persisted as `unlock_hard_mode`, `unlock_fusion_suit`,
   `unlock_galleries`, all off by default): offer what finishing the game
   unlocks without finishing it. Hard mode adds Normal/Hard to a new file; the

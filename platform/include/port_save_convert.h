@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -22,7 +23,8 @@
 // GameCube (GM8P01, one 3-block "MetroidPrime" with two copies), the port's own
 // earlier PAL saves (GM8P01, one block, "MetroidPrime A"/"B": the USA container
 // holding PAL worlds), and the Wii Trilogy's save.bin or data.bin.
-// Formats written: USA and real PAL.
+// Formats written: USA and real PAL, and the Trilogy's save.bin (into an
+// existing one: the console signs data.bin, which only the Wii can do).
 namespace PortSaveConvert {
 
 enum class Layout { Usa, Pal, Wii };
@@ -74,6 +76,9 @@ struct Slot {
   // The port's Archipelago trailer ("APX4"), when the stream carried one.
   bool hasAp = false;
   std::array<uint32_t, kApWords> ap{};
+  // A Trilogy slot's own cinematics (System::cine has every slot's); dropped
+  // by a retarget, after which the slot takes System::cine.
+  std::optional<std::set<std::pair<uint32_t, uint32_t>>> cine;
   bool operator==(const Slot&) const = default;
 };
 
@@ -136,9 +141,24 @@ struct Conversion {
   std::vector<uint8_t> gci;
   uint32_t newest = 0; // the newest slot's timestamp, to choose between several files
 };
-// Reads `data` in any format and writes the target disc's GCI.
+// Reads `data` in any format and writes it as `target` (UsaGci or PalGci).
+bool ConvertTo(const uint8_t* data, size_t size, Format target, const std::vector<uint8_t>& art,
+               Conversion& out, std::string& error);
+// The same, to the mounted disc's GCI.
 bool ConvertToDisc(const uint8_t* data, size_t size, bool pal, const std::vector<uint8_t>& art,
                    Conversion& out, std::string& error);
+
+// Writes a Layout::Wii save into a copy of the Trilogy save.bin `base`: each
+// present slot replaces that MP1 file (its file-select summary too); the other
+// files, MP2 and MP3 are kept.
+bool WriteWii(const Save& save, const uint8_t* base, size_t baseSize, std::vector<uint8_t>& bin, Stats& stats,
+              std::string& error);
+// Reads `data` in any format and writes its newest slot into the save.bin
+// `base`, over the MP1 file the Trilogy last used (it shows one per Mii, and a
+// file it never used has no Mii); fails when `base` has none. `out.gci`
+// receives the new save.bin.
+bool ConvertToTrilogy(const uint8_t* data, size_t size, const uint8_t* base, size_t baseSize, Conversion& out,
+                      std::string& error);
 
 // The 5120 banner/icon bytes of a GCI image, or empty.
 std::vector<uint8_t> ArtOf(const uint8_t* gci, size_t size);

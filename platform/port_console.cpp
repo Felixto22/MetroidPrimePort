@@ -2614,17 +2614,26 @@ void RunFrame() {
       path += (i > 2 ? " " : "") + sCmd.args[i];
     }
     const std::string sub = sCmd.args.size() > 2 ? Lower(sCmd.args[2]) : "";
+    const auto isFormat = [](const std::string& word) {
+      return word == "usa" || word == "pal" || word == "trilogy";
+    };
     std::string text;
     if (action == "list") {
       text = PortDebug::CardList();
     } else if (action == "import" && !path.empty()) {
       text = PortDebug::CardImport(path);
+    } else if (action == "export" && isFormat(sub) && sCmd.args.size() > 3) {
+      text = PortDebug::CardExport(path.substr(sub.size() + 1), sub);
     } else if (action == "export" && !path.empty()) {
       text = PortDebug::CardExport(path);
-    } else if (action == "dolphin" && sCmd.args.size() == 3 && (sub == "import" || sub == "export")) {
-      text = sub == "import" ? PortDebug::CardImportDolphin() : PortDebug::CardExportDolphin();
+    } else if (action == "dolphin" && sub == "import" && sCmd.args.size() == 3) {
+      text = PortDebug::CardImportDolphin();
+    } else if (action == "dolphin" && sub == "export" && sCmd.args.size() <= 4 &&
+               (sCmd.args.size() == 3 || isFormat(Lower(sCmd.args[3])))) {
+      text = PortDebug::CardExportDolphin(sCmd.args.size() == 4 ? Lower(sCmd.args[3]) : "");
     } else {
-      return Finish("usage: gci list | import <path> | export <dir or .raw> | dolphin import|export");
+      return Finish("usage: gci list | import <path> | export [usa|pal] <dir or .raw> | export trilogy "
+                    "<save.bin> | dolphin import | dolphin export [usa|pal|trilogy]");
     }
     size_t start = 0;
     while (start <= text.size()) {

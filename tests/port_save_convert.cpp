@@ -220,6 +220,21 @@ void TestSynthetic() {
     Read(noisy.data(), noisy.size(), format, out, nullptr, error);
     ConvertToDisc(noisy.data(), noisy.size(), round & 1, {}, conversion, error);
   }
+  // ConvertTo writes the GC formats it is asked for, and only those.
+  for (const Format target : {Format::UsaGci, Format::PalGci}) {
+    Conversion conversion;
+    Format got;
+    Save back;
+    Check(ConvertTo(gci.data(), gci.size(), target, {}, conversion, error) &&
+              Read(conversion.gci.data(), conversion.gci.size(), got, back, nullptr, error) && got == target &&
+              back.slots[1].amount == saved.slots[1].amount,
+          std::string("USA -> ") + FormatName(target) + ": " + error);
+  }
+  for (const Format target : {Format::PalLegacyGci, Format::WiiSave, Format::WiiDataBin, Format::Unknown}) {
+    Conversion conversion;
+    Check(!ConvertTo(gci.data(), gci.size(), target, {}, conversion, error),
+          std::string("ConvertTo refuses ") + FormatName(target));
+  }
   std::vector<uint8_t> junk(0x1C000, 0xFF);
   Format format;
   Save out;
@@ -419,6 +434,94 @@ void TestWiiFixtures(const fs::path& root) {
   std::fprintf(stderr, "compared %d Trilogy saves with wii2gci.py\n", compared);
 }
 
+// The Trilogy writer: every fixture written back into itself must give the
+// same bytes (slots, summaries, header), and a fixture taken through a USA GCI
+// and written into an empty Trilogy save (01-firstboot) must read back as the
+// same slots.
+void TestTrilogyWrite(const fs::path& root) {
+  std::vector<uint8_t> empty;
+  if (!ReadFile(root / "saves" / "01-firstboot" / "save.bin", empty)) {
+    std::fprintf(stderr, "no 01-firstboot/save.bin: Trilogy write tests skipped\n");
+    return;
+  }
+  std::error_code ec;
+  int written = 0;
+  for (const auto& entry : fs::directory_iterator(root / "saves", ec)) {
+    const std::string name = entry.path().filename().string();
+    std::vector<uint8_t> bin;
+    if (!ReadFile(entry.path() / "save.bin", bin))
+      continue;
+    Format format;
+    Save save;
+    std::string error;
+    if (!Read(bin.data(), bin.size(), format, save, nullptr, error) || format != Format::WiiSave)
+      continue;
+    bool any = false;
+    for (const Slot& s : save.slots)
+      any = any || s.present;
+    if (!any)
+      continue;
+    std::vector<uint8_t> same;
+    Stats stats;
+    Check(WriteWii(save, bin.data(), bin.size(), same, stats, error), name + ": write into itself: " + error);
+    const size_t diff = FirstDiff(bin.data(), same.data(), std::min(bin.size(), same.size()));
+    if (diff != bin.size())
+      std::fprintf(stderr, "%s: rewritten save.bin first differs at 0x%zx (%02x, got %02x)\n", name.c_str(), diff,
+                   bin[diff], same[diff]);
+    Check(same == bin, name + ": written into itself gives the same bytes");
+
+    Conversion usa, back;
+    Check(ConvertToDisc(bin.data(), bin.size(), false, {}, usa, error), name + ": to USA: " + error);
+    Check(!ConvertToTrilogy(usa.gci.data(), usa.gci.size(), empty.data(), empty.size(), back, error),
+          name + ": a Trilogy save without an MP1 file is refused");
+    Check(ConvertToTrilogy(usa.gci.data(), usa.gci.size(), bin.data(), bin.size(), back, error),
+          name + ": USA back into the Trilogy save: " + error);
+    Save reread;
+    Check(Read(back.gci.data(), back.gci.size(), format, reread, nullptr, error) && format == Format::WiiSave,
+          name + ": the written save.bin re-reads: " + error);
+    // The newest slot lands in the file a Mii owns (its summary carries the
+    // Mii's id, all 0xFF otherwise); the others keep theirs.
+    const auto owned = [&](uint32_t i) {
+      const uint8_t* id = bin.data() + 0x64 + 0x258 * i + 0x3F;
+      return std::any_of(id, id + 8, [](uint8_t b) { return b != 0xFF; });
+    };
+    int newest = -1, target = -1;
+    for (int i = 0; i < 3; ++i) {
+      if (save.slots[i].present && (newest < 0 || save.slots[i].timestamp > save.slots[newest].timestamp))
+        newest = i;
+      if (target < 0 && owned(i))
+        target = i;
+    }
+    const uint32_t current = uint32_t(bin[8]) << 24 | bin[9] << 16 | bin[10] << 8 | bin[11];
+    if (current < 3 && owned(current))
+      target = int(current);
+    // What the trip keeps: the Trilogy has relays, doors, scans and
+    // cinematics the GameCube lacks.
+    Save expect = save;
+    Stats lost;
+    Retarget(expect, Layout::Usa, lost);
+    Retarget(expect, Layout::Wii, lost);
+    Slot want = expect.slots[newest];
+    want.timestamp = reread.slots[target].timestamp; // a GCI keeps its own
+    want.cine = expect.system.cine;
+    // Layers the GameCube has no entry for come back at the Trilogy's default.
+    Slot got = reread.slots[target];
+    for (auto& [mlvl, world] : got.worlds) {
+      const auto it = want.worlds.find(mlvl);
+      std::erase_if(world.layers, [&](const auto& l) {
+        return it == want.worlds.end() || it->second.layers.count(l.first) == 0;
+      });
+    }
+    Check(got == want, name + ": slot " + std::to_string(newest + 1) + " survives Trilogy -> USA -> Trilogy");
+    for (int i = 0; i < 3; ++i) {
+      if (i != target)
+        Check(reread.slots[i] == save.slots[i], name + ": file " + std::to_string(i + 1) + " is kept");
+    }
+    ++written;
+  }
+  std::fprintf(stderr, "wrote %d Trilogy saves back\n", written);
+}
+
 // Real SD-export data.bin files: our decryption must give the save.bin wiisave.py extracts.
 void TestDataBinFixtures(const fs::path& root) {
   const fs::path script = root / "scripts" / "wiisave.py";
@@ -482,6 +585,7 @@ int main(int argc, char** argv) {
       }
     }
     TestWiiFixtures(root);
+    TestTrilogyWrite(root);
     TestDataBinFixtures(root);
   }
   if (sFailures != 0) {
