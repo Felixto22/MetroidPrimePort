@@ -812,11 +812,14 @@ std::vector<SPadInfo> ConnectedPads() {
   return pads;
 }
 
+static void BindMenuDefaults(Profile& p);
+
 void BuildBaseProfile(Profile& out) {
   out = Profile{};
   BindController(out);
   BindKeyboard(out);
   BindPortControls(out);
+  BindMenuDefaults(out);
 }
 
 // The Port menu can't be unbound for good: with no key or mouse input left for it
@@ -844,85 +847,171 @@ void BuildProfile(Profile& out) {
 }
 
 // The PAD buttons menus and the map screen read (confirm, back, page, zoom, the
-// D-pad): Start (pause) and Z (map) keep their gameplay inputs, so the button that
-// opens a screen also closes it.
-static bool MenuLayerAction(Action a) {
-  switch (a) {
-  case Action::PadA:
-  case Action::PadB:
-  case Action::PadX:
-  case Action::PadY:
-  case Action::PadL:
-  case Action::PadR:
-  case Action::PadUp:
-  case Action::PadDown:
-  case Action::PadLeft:
-  case Action::PadRight:
-  case Action::LAnalog:
-  case Action::RAnalog: return true;
-  default: return false;
+// D-pad), each with its own "Menu" action. Start (pause) and Z (map) have none:
+// they keep their gameplay inputs, so the button that opens a screen closes it.
+struct SMenuAction {
+  Action game;
+  Action menu;
+  unsigned padButton; // 0 for the analogs
+};
+constexpr SMenuAction kMenuActions[] = {
+    {Action::PadA, Action::MenuA, PAD_BUTTON_A},
+    {Action::PadB, Action::MenuB, PAD_BUTTON_B},
+    {Action::PadX, Action::MenuX, PAD_BUTTON_X},
+    {Action::PadY, Action::MenuY, PAD_BUTTON_Y},
+    {Action::PadL, Action::MenuL, PAD_TRIGGER_L},
+    {Action::PadR, Action::MenuR, PAD_TRIGGER_R},
+    {Action::LAnalog, Action::MenuLAnalog, 0},
+    {Action::RAnalog, Action::MenuRAnalog, 0},
+    {Action::PadUp, Action::MenuUp, PAD_BUTTON_UP},
+    {Action::PadDown, Action::MenuDown, PAD_BUTTON_DOWN},
+    {Action::PadLeft, Action::MenuLeft, PAD_BUTTON_LEFT},
+    {Action::PadRight, Action::MenuRight, PAD_BUTTON_RIGHT},
+};
+constexpr uint16_t kMenus = PortInput::kCtxMenu | PortInput::kCtxMap;
+
+static const SMenuAction* FindMenuAction(Action a, bool menu) {
+  for (const SMenuAction& m : kMenuActions) {
+    if ((menu ? m.menu : m.game) == a) return &m;
   }
+  return nullptr;
 }
 
-// The mapping menus use when the option applies to port 0's pad: the pad type's
-// defaults, less the buttons and axes this pad lacks (a GameCube-typed pad's L/R
-// clicks, say), so an L/R left unmapped falls back to the trigger click.
-static bool StandardMenuMapping(PADDefaultMapping& def) {
-  if (!PortDebug::MenuStandardButtons() || PortDebug::TouchActive()) return false;
+// Port 0's pad, unless it's missing or the touch overlay's virtual one.
+static SDL_Gamepad* RealPad() {
   const s32 index = PADGetIndexForPort(kPort);
   SDL_Gamepad* pad = index >= 0 ? PADGetSDLGamepadForIndex(static_cast< u32 >(index)) : nullptr;
-  if (pad == nullptr || SDL_IsJoystickVirtual(SDL_GetGamepadID(pad))) return false;
-  PADGetDefaultMapping(&def, PADGetControllerType(kPort));
-  for (PADButtonMapping& m : def.buttons) {
-    if (m.nativeButton < SDL_GAMEPAD_BUTTON_COUNT &&
-        !SDL_GamepadHasButton(pad, static_cast< SDL_GamepadButton >(m.nativeButton))) {
-      m.nativeButton = PAD_NATIVE_BUTTON_INVALID;
-    }
-  }
-  for (PADAxisMapping& m : def.axes) {
-    if (m.nativeAxis.nativeAxis >= 0 && m.nativeAxis.nativeAxis < SDL_GAMEPAD_AXIS_COUNT &&
-        !SDL_GamepadHasAxis(pad, static_cast< SDL_GamepadAxis >(m.nativeAxis.nativeAxis))) {
-      m.nativeAxis.nativeAxis = -1;
-      m.nativeButton = PAD_NATIVE_BUTTON_INVALID;
-    }
-  }
-  return true;
+  return pad == nullptr || SDL_IsJoystickVirtual(SDL_GetGamepadID(pad)) ? nullptr : pad;
 }
 
-// Issue #57: with "Standard buttons in menus", a remapped pad drives menus and the
-// map with the pad type's default buttons (A confirms, B backs out, the triggers
-// page/zoom) instead of its gameplay layout. Pad bindings meant for everywhere stop
-// applying there; bindings the user scoped to menus or the map, Start/Z, the sticks,
-// the keyboard and touch are left alone. Only the game's poll applies it, so the
-// Remap page lists the bindings as saved.
-static void BindMenuStandardButtons(Profile& p) {
+// The Menu rows' defaults: the pad type's standard mapping (A confirms, B backs
+// out, the triggers page and zoom), less the buttons and axes the pad lacks (a
+// GameCube-typed pad's L/R clicks, say, so L/R fall back to the trigger click).
+// Without a pad, the standard pad's, so the Remap page shows what one would get.
+static void BindMenuDefaults(Profile& p) {
   PADDefaultMapping def;
-  if (!StandardMenuMapping(def)) return;
-
-  constexpr uint16_t kMenus = PortInput::kCtxMenu | PortInput::kCtxMap;
-  std::vector< Input > kept;
-  for (Binding& b : p.bindings) {
-    if (b.count != 1 || !IsPadFamily(b.inputs[0]) || (b.contexts & kMenus) == 0) continue;
-    if (b.action == Action::PadStart || b.action == Action::PadZ) {
-      kept.push_back(b.inputs[0]);
-    } else if (MenuLayerAction(b.action) && b.contexts == PortInput::kCtxAll) {
-      b.contexts &= ~kMenus;
+  SDL_Gamepad* pad = RealPad();
+  PADGetDefaultMapping(&def, pad != nullptr ? PADGetControllerType(kPort) : PAD_TYPE_STANDARD);
+  if (pad != nullptr) {
+    for (PADButtonMapping& m : def.buttons) {
+      if (m.nativeButton < SDL_GAMEPAD_BUTTON_COUNT &&
+          !SDL_GamepadHasButton(pad, static_cast< SDL_GamepadButton >(m.nativeButton))) {
+        m.nativeButton = PAD_NATIVE_BUTTON_INVALID;
+      }
+    }
+    for (PADAxisMapping& m : def.axes) {
+      if (m.nativeAxis.nativeAxis >= 0 && m.nativeAxis.nativeAxis < SDL_GAMEPAD_AXIS_COUNT &&
+          !SDL_GamepadHasAxis(pad, static_cast< SDL_GamepadAxis >(m.nativeAxis.nativeAxis))) {
+        m.nativeAxis.nativeAxis = -1;
+        m.nativeButton = PAD_NATIVE_BUTTON_INVALID;
+      }
     }
   }
-
   Profile standard;
   const PADDeadZones* dz = PADGetDeadZones(kPort);
   BindMapping(standard, def.buttons, PAD_BUTTON_COUNT, def.axes, PAD_AXIS_COUNT,
               dz == nullptr || dz->emulateTriggers);
   for (Binding b : standard.bindings) {
-    if (!MenuLayerAction(b.action) || std::find(kept.begin(), kept.end(), b.inputs[0]) != kept.end()) continue;
+    const SMenuAction* m = FindMenuAction(b.action, false);
+    if (m == nullptr) continue;
+    b.action = m->menu;
     b.contexts = kMenus;
     p.bindings.push_back(b);
   }
 }
 
+// Issue #57: "Standard buttons in menus" applies to a real pad without touch.
+static bool MenuButtonsActive() {
+  return PortDebug::MenuStandardButtons() && !PortDebug::TouchActive() && RealPad() != nullptr;
+}
+
+// With the option on, menus and the map read the Menu rows instead of the gameplay
+// layout: pad bindings meant for everywhere stop applying there for the buttons
+// those rows cover (bindings the user scoped to menus or the map, Start/Z, the
+// sticks, the keyboard and touch are left alone). Menu rows apply only in menus
+// and the map, and never on Start's or Z's input. With it off, the rows do
+// nothing. Only the game's poll applies this, so the Remap page lists the bindings
+// as saved.
+static void ApplyMenuButtons(Profile& p) {
+  const auto isMenu = [](const Binding& b) { return FindMenuAction(b.action, true) != nullptr; };
+  if (!MenuButtonsActive()) {
+    std::erase_if(p.bindings, isMenu);
+    return;
+  }
+  std::vector< Input > kept;
+  for (Binding& b : p.bindings) {
+    if (isMenu(b)) {
+      b.contexts &= kMenus;
+      if (b.contexts == 0) b.contexts = kMenus;
+      continue;
+    }
+    if (b.count != 1 || !IsPadFamily(b.inputs[0]) || (b.contexts & kMenus) == 0) continue;
+    if (b.action == Action::PadStart || b.action == Action::PadZ) {
+      kept.push_back(b.inputs[0]);
+    } else if (FindMenuAction(b.action, false) != nullptr && b.contexts == PortInput::kCtxAll) {
+      b.contexts &= ~kMenus;
+    }
+  }
+  std::erase_if(p.bindings, [&](const Binding& b) {
+    return isMenu(b) && b.count == 1 && IsPadFamily(b.inputs[0]) &&
+           std::find(kept.begin(), kept.end(), b.inputs[0]) != kept.end();
+  });
+}
+
+// A single pad input as the native button the prompts look up, or invalid.
+static u32 PromptNative(const Input& in) {
+  if (in.device == Device::PadButton) {
+    if (in.code < SDL_GAMEPAD_BUTTON_COUNT) return in.code;
+    if (in.code == PAD_RAW_BUTTON_TRIGGER_LEFT || in.code == PAD_RAW_BUTTON_TRIGGER_LEFT_CLICK) {
+      return PAD_NATIVE_BUTTON_TRIGGER_LEFT;
+    }
+    if (in.code == PAD_RAW_BUTTON_TRIGGER_RIGHT || in.code == PAD_RAW_BUTTON_TRIGGER_RIGHT_CLICK) {
+      return PAD_NATIVE_BUTTON_TRIGGER_RIGHT;
+    }
+  } else if (in.device == Device::PadAxis && in.dir >= 0) {
+    if (in.code == SDL_GAMEPAD_AXIS_LEFT_TRIGGER) return PAD_NATIVE_BUTTON_TRIGGER_LEFT;
+    if (in.code == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) return PAD_NATIVE_BUTTON_TRIGGER_RIGHT;
+  }
+  return PAD_NATIVE_BUTTON_INVALID;
+}
+
+// The Menu rows of the polled profile as a button mapping, for the prompts (L/R
+// fall back to their analog row). Set by Poll, read wherever prompts are drawn.
+static std::mutex sMenuPromptMutex;
+static bool sMenuPromptValid = false;
+static PADDefaultMapping sMenuPrompt;
+
+static void UpdateMenuPrompt(const Profile& p) {
+  PADDefaultMapping m{};
+  for (PADButtonMapping& slot : m.buttons) slot.nativeButton = PAD_NATIVE_BUTTON_INVALID;
+  u32 n = 0;
+  for (const SMenuAction& a : kMenuActions) {
+    if (a.padButton == 0) continue;
+    PADButtonMapping& slot = m.buttons[n++];
+    slot.padButton = static_cast< PADButton >(a.padButton);
+    const Action analog =
+        a.menu == Action::MenuL ? Action::MenuLAnalog : a.menu == Action::MenuR ? Action::MenuRAnalog : Action::None;
+    for (const Action want : {a.menu, analog}) {
+      for (const Binding& b : p.bindings) {
+        if (want == Action::None || b.action != want || b.count != 1) continue;
+        slot.nativeButton = PromptNative(b.inputs[0]);
+        if (slot.nativeButton != PAD_NATIVE_BUTTON_INVALID) break;
+      }
+      if (slot.nativeButton != PAD_NATIVE_BUTTON_INVALID) break;
+    }
+  }
+  const bool valid = MenuButtonsActive();
+  std::lock_guard lock(sMenuPromptMutex);
+  sMenuPrompt = m;
+  sMenuPromptValid = valid;
+}
+
 bool MenuButtonMapping(PADDefaultMapping& out) {
-  return (GameContexts() & (PortInput::kCtxMenu | PortInput::kCtxMap)) != 0 && StandardMenuMapping(out);
+  if ((GameContexts() & kMenus) == 0) return false;
+  std::lock_guard lock(sMenuPromptMutex);
+  if (!sMenuPromptValid) return false;
+  out = sMenuPrompt;
+  return true;
 }
 
 PADStatus Synthesize(const PortInput::Output& out) {
@@ -933,12 +1022,15 @@ PADStatus Synthesize(const PortInput::Output& out) {
   for (unsigned b : kButtons) {
     if (out.Held(PadBitAction(b))) s.button |= static_cast< u16 >(b);
   }
+  for (const SMenuAction& m : kMenuActions) {
+    if (m.padButton != 0 && out.Held(m.menu)) s.button |= static_cast< u16 >(m.padButton);
+  }
   s.stickX = StickX(out.Value(Action::MainRight), out.Value(Action::MainLeft));
   s.stickY = StickY(out.Value(Action::MainDown), out.Value(Action::MainUp));
   s.substickX = StickX(out.Value(Action::CRight), out.Value(Action::CLeft));
   s.substickY = StickY(out.Value(Action::CDown), out.Value(Action::CUp));
-  s.triggerLeft = Trigger(out.Value(Action::LAnalog), (s.button & PAD_TRIGGER_L) != 0);
-  s.triggerRight = Trigger(out.Value(Action::RAnalog), (s.button & PAD_TRIGGER_R) != 0);
+  s.triggerLeft = Trigger(std::max(out.Value(Action::LAnalog), out.Value(Action::MenuLAnalog)), (s.button & PAD_TRIGGER_L) != 0);
+  s.triggerRight = Trigger(std::max(out.Value(Action::RAnalog), out.Value(Action::MenuRAnalog)), (s.button & PAD_TRIGGER_R) != 0);
   const bool any = s.button != 0 || s.stickX != 0 || s.stickY != 0 || s.substickX != 0 || s.substickY != 0 ||
                    s.triggerLeft != 0 || s.triggerRight != 0;
   // Idle: Aurora still reports the port present when a pad or the keyboard is.
@@ -954,8 +1046,9 @@ SPoll Poll(unsigned mouseHeld, bool focused) {
 
   Profile next;
   BuildProfile(next);
-  BindMenuStandardButtons(next);
+  ApplyMenuButtons(next);
   if (!sInit || next != sProfile) {
+    UpdateMenuPrompt(next);
     sProfile = std::move(next);
     sRuntime.SetProfile(&sProfile);
     sInit = true;

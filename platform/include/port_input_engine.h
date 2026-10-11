@@ -157,7 +157,19 @@ enum class ActionKind : uint8_t {
   X(SaveState, Digital, "save_state", "Save state")                                                \
   X(LoadState, Digital, "load_state", "Load state")                                                \
   X(Screenshot, Digital, "screenshot", "Screenshot")                                               \
-  X(ToggleOriginal, Digital, "toggle_original", "Original experience")
+  X(ToggleOriginal, Digital, "toggle_original", "Original experience")                             \
+  X(MenuA, Digital, "menu_a", "Menu A")                                                            \
+  X(MenuB, Digital, "menu_b", "Menu B")                                                            \
+  X(MenuX, Digital, "menu_x", "Menu X")                                                            \
+  X(MenuY, Digital, "menu_y", "Menu Y")                                                            \
+  X(MenuL, Digital, "menu_l", "Menu L (click)")                                                    \
+  X(MenuR, Digital, "menu_r", "Menu R (click)")                                                    \
+  X(MenuLAnalog, HalfAxis, "menu_l_analog", "Menu L (analog)")                                     \
+  X(MenuRAnalog, HalfAxis, "menu_r_analog", "Menu R (analog)")                                     \
+  X(MenuUp, Digital, "menu_up", "Menu up")                                                         \
+  X(MenuDown, Digital, "menu_down", "Menu down")                                                   \
+  X(MenuLeft, Digital, "menu_left", "Menu left")                                                   \
+  X(MenuRight, Digital, "menu_right", "Menu right")
 
 enum class Action : uint16_t {
 #define PORT_INPUT_ACTION_ENUM(id, kind, key, label) id,

@@ -247,9 +247,9 @@ constexpr GameCubeButton kNsoGameCubeButtons[] = {
     {PAD_NATIVE_BUTTON_TRIGGER_RIGHT, PAD_TRIGGER_R, "gamecube_r"},
 };
 
-// The mapping a prompt for `button` follows: port 0's pad mapping, or the pad
-// type's defaults for the buttons "Standard buttons in menus" puts back while a
-// menu or the map is open (Start and Z keep the gameplay mapping there).
+// The mapping a prompt for `button` follows: port 0's pad mapping, or the "Menus
+// and map" rows while a menu or the map is open and "Standard buttons in menus"
+// applies (Start and Z keep the gameplay mapping there).
 PADButtonMapping* PromptButtonMappings(PADButton button, u32* count, PADDefaultMapping& scratch) {
   if (button != PAD_BUTTON_START && button != PAD_TRIGGER_Z && PortInputDevices::MenuButtonMapping(scratch)) {
     *count = PAD_BUTTON_COUNT;

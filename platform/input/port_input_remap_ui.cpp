@@ -914,6 +914,12 @@ const std::vector<SGroup>& Groups() {
           Action::VisorPrev},
          true},
         {"Morph Ball", {Action::SpringBall}, true},
+        // Read instead of the game buttons in menus and on the map ("Standard buttons in menus").
+        {"Menus and map",
+         {Action::MenuA, Action::MenuB, Action::MenuX, Action::MenuY, Action::MenuL, Action::MenuR,
+          Action::MenuLAnalog, Action::MenuRAnalog, Action::MenuUp, Action::MenuDown, Action::MenuLeft,
+          Action::MenuRight},
+         true},
         {"Port", {Action::PortMenu, Action::SaveState, Action::LoadState, Action::Screenshot, Action::ToggleOriginal}, true},
         {"Layers (shift keys, advanced)", {Action::Layer1, Action::Layer2, Action::Layer3, Action::Layer4}, false},
     };
@@ -964,6 +970,16 @@ const char* GameHint(Action a) {
   case Action::AimDown:
   case Action::AimLeft:
   case Action::AimRight: return "Twin-stick aim";
+  case Action::MenuA: return "Confirm";
+  case Action::MenuB: return "Back";
+  case Action::MenuL:
+  case Action::MenuR:
+  case Action::MenuLAnalog:
+  case Action::MenuRAnalog: return "Page, map zoom";
+  case Action::MenuUp:
+  case Action::MenuDown:
+  case Action::MenuLeft:
+  case Action::MenuRight: return "Navigate";
   default: return nullptr;
   }
 }
@@ -1451,9 +1467,11 @@ void Draw() {
   DrawReset(views);
   bool menuStandard = PortDebug::MenuStandardButtons();
   if (ImGui::Checkbox("Standard buttons in menus", &menuStandard)) PortDebug::SetMenuStandardButtons(menuStandard);
-  ImGui::SetItemTooltip("Menus and the map use the controller's own buttons (A confirms, B backs out, the "
-                        "triggers page and zoom), whatever the bindings below do in game. Start and the map "
-                        "button keep theirs. Bindings set for Menu or Map under Advanced still apply.");
+  ImGui::SetItemTooltip("Menus and the map read the controller's \"Menus and map\" rows (by default its own "
+                        "buttons: A confirms, B backs out, the triggers page and zoom) instead of the game "
+                        "buttons. Start and the map button keep theirs. Bindings set for Menu or Map under "
+                        "Advanced still apply. Off: the game buttons drive menus and the Menus and map rows "
+                        "do nothing.");
   ImGui::Separator();
 
   const bool editorOnTop = sEditing != kEditNone && !sEditRowShown;
