@@ -109,6 +109,11 @@ private:
   bool x68_26_rumble : 1;
   bool x68_27_swapBeamsControls : 1;
   bool x68_28_hintSystem : 1;
+#ifdef TARGET_PC
+  // PAL's sixth option flag, written after the swap-beams flag (meaning unknown);
+  // kept so a PAL save round-trips.
+  bool x68_29_palFlag : 1;
+#endif
   rstl::vector< rstl::pair< CAssetId, CAssetId > > x6c_controlTxtrMap;
 };
 
