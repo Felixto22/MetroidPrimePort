@@ -363,13 +363,13 @@ std::string FindUnreadableDiscFile() {
 }
 
 constexpr const char* kSupportedDisc =
-    "Metroid Prime for the GameCube is supported: USA 1.00\n(GM8E01, revision 0), and PAL (GM8P01, experimental).";
+    "Metroid Prime for the GameCube is supported: USA 1.00\nand 1.01 (GM8E01), and PAL (GM8P01, experimental).";
 // Shown instead while other releases are opted into (MP_DISC_ANY_VERSION).
 constexpr const char* kSupportedDiscAny =
     "Metroid Prime for the GameCube is supported: USA 1.00, 1.01\nand 1.02 (GM8E01), and PAL (GM8P01, experimental).";
 
 const char* SupportedDiscText() {
-    return PortDisc::IsAccepted(PortDisc::Version::Usa101) ? kSupportedDiscAny : kSupportedDisc;
+    return PortDisc::IsAccepted(PortDisc::Version::Usa102) ? kSupportedDiscAny : kSupportedDisc;
 }
 
 // What the user picked instead, in words: the usual mistakes are another
