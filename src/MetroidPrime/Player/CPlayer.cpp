@@ -2732,8 +2732,10 @@ void CPlayer::UpdateScanningState(const CFinalInput& input, CStateManager& mgr, 
       if (const CActor* act = TCastToConstPtr< CActor >(mgr.ObjectById(GetOrbitTargetId()))) {
         if (const CScannableObjectInfo* scanInfo = act->GetScannableObjectInfo()) {
           float totalTime = scanInfo->GetTotalDownloadTime();
-          x3ac_scanningTime = rstl::min_val(x3ac_scanningTime + dt, totalTime);
-          x3b0_curScanTime += dt;
+          // Port: F1 Scan speed runs the bar and the scan's minimum time faster.
+          const float scanDt = dt * PortDebug::ScanSpeed();
+          x3ac_scanningTime = rstl::min_val(x3ac_scanningTime + scanDt, totalTime);
+          x3b0_curScanTime += scanDt;
           mgr.PlayerState()->SetScanTime(scanInfo->GetScannableObjectId(),
                                          x3ac_scanningTime / totalTime);
           if (x3ac_scanningTime >= totalTime &&

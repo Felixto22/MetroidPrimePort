@@ -1100,6 +1100,9 @@ unpacks to a temporary directory instead of mounting.
   default on): off hides the next-target reticles: the combat visor's seeker and the
   X-ray ring and thermal crosshair on the target Lock-On would pick. The lock-on
   reticle and the scan visor's target box stay. On under Original experience.
+- Scan speed (Game > Cutscenes, `scan_speed`, `MP_SCAN_SPEED`, 100-500, default
+  100): percent speed of the scan visor's progress bar and the scan's minimum
+  time. 100 under Original experience.
 - Auto-aim (Controls > Options > Aiming, `auto_aim`, `MP_AUTO_AIM`, default on):
   off clears the gun's aim target unless Lock-On holds one, so free-aimed shots go
   straight to where you aim instead of turning toward the enemy nearest the screen

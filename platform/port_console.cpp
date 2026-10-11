@@ -699,6 +699,7 @@ void CmdStatus(CStateManager& mgr) {
   Out("orbit state %d, game input L=%d A=%d, charging %d (%.2f)",
       static_cast< int >(player.GetOrbitState()), in.DL() ? 1 : 0, in.DA() ? 1 : 0,
       player.GetPlayerGun()->IsCharging() ? 1 : 0, player.GetPlayerGun()->GetChargePercentage());
+  Out("scan timer %.2f", player.GetScanTimer());
   if (const CEntity* target = mgr.GetObjectById(player.GetOrbitTargetId())) {
     Out("orbit target u%u %08X %s", target->GetUniqueId().Value(), target->GetEditorId().Value(),
         target->GetDebugName().data());

@@ -207,6 +207,11 @@ bool CrosshairColor(float rgb[3]);
 // Auto-aim: without Lock-On the gun picks the target nearest the screen centre
 // (CPlayer::UpdateAimTarget). Off = aim only at a locked target. On under Original experience.
 bool AutoAim();
+// Scan visor speed in percent (scan_speed=, MP_SCAN_SPEED); ScanSpeed() is the factor on the
+// scan timer in CPlayer::UpdateScanningState. 1 under Original experience.
+const int kScanSpeedMin = 100;
+const int kScanSpeedMax = 500;
+float ScanSpeed();
 // The next-target reticles (combat seeker, X-ray ring, thermal crosshair). Off hides them;
 // lock-on and scan reticles stay. On under Original experience.
 bool SecondaryCrosshairs();

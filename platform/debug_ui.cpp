@@ -198,6 +198,7 @@ bool sHudWide = true;
 bool sCinemaBars = false;
 bool sSharpScanWindow = false;
 bool sAutoAim = true;
+int sScanSpeed = 100;
 bool sSecondaryCrosshairs = true;
 // Index into kPromptGlyphs; 0 = follow the input in use. Atomic: PortPrompts reads it off the UI thread.
 std::atomic< int > sPromptGlyphs{0};
@@ -537,6 +538,11 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sSharpScanWindow = ParseBool(value);
   } else if (key == "auto_aim") {
     sAutoAim = ParseBool(value);
+  } else if (key == "scan_speed") {
+    const int s = std::atoi(value.c_str());
+    if (s >= PortDebug::kScanSpeedMin && s <= PortDebug::kScanSpeedMax) {
+      sScanSpeed = s;
+    }
   } else if (key == "secondary_crosshairs") {
     sSecondaryCrosshairs = ParseBool(value);
   } else if (key == "prompt_glyphs") {
@@ -747,6 +753,7 @@ std::string SettingsText() {
   file << "cinema_bars=" << (sCinemaBars ? 1 : 0) << '\n';
   file << "sharp_scan_window=" << (sSharpScanWindow ? 1 : 0) << '\n';
   file << "auto_aim=" << (sAutoAim ? 1 : 0) << '\n';
+  file << "scan_speed=" << sScanSpeed << '\n';
   file << "secondary_crosshairs=" << (sSecondaryCrosshairs ? 1 : 0) << '\n';
   file << "prompt_glyphs=" << kPromptGlyphs[sPromptGlyphs.load(std::memory_order_relaxed)] << '\n';
   file << "show_shader_compilation=" << (sShowShaderCompilation ? 1 : 0) << '\n';
@@ -1042,6 +1049,8 @@ void EnsureInitialized() {
   sCinemaBars = port::EnvFlag("MP_CINEMA_BARS", sCinemaBars);
   sSharpScanWindow = port::EnvFlag("MP_SHARP_SCAN_WINDOW", sSharpScanWindow);
   sAutoAim = port::EnvFlag("MP_AUTO_AIM", sAutoAim);
+  sScanSpeed = std::clamp(port::EnvInt("MP_SCAN_SPEED", sScanSpeed), PortDebug::kScanSpeedMin,
+                          PortDebug::kScanSpeedMax);
   sSecondaryCrosshairs = port::EnvFlag("MP_SECONDARY_CROSSHAIRS", sSecondaryCrosshairs);
   PortInput::ApplyEnvOverrides();
   if (port::EnvFlag("MP_DISABLE_AI_AUDIO")) {
@@ -1436,6 +1445,11 @@ void SetHudScale(int percent) {
 bool AutoAim() {
   EnsureInitialized();
   return sAutoAim || sOriginalExperience;
+}
+
+float ScanSpeed() {
+  EnsureInitialized();
+  return sOriginalExperience ? 1.f : static_cast< float >(sScanSpeed) / 100.f;
 }
 
 bool SecondaryCrosshairs() {
@@ -5396,6 +5410,12 @@ void DrawCutscenesSection() {
            "far faster; Fast ends it about 2 s in, once the next area is loaded; Skip shows black "
            "until the area is loaded. The cinematic played in the elevator room before the ride is "
            "not affected.");
+  if (ImGui::SliderInt("Scan speed", &sScanSpeed, kScanSpeedMin, kScanSpeedMax, "%d%%",
+                       ImGuiSliderFlags_AlwaysClamp)) {
+    MarkDirty();
+  }
+  ItemHelp("How fast the scan visor fills its progress bar. 100% is the original; 200% scans in "
+           "half the time. What a scan records is unchanged.");
   EndOriginalLocked(locked);
 
 }
