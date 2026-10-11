@@ -376,11 +376,21 @@ Sint32 get_instance_for_player(uint32_t player) noexcept {
 // analog trigger axes only. Digital L2/R2 keys arrive as raw buttons 15 and 16
 // and reach nothing, so handhelds such as the RG Rotate (#81) can't bind them.
 // Map them to the triggers when the pad has no trigger of its own.
+//
+// Anbernic's built-in "retrogame_joypad" (484b:1101, the RG Rotate) also
+// declares LTRIGGER/RTRIGGER/BRAKE/GAS axes that never move: L2/R2 only ever
+// arrive as keys. SDL maps the triggers to those dead axes, so on that pad
+// the buttons replace the axis bindings.
+static bool has_dead_trigger_axes(SDL_Gamepad* ctrl) noexcept {
+  return SDL_GetGamepadVendor(ctrl) == 0x484b && SDL_GetGamepadProduct(ctrl) == 0x1101;
+}
+
 static void map_digital_triggers(SDL_Gamepad* ctrl) noexcept {
   const int buttons = SDL_GetNumJoystickButtons(SDL_GetGamepadJoystick(ctrl));
   if (buttons <= 15) {
     return;
   }
+  const bool deadAxes = has_dead_trigger_axes(ctrl);
   int count = 0;
   SDL_GamepadBinding** bindings = SDL_GetGamepadBindings(ctrl, &count);
   if (bindings == nullptr) {
@@ -396,15 +406,25 @@ static void map_digital_triggers(SDL_Gamepad* ctrl) noexcept {
   }
   SDL_free(bindings);
   char* mapping = SDL_GetGamepadMapping(ctrl);
-  if (hasTrigger || mapping == nullptr) {
+  if ((hasTrigger && !deadAxes) || mapping == nullptr) {
     SDL_free(mapping);
     return;
   }
-  std::string updated = mapping;
-  SDL_free(mapping);
-  if (!updated.empty() && updated.back() != ',') {
-    updated += ',';
+  std::string updated;
+  {
+    // Copy the mapping without its trigger entries.
+    std::string_view rest = mapping;
+    while (!rest.empty()) {
+      const size_t comma = rest.find(',');
+      const std::string_view entry = rest.substr(0, comma);
+      if (!entry.starts_with("lefttrigger:") && !entry.starts_with("righttrigger:") && !entry.empty()) {
+        updated.append(entry);
+        updated += ',';
+      }
+      rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+    }
   }
+  SDL_free(mapping);
   updated += "lefttrigger:b15,";
   if (buttons > 16) {
     updated += "righttrigger:b16,";
