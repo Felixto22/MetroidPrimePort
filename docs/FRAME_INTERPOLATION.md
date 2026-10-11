@@ -208,9 +208,19 @@ the tick right before.
   - `CStateManager::DrawSpaceWarp` (charged shots, Flicker Bats, Chozo
     Ghosts, Metroid Prime) projects its point as the presented camera sees
     it; charged shots and Flicker Bats pass their presented position.
-  - Still at tick rate: the morph-ball glow and water ripples. The other
-    `ConvertToScreenSpace` users are game logic (AI sight, flamethrower cap
-    fade, scan targeting) and stay on the sim camera.
+  - Dynamic lights (`CStateManager::BuildDynamicLightListForWorld`) take
+    their `CGameLight`'s presented pose, so the morph-ball glow and projectile
+    lights move with what they light.
+  - Water clocks lag the last tick by `(1 - t) * dt`
+    (`CFluidPlaneManager::PortPresentLag`): the UV scroll, turbulence and
+    ripple ages (`UpdatePatch` draws aged copies), so rings spread between
+    ticks.
+  - Remastered's shader clock (`CGraphics::GetSimTime`: wind, Phazon) reads
+    the presented time; `CStateManager::PreRender` sets the lag and
+    `main.cpp` clears it after the draw. The last two follow the particle
+    toggle.
+  - The other `ConvertToScreenSpace` users are game logic (AI sight,
+    flamethrower cap fade, scan targeting) and stay on the sim camera.
 
 ### 4. First-person view and look input (done)
 

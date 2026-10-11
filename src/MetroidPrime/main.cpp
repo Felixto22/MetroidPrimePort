@@ -1111,6 +1111,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
         aurora::phase::set(aurora::phase::Main, "game draw");
         archSupport->GetIOWinManager().Draw();
         CCameraManager::SetPresentationInterpolation(-1.f);
+        CGraphics::SetSimTimePresentLag(0.f);
         PortSpeedrunTimer::Draw();
         DrawDebugMetrics(t1, archSupport->GetStopwatch2());
 

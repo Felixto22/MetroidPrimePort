@@ -120,6 +120,11 @@
 
 const int gkPVSEnabled = 1;
 
+#ifdef TARGET_PC
+// Tick generation (CActor::PortTickGeneration) of the last TickSimTime.
+static uint sPortSimTimeGeneration = 0;
+#endif
+
 namespace {
 class area_sorter {
 public:
@@ -1461,6 +1466,7 @@ void CStateManager::Update(float dt) {
     return;
   }
   CGraphics::TickSimTime(dt);
+  sPortSimTimeGeneration = CActor::PortTickGeneration();
 #endif
 
 #ifdef TARGET_PC
@@ -2616,6 +2622,18 @@ void CStateManager::PreRender() {
   xf7c_projectedShadow = nullptr;
 
   x850_world->PreRender();
+#ifdef TARGET_PC
+  {
+    // Port: Remastered's shader clock (wind, Phazon) reads the presented time
+    // between ticks; main.cpp clears it after the draw.
+    const float t = CCameraManager::GetPresentationInterpolation();
+    float lag = 0.f;
+    if (t >= 0.f && t < 1.f && sPortSimTimeGeneration == CActor::PortTickGeneration() &&
+        PortDebug::ParticleInterpolation())
+      lag = (1.f - t) * CGraphics::GetLastSimTimeStep();
+    CGraphics::SetSimTimePresentLag(lag);
+  }
+#endif
   BuildDynamicLightListForWorld();
 
   const CGameCamera& curCam = x870_cameraManager->GetCurrentCamera(*this);
@@ -3666,7 +3684,20 @@ void CStateManager::BuildDynamicLightListForWorld() {
   for (int idx = list.GetFirstObjectIndex(); idx != -1; idx = list.GetNextObjectIndex(idx)) {
     const CGameLight* light = static_cast< const CGameLight* >(list[idx]);
     if (light && light->GetActive()) {
+#ifdef TARGET_PC
+      // Port: lights follow their actor's presented pose, so moving lights
+      // (the morph ball's glow, projectile lights) glide between ticks.
+      CLight l = light->GetLight();
+      CTransform4f toCur = CTransform4f::Identity();
+      if (light->PortPresentedView(CTransform4f::Identity(), toCur)) {
+        const CTransform4f toPresented = toCur.GetQuickInverse();
+        l.SetPosition(toPresented * l.GetPosition());
+        if (l.GetType() != kLT_Point)
+          l.SetDirection(toPresented.Rotate(l.GetDirection()).AsNormalized());
+      }
+#else
       const CLight& l = light->GetLight();
+#endif
       if (l.GetIntensity() > FLT_EPSILON && l.GetRadius() > FLT_EPSILON) {
         // TODO: This shouldn't be inlined, but currently is.
         x8e0_dynamicLights.push_back(l);

@@ -1449,13 +1449,28 @@ void CGraphics::TickRenderTimings(uint ticks) {
 
 // Remastered's CScene::SimulateScene adds floor(dt * 600 + 0.5) ticks (1/600 s) and wraps the
 // total at floor(15120 * 600 + 0.5) = 9,072,000 ticks.
+namespace {
+uint sLastSimTickAdd = 0;
+double sSimTimePresentLag = 0.0;
+} // namespace
+
 void CGraphics::TickSimTime(float dt) {
   const uint add = static_cast< uint >(static_cast< double >(dt) * 600.0 + 0.5);
   mSimTicks = (mSimTicks + add) % 9072000u;
+  sLastSimTickAdd = add;
 }
 
 float CGraphics::GetSimTime() {
-  return static_cast< float >(static_cast< double >(mSimTicks) / 600.0);
+  double t = static_cast< double >(mSimTicks) / 600.0 - sSimTimePresentLag;
+  if (t < 0.0)
+    t += 15120.0;
+  return static_cast< float >(t);
+}
+
+void CGraphics::SetSimTimePresentLag(float seconds) { sSimTimePresentLag = seconds; }
+
+float CGraphics::GetLastSimTimeStep() {
+  return static_cast< float >(static_cast< double >(sLastSimTickAdd) / 600.0);
 }
 
 float CGraphics::GetSecondsMod900() {
