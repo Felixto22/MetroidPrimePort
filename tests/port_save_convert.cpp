@@ -419,6 +419,44 @@ void TestWiiFixtures(const fs::path& root) {
   std::fprintf(stderr, "compared %d Trilogy saves with wii2gci.py\n", compared);
 }
 
+// Real SD-export data.bin files: our decryption must give the save.bin wiisave.py extracts.
+void TestDataBinFixtures(const fs::path& root) {
+  const fs::path script = root / "scripts" / "wiisave.py";
+  std::error_code ec;
+  if (!fs::exists(script) || !fs::is_directory(root / "dl", ec)) {
+    std::fprintf(stderr, "no wiisave.py or dl/: data.bin comparison skipped\n");
+    return;
+  }
+  const fs::path tmp = fs::temp_directory_path() / "port_save_convert_databin";
+  int compared = 0;
+  for (const auto& entry : fs::recursive_directory_iterator(root / "dl", ec)) {
+    if (entry.path().filename() != "data.bin")
+      continue;
+    const std::string name = fs::relative(entry.path(), root, ec).string();
+    fs::remove_all(tmp, ec);
+    fs::create_directories(tmp, ec);
+    const std::string command = "python3 -I '" + script.string() + "' '" + entry.path().string() + "' '" +
+                                tmp.string() + "' > /dev/null 2>&1";
+    std::vector<uint8_t> bytes, expected, got;
+    if (std::system(command.c_str()) != 0 || !ReadFile(tmp / "save.bin", expected) ||
+        !ReadFile(entry.path(), bytes)) {
+      std::fprintf(stderr, "%s: no reference output, skipped\n", name.c_str());
+      continue;
+    }
+    std::string error;
+    Check(DecryptDataBin(bytes.data(), bytes.size(), got, error), name + ": decrypt: " + error);
+    Check(got == expected, name + ": save.bin matches wiisave.py");
+    Conversion conversion;
+    const bool converted = ConvertToDisc(bytes.data(), bytes.size(), false, {}, conversion, error);
+    Check(converted || error == "the save has no used slots", name + ": convert: " + error);
+    if (converted)
+      std::fprintf(stderr, "%s -> USA: %s\n", name.c_str(), conversion.stats.Summary().c_str());
+    ++compared;
+  }
+  fs::remove_all(tmp, ec);
+  std::fprintf(stderr, "compared %d data.bin files with wiisave.py\n", compared);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -444,6 +482,7 @@ int main(int argc, char** argv) {
       }
     }
     TestWiiFixtures(root);
+    TestDataBinFixtures(root);
   }
   if (sFailures != 0) {
     std::fprintf(stderr, "%d check(s) failed\n", sFailures);
