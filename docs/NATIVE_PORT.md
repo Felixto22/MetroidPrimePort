@@ -1033,14 +1033,14 @@ unpacks to a temporary directory instead of mounting.
   mappings are ignored. Editing a default makes it yours, and "Revert" gives the default back. Keyboard &
   mouse, Touch and Controllers are the Default profile restricted to that family of input;
   a kind or model is its own profile on top. "Reset..." restores a preset (after a confirmation).
-  "Standard buttons in menus" (on by default; `menu_standard_buttons=`,
+  "Separate menu buttons" (on by default; `menu_standard_buttons=`,
   `MP_MENU_STANDARD_BUTTONS`) makes a controller read the "Menus and map" rows instead of
   the game buttons in the pause screen, front end and map. Their defaults are the pad's own
   A/B/X/Y, shoulders, triggers and D-pad (A confirms, B backs out, the triggers page and
   zoom), and they can be rebound like any row; the prompts there follow them. Start and the
   map button keep their gameplay inputs (a Menu row on either input is ignored); bindings
   set for Menu or Map under Advanced still apply; keyboard and touch are unchanged. With
-  the option off the rows do nothing.
+  the option off, menus and the map follow the gameplay bindings and the rows do nothing.
   It binds any action to an input or a chord of up to four
   (hold the first ones, press the last; or "Any order" within the chord window). The editor's
   Advanced section holds the typed input text, the trigger (press, tap, hold, double tap,

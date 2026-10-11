@@ -248,7 +248,7 @@ constexpr GameCubeButton kNsoGameCubeButtons[] = {
 };
 
 // The mapping a prompt for `button` follows: port 0's pad mapping, or the "Menus
-// and map" rows while a menu or the map is open and "Standard buttons in menus"
+// and map" rows while a menu or the map is open and "Separate menu buttons"
 // applies (Start and Z keep the gameplay mapping there).
 PADButtonMapping* PromptButtonMappings(PADButton button, u32* count, PADDefaultMapping& scratch) {
   if (button != PAD_BUTTON_START && button != PAD_TRIGGER_Z && PortInputDevices::MenuButtonMapping(scratch)) {

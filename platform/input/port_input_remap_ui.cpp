@@ -914,7 +914,7 @@ const std::vector<SGroup>& Groups() {
           Action::VisorPrev},
          true},
         {"Morph Ball", {Action::SpringBall}, true},
-        // Read instead of the game buttons in menus and on the map ("Standard buttons in menus").
+        // Read instead of the game buttons in menus and on the map ("Separate menu buttons").
         {"Menus and map",
          {Action::MenuA, Action::MenuB, Action::MenuX, Action::MenuY, Action::MenuL, Action::MenuR,
           Action::MenuLAnalog, Action::MenuRAnalog, Action::MenuUp, Action::MenuDown, Action::MenuLeft,
@@ -1466,12 +1466,12 @@ void Draw() {
   ImGui::SameLine();
   DrawReset(views);
   bool menuStandard = PortDebug::MenuStandardButtons();
-  if (ImGui::Checkbox("Standard buttons in menus", &menuStandard)) PortDebug::SetMenuStandardButtons(menuStandard);
-  ImGui::SetItemTooltip("Menus and the map read the controller's \"Menus and map\" rows (by default its own "
-                        "buttons: A confirms, B backs out, the triggers page and zoom) instead of the game "
-                        "buttons. Start and the map button keep theirs. Bindings set for Menu or Map under "
-                        "Advanced still apply. Off: the game buttons drive menus and the Menus and map rows "
-                        "do nothing.");
+  if (ImGui::Checkbox("Separate menu buttons", &menuStandard)) PortDebug::SetMenuStandardButtons(menuStandard);
+  ImGui::SetItemTooltip("On: menus and the map use the controller's \"Menus and map\" rows (by default its own "
+                        "buttons: A confirms, B backs out, the triggers page and zoom). Start and the map "
+                        "button keep their gameplay inputs. Bindings set for Menu or Map under Advanced still "
+                        "apply.\nOff: menus and the map follow your gameplay bindings, and the Menus and map "
+                        "rows do nothing.");
   ImGui::Separator();
 
   const bool editorOnTop = sEditing != kEditNone && !sEditRowShown;

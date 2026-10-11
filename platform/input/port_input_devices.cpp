@@ -920,7 +920,7 @@ static void BindMenuDefaults(Profile& p) {
   }
 }
 
-// Issue #57: "Standard buttons in menus" applies to a real pad without touch.
+// Issue #57: "Separate menu buttons" applies to a real pad without touch.
 static bool MenuButtonsActive() {
   return PortDebug::MenuStandardButtons() && !PortDebug::TouchActive() && RealPad() != nullptr;
 }
