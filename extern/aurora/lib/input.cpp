@@ -371,9 +371,56 @@ Sint32 get_instance_for_player(uint32_t player) noexcept {
   return {};
 }
 
+#ifdef SDL_PLATFORM_ANDROID
+// SDL's mapping for an Android pad it doesn't know covers buttons 0-14 and
+// analog trigger axes only. Digital L2/R2 keys arrive as raw buttons 15 and 16
+// and reach nothing, so handhelds such as the RG Rotate (#81) can't bind them.
+// Map them to the triggers when the pad has no trigger of its own.
+static void map_digital_triggers(SDL_Gamepad* ctrl) noexcept {
+  const int buttons = SDL_GetNumJoystickButtons(SDL_GetGamepadJoystick(ctrl));
+  if (buttons <= 15) {
+    return;
+  }
+  int count = 0;
+  SDL_GamepadBinding** bindings = SDL_GetGamepadBindings(ctrl, &count);
+  if (bindings == nullptr) {
+    return;
+  }
+  bool hasTrigger = false;
+  for (int i = 0; i < count; ++i) {
+    if (bindings[i]->output_type == SDL_GAMEPAD_BINDTYPE_AXIS &&
+        (bindings[i]->output.axis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ||
+         bindings[i]->output.axis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)) {
+      hasTrigger = true;
+    }
+  }
+  SDL_free(bindings);
+  char* mapping = SDL_GetGamepadMapping(ctrl);
+  if (hasTrigger || mapping == nullptr) {
+    SDL_free(mapping);
+    return;
+  }
+  std::string updated = mapping;
+  SDL_free(mapping);
+  if (!updated.empty() && updated.back() != ',') {
+    updated += ',';
+  }
+  updated += "lefttrigger:b15,";
+  if (buttons > 16) {
+    updated += "righttrigger:b16,";
+  }
+  if (SDL_AddGamepadMapping(updated.c_str()) < 0) {
+    Log.warn("Failed to map digital triggers: {}", SDL_GetError());
+  }
+}
+#endif
+
 SDL_JoystickID add_controller(SDL_JoystickID which) noexcept {
   auto* ctrl = SDL_OpenGamepad(which);
   if (ctrl != nullptr) {
+#ifdef SDL_PLATFORM_ANDROID
+    map_digital_triggers(ctrl);
+#endif
     GameController controller;
     controller.m_controller = ctrl;
     controller.m_index = which;
