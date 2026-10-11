@@ -200,6 +200,8 @@ bool sSharpScanWindow = false;
 bool sAutoAim = true;
 int sScanSpeed = 100;
 bool sSecondaryCrosshairs = true;
+// A remapped pad drives menus and the map with its standard buttons (issue #57).
+bool sMenuStandardButtons = true;
 // Index into kPromptGlyphs; 0 = follow the input in use. Atomic: PortPrompts reads it off the UI thread.
 std::atomic< int > sPromptGlyphs{0};
 constexpr const char* kPromptGlyphs[] = {"auto", "xbox", "playstation", "switch", "gamecube", "keyboard"};
@@ -545,6 +547,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     }
   } else if (key == "secondary_crosshairs") {
     sSecondaryCrosshairs = ParseBool(value);
+  } else if (key == "menu_standard_buttons") {
+    sMenuStandardButtons = ParseBool(value);
   } else if (key == "prompt_glyphs") {
     for (int i = 0; i < int(std::size(kPromptGlyphs)); ++i) {
       if (value == kPromptGlyphs[i]) {
@@ -755,6 +759,7 @@ std::string SettingsText() {
   file << "auto_aim=" << (sAutoAim ? 1 : 0) << '\n';
   file << "scan_speed=" << sScanSpeed << '\n';
   file << "secondary_crosshairs=" << (sSecondaryCrosshairs ? 1 : 0) << '\n';
+  file << "menu_standard_buttons=" << (sMenuStandardButtons ? 1 : 0) << '\n';
   file << "prompt_glyphs=" << kPromptGlyphs[sPromptGlyphs.load(std::memory_order_relaxed)] << '\n';
   file << "show_shader_compilation=" << (sShowShaderCompilation ? 1 : 0) << '\n';
   file << "show_menu_hint=" << (sShowMenuHint ? 1 : 0) << '\n';
@@ -1052,6 +1057,7 @@ void EnsureInitialized() {
   sScanSpeed = std::clamp(port::EnvInt("MP_SCAN_SPEED", sScanSpeed), PortDebug::kScanSpeedMin,
                           PortDebug::kScanSpeedMax);
   sSecondaryCrosshairs = port::EnvFlag("MP_SECONDARY_CROSSHAIRS", sSecondaryCrosshairs);
+  sMenuStandardButtons = port::EnvFlag("MP_MENU_STANDARD_BUTTONS", sMenuStandardButtons);
   PortInput::ApplyEnvOverrides();
   if (port::EnvFlag("MP_DISABLE_AI_AUDIO")) {
     sAiAudioEnabled = false;
@@ -1450,6 +1456,17 @@ bool AutoAim() {
 float ScanSpeed() {
   EnsureInitialized();
   return sOriginalExperience ? 1.f : static_cast< float >(sScanSpeed) / 100.f;
+}
+
+bool MenuStandardButtons() {
+  EnsureInitialized();
+  return sMenuStandardButtons;
+}
+
+void SetMenuStandardButtons(bool enabled) {
+  EnsureInitialized();
+  sMenuStandardButtons = enabled;
+  MarkDirty();
 }
 
 bool SecondaryCrosshairs() {

@@ -86,6 +86,9 @@ void BuildBaseProfile(PortInput::Profile& out);
 // The profile the saved controls describe, with the user's bindings on top
 // (exposed for tests and the remap UI).
 void BuildProfile(PortInput::Profile& out);
+// While a menu or the map is open and "Standard buttons in menus" applies to port
+// 0's pad: the mapping its A/B/X/Y/L/R/D-pad follow there (for the prompts).
+bool MenuButtonMapping(PADDefaultMapping& out);
 // The PAD status an engine output describes, as Aurora's own mapping would.
 PADStatus Synthesize(const PortInput::Output& out);
 

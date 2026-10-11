@@ -202,23 +202,9 @@ bool TriggerAxisTaken(const PADAxisMapping* axes, u32 axisCount, const PADButton
   return other;
 }
 
-void BindController(Profile& p) {
-  u32 buttonCount = 0;
-  u32 axisCount = 0;
-  const PADButtonMapping* buttons = PADGetButtonMappings(kPort, &buttonCount);
-  const PADAxisMapping* axes = PADGetAxisMappings(kPort, &axisCount);
-  const PADDeadZones* dz = PADGetDeadZones(kPort);
-  // No controller on the port: bind the standard defaults anyway, so the Remap
-  // page shows what a pad would get (nothing reads them until one connects).
-  PADDefaultMapping fallback;
-  if (buttons == nullptr || axes == nullptr) {
-    PADGetDefaultMapping(&fallback, PAD_TYPE_STANDARD);
-    buttons = fallback.buttons;
-    axes = fallback.axes;
-    buttonCount = PAD_BUTTON_COUNT;
-    axisCount = PAD_AXIS_COUNT;
-  }
-
+// One Aurora PAD mapping (buttons, axes, emulated trigger clicks) as bindings.
+void BindMapping(Profile& p, const PADButtonMapping* buttons, u32 buttonCount, const PADAxisMapping* axes,
+                 u32 axisCount, bool emulateTriggers) {
   bool lSet = false;
   bool rSet = false;
   for (u32 i = 0; i < buttonCount; ++i) {
@@ -240,7 +226,7 @@ void BindController(Profile& p) {
     }
     // Aurora's emulated trigger click: a pulled L/R analog presses L/R when no
     // button is mapped to them.
-    if (trigger && (dz == nullptr || dz->emulateTriggers)) {
+    if (trigger && emulateTriggers) {
       const bool left = m.padAxis == PAD_AXIS_TRIGGER_L;
       if (!(left ? lSet : rSet)) {
         Bind(p, left ? Action::PadL : Action::PadR,
@@ -249,6 +235,25 @@ void BindController(Profile& p) {
       }
     }
   }
+}
+
+void BindController(Profile& p) {
+  u32 buttonCount = 0;
+  u32 axisCount = 0;
+  const PADButtonMapping* buttons = PADGetButtonMappings(kPort, &buttonCount);
+  const PADAxisMapping* axes = PADGetAxisMappings(kPort, &axisCount);
+  const PADDeadZones* dz = PADGetDeadZones(kPort);
+  // No controller on the port: bind the standard defaults anyway, so the Remap
+  // page shows what a pad would get (nothing reads them until one connects).
+  PADDefaultMapping fallback;
+  if (buttons == nullptr || axes == nullptr) {
+    PADGetDefaultMapping(&fallback, PAD_TYPE_STANDARD);
+    buttons = fallback.buttons;
+    axes = fallback.axes;
+    buttonCount = PAD_BUTTON_COUNT;
+    axisCount = PAD_AXIS_COUNT;
+  }
+  BindMapping(p, buttons, buttonCount, axes, axisCount, dz == nullptr || dz->emulateTriggers);
 }
 
 void BindKeyboard(Profile& p) {
@@ -838,6 +843,88 @@ void BuildProfile(Profile& out) {
   KeepPortMenuReachable(out);
 }
 
+// The PAD buttons menus and the map screen read (confirm, back, page, zoom, the
+// D-pad): Start (pause) and Z (map) keep their gameplay inputs, so the button that
+// opens a screen also closes it.
+static bool MenuLayerAction(Action a) {
+  switch (a) {
+  case Action::PadA:
+  case Action::PadB:
+  case Action::PadX:
+  case Action::PadY:
+  case Action::PadL:
+  case Action::PadR:
+  case Action::PadUp:
+  case Action::PadDown:
+  case Action::PadLeft:
+  case Action::PadRight:
+  case Action::LAnalog:
+  case Action::RAnalog: return true;
+  default: return false;
+  }
+}
+
+// The mapping menus use when the option applies to port 0's pad: the pad type's
+// defaults, less the buttons and axes this pad lacks (a GameCube-typed pad's L/R
+// clicks, say), so an L/R left unmapped falls back to the trigger click.
+static bool StandardMenuMapping(PADDefaultMapping& def) {
+  if (!PortDebug::MenuStandardButtons() || PortDebug::TouchActive()) return false;
+  const s32 index = PADGetIndexForPort(kPort);
+  SDL_Gamepad* pad = index >= 0 ? PADGetSDLGamepadForIndex(static_cast< u32 >(index)) : nullptr;
+  if (pad == nullptr || SDL_IsJoystickVirtual(SDL_GetGamepadID(pad))) return false;
+  PADGetDefaultMapping(&def, PADGetControllerType(kPort));
+  for (PADButtonMapping& m : def.buttons) {
+    if (m.nativeButton < SDL_GAMEPAD_BUTTON_COUNT &&
+        !SDL_GamepadHasButton(pad, static_cast< SDL_GamepadButton >(m.nativeButton))) {
+      m.nativeButton = PAD_NATIVE_BUTTON_INVALID;
+    }
+  }
+  for (PADAxisMapping& m : def.axes) {
+    if (m.nativeAxis.nativeAxis >= 0 && m.nativeAxis.nativeAxis < SDL_GAMEPAD_AXIS_COUNT &&
+        !SDL_GamepadHasAxis(pad, static_cast< SDL_GamepadAxis >(m.nativeAxis.nativeAxis))) {
+      m.nativeAxis.nativeAxis = -1;
+      m.nativeButton = PAD_NATIVE_BUTTON_INVALID;
+    }
+  }
+  return true;
+}
+
+// Issue #57: with "Standard buttons in menus", a remapped pad drives menus and the
+// map with the pad type's default buttons (A confirms, B backs out, the triggers
+// page/zoom) instead of its gameplay layout. Pad bindings meant for everywhere stop
+// applying there; bindings the user scoped to menus or the map, Start/Z, the sticks,
+// the keyboard and touch are left alone. Only the game's poll applies it, so the
+// Remap page lists the bindings as saved.
+static void BindMenuStandardButtons(Profile& p) {
+  PADDefaultMapping def;
+  if (!StandardMenuMapping(def)) return;
+
+  constexpr uint16_t kMenus = PortInput::kCtxMenu | PortInput::kCtxMap;
+  std::vector< Input > kept;
+  for (Binding& b : p.bindings) {
+    if (b.count != 1 || !IsPadFamily(b.inputs[0]) || (b.contexts & kMenus) == 0) continue;
+    if (b.action == Action::PadStart || b.action == Action::PadZ) {
+      kept.push_back(b.inputs[0]);
+    } else if (MenuLayerAction(b.action) && b.contexts == PortInput::kCtxAll) {
+      b.contexts &= ~kMenus;
+    }
+  }
+
+  Profile standard;
+  const PADDeadZones* dz = PADGetDeadZones(kPort);
+  BindMapping(standard, def.buttons, PAD_BUTTON_COUNT, def.axes, PAD_AXIS_COUNT,
+              dz == nullptr || dz->emulateTriggers);
+  for (Binding b : standard.bindings) {
+    if (!MenuLayerAction(b.action) || std::find(kept.begin(), kept.end(), b.inputs[0]) != kept.end()) continue;
+    b.contexts = kMenus;
+    p.bindings.push_back(b);
+  }
+}
+
+bool MenuButtonMapping(PADDefaultMapping& out) {
+  return (GameContexts() & (PortInput::kCtxMenu | PortInput::kCtxMap)) != 0 && StandardMenuMapping(out);
+}
+
 PADStatus Synthesize(const PortInput::Output& out) {
   PADStatus s{};
   static constexpr unsigned kButtons[] = {PAD_BUTTON_A,    PAD_BUTTON_B,     PAD_BUTTON_X,    PAD_BUTTON_Y,
@@ -867,6 +954,7 @@ SPoll Poll(unsigned mouseHeld, bool focused) {
 
   Profile next;
   BuildProfile(next);
+  BindMenuStandardButtons(next);
   if (!sInit || next != sProfile) {
     sProfile = std::move(next);
     sRuntime.SetProfile(&sProfile);

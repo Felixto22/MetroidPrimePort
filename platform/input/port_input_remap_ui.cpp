@@ -1,6 +1,7 @@
 #include "port_input_remap_ui.h"
 
 #include "port_controls.h"
+#include "port_debug.h"
 #include "port_input_bindings.h"
 #include "port_input_devices.h"
 
@@ -1448,6 +1449,11 @@ void Draw() {
 
   ImGui::SameLine();
   DrawReset(views);
+  bool menuStandard = PortDebug::MenuStandardButtons();
+  if (ImGui::Checkbox("Standard buttons in menus", &menuStandard)) PortDebug::SetMenuStandardButtons(menuStandard);
+  ImGui::SetItemTooltip("Menus and the map use the controller's own buttons (A confirms, B backs out, the "
+                        "triggers page and zoom), whatever the bindings below do in game. Start and the map "
+                        "button keep theirs. Bindings set for Menu or Map under Advanced still apply.");
   ImGui::Separator();
 
   const bool editorOnTop = sEditing != kEditNone && !sEditRowShown;

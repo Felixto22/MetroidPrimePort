@@ -215,6 +215,9 @@ float ScanSpeed();
 // The next-target reticles (combat seeker, X-ray ring, thermal crosshair). Off hides them;
 // lock-on and scan reticles stay. On under Original experience.
 bool SecondaryCrosshairs();
+// Menus and the map read a remapped pad's standard buttons (F1 Controls > Remap).
+bool MenuStandardButtons();
+void SetMenuStandardButtons(bool enabled);
 // Hide the helmet frame (the visor rim and its glow and lights).
 bool HideHelmet();
 void SetHideHelmet(bool enabled);
