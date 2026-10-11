@@ -134,6 +134,26 @@ also adds a `<release>` entry (newest first) to
 `packaging/io.github.odrannnn.metroidprimeport.metainfo.xml`, which is the
 version Flatpak reports; `tools/make_flatpak.sh` stops if the two differ.
 
+## Release checklist
+
+1. Bump `versionName`/`versionCode` in `android/app/build.gradle` and the line
+   above, add the metainfo `<release version="X" date=…>` entry, commit, and
+   `git push user port`.
+2. Build every artefact from that commit:
+   - Linux from CI, never the desktop (see "Runtime dependencies"):
+     `gh workflow run linux-release.yml --ref port -R Odrannnn/MetroidPrimePort`,
+     `gh run download <id> -n metroid_prime_port-linux`. Rename the tarball to
+     `metroid-prime-port-X-linux-x86_64.tar.gz` (its top directory stays
+     unversioned); the AppImage keeps the name `MetroidPrime-x86_64.AppImage`.
+   - Windows: run `windows.yml`, `gh run download <id> -n metroid_prime_port-windows`,
+     drop CI's `user/` folder (log, `dawn_cache.db`, `pipeline_cache.db`), and zip
+     the rest as `metroid-prime-port-X-windows-x86_64.zip`.
+   - Android: the signed APK, staged as `metroid-prime-port-X-android-arm64.apk`.
+3. Check each artefact's version string, then `git tag -a vX` and `git push user vX`.
+4. `gh release create vX --notes-file …` with every asset passed explicitly, and
+   confirm with `gh release view vX --json assets`. Base the notes on the
+   previous release's.
+
 ## Per-platform packaging
 
 | Platform | Builds from | Produces | State |
