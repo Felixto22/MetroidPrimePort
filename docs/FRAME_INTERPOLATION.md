@@ -144,11 +144,22 @@ x80_timeDeltaScale`. No new per-particle state.
   frames or a fractional step: they draw as retail), a global translation jump
   of more than 4 units, and draws inside an actor render scope (phase 2 already
   shifts them; blending again would double the offset).
+- A system whose local emitter (`SetTranslation`) moved in this tick's single
+  step, e.g. a charged shot's trail drawn inside its projectile's actor scope,
+  is in world space: the actor's rigid shift would drag its old particles back
+  and forth every tick (issue #76). It drops the shift
+  (`CPortRenderScopeSuspend`) and moves only the particles born this tick, which
+  sit at the new emitter position, back by `offset * (t - 1)`
+  (`PortSpawnOffset`/`PortShiftNewborns`, restored after the draw). Jumps over 4
+  units snap.
+- Visor billboards (`CHUDBillboardEffect`: rain drops, blood) are placed from the
+  presented camera every draw, so `PortGlobalIsPresented` marks their global
+  translation as already presented instead of blending it a second time.
 
 Projectile effects move through `SetGlobalTranslation` each tick
 (`CProjectileWeapon::UpdateChildParticleSystems`), so their queued draws blend
-too. Limits: new particles spawn at the current emitter position; a particle
-teleported by the effect script lerps across the jump for one tick.
+too. Limits: a particle teleported by the effect script lerps across the jump
+for one tick.
 
 Phase 6 (same setting) covers the rest. `PortTickPair<T>`
 (`platform/include/port_tick_pair.h`, unit-tested) keeps the first value
@@ -160,7 +171,9 @@ the tick right before.
   trail slides along rather than growing one segment per tick. Swooshes that
   the owner writes directly (grapple beam, Wave Beam) never step, so age and
   slot are the same there. A segment that jumps more than 4 units (16 for
-  owner-written swooshes) snaps.
+  owner-written swooshes) snaps. Segments are in world space, so a swoosh drawn
+  inside an actor scope (morph-ball tail, Space Pirate slashes) drops the
+  actor's rigid shift (`CPortRenderScopeSuspend`) and blends only itself.
 - `CParticleElectric`: the line transform is blended. The fractal itself
   still changes once per tick, as on console.
 - Beam weapons draw in world space, so they opt out of the phase 2 rigid shift
@@ -205,7 +218,11 @@ the tick right before.
 
 The combat HUD, scan visor and map mostly follow the camera or are static; the
 lock-on reticle and damage indicators track world positions and must project
-through the blended transforms. GUI frames (`CGuiFrame`) animate by tick and
+through the blended transforms. The lock-on and thermal/X-ray reticle groups
+are placed at sim time; `CTargetReticles` `PortPresentGroup` moves them for the
+draw: a target actor's point through its presented transform
+(`CActor::PortPresentedPoint`), an idle point from the sim camera's frame into
+the presented camera's (as the free-aim crosshair). GUI frames (`CGuiFrame`) animate by tick and
 can stay at 60 Hz for a first pass. The helmet and HUD lag/bob
 (`CSamusHud::UpdateHudLag`) is pushed into the helmet and deco interfaces and
 the base frame camera once per tick; blending it would mean keeping the last

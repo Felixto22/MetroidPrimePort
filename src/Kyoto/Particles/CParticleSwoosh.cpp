@@ -367,7 +367,15 @@ void CParticleSwoosh::Render() {
   }
   const CVector3f portGlobalTranslation = xa4_globalTranslation;
   const CTransform4f portGlobalOrientation = xb0_globalOrientation;
+  // A trail drawn with its actor (ball tail, pirate slashes) is in world
+  // space: the actor's rigid shift would drag its old segments back and forth
+  // every tick, so it drops that shift and blends its own segments instead;
+  // when it can't blend (snap, no previous tick) it follows the actor as before.
+  CPortRenderScopeSuspend portScopeSuspend(PortDebug::ParticleInterpolation() &&
+                                           CCameraManager::GetPresentationInterpolation() >= 0.f);
   const bool portPresenting = PortBeginPresent();
+  if (!portPresenting)
+    portScopeSuspend.Resume();
   CPortVarScope portVarScope(&xPortVars);
 #endif
   if (x1b4_LENG >= 2 && x1ac_particleCount > 1) {
@@ -462,7 +470,7 @@ void CParticleSwoosh::Render() {
 // are matched by age (head - index), so an emitter's trail slides along
 // instead of growing a segment per tick; swooshes their owner writes directly
 // (grapple beam, Wave Beam) never step, where age and slot are the same.
-// Systems drawn inside a shifted actor draw follow the actor instead.
+// Render drops an enclosing actor shift first (CPortRenderScopeSuspend).
 bool CParticleSwoosh::PortBeginPresent() {
   const float t = CCameraManager::GetPresentationInterpolation();
   if (t < 0.f || t >= 1.f || !PortDebug::ParticleInterpolation() ||

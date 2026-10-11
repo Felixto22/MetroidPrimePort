@@ -209,6 +209,9 @@ public:
     xPortVars.BindVector(PortGetVectorHandle(g), v);
   }
   const CPortVarMemory& PortVars() const { return xPortVars; }
+  // The global translation just set is already the presented one (placed from
+  // the presented camera on every drawn frame): draw it as is, unblended.
+  void PortGlobalIsPresented();
 #endif
 
 private:
@@ -303,6 +306,17 @@ private:
   CVector3f xPortPrevGlobalTranslation;
   bool xPortPresenting;
   bool PortBeginPresent(CVector3f& savedGlobal);
+  // A moving local emitter (projectile trails): the local translation at the
+  // last two single-step updates, and the particles born in the last one moved
+  // back to the presented emitter while drawn (saved pos/prevPos pairs).
+  CVector3f xPortSpawnTranslation;
+  CVector3f xPortPrevSpawnTranslation;
+  uint xPortSpawnGeneration;
+  uint xPortPrevSpawnGeneration;
+  rstl::vector< CVector3f > xPortNewbornSaved;
+  bool PortSpawnOffset(CVector3f& offset) const;
+  void PortShiftNewborns(const CVector3f& shift);
+  void PortRestoreNewborns();
   // VMAT material: VSMT results for this frame (port_vfx_particles.cpp). Bit n of the
   // mask = slot n was written; slots 0..10 are the Src values, 11+2*tex+k the warp scales.
   float xPortVsmt[19];

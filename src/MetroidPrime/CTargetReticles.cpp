@@ -599,11 +599,29 @@ void CCompoundTargetReticle::Draw(const CStateManager& mgr, bool hideLockon) con
 
     CGraphics::SetCullMode(kCM_None);
 
+#ifdef TARGET_PC
+    // The groups were placed at the tick's poses. While smooth frames draw
+    // actors and the camera between ticks, carry a lock-on with its target to
+    // where it is drawn, and an idle (camera-placed) group with the camera,
+    // else they shake against what they mark (issue #76). Restored below.
+    CTargetReticleRenderState& curr = const_cast< CTargetReticleRenderState& >(x10c_currGroupInterp);
+    CTargetReticleRenderState& next = const_cast< CTargetReticleRenderState& >(x174_nextGroupInterp);
+    const CVector3f savedCurr = curr.GetTargetPositionWorld();
+    const CVector3f savedNext = next.GetTargetPositionWorld();
+    PortPresentGroup(curr, mgr);
+    PortPresentGroup(next, mgr);
+#endif
+
     if (!hideLockon) {
       DrawCurrLockOnGroup(rot, mgr);
       DrawNextLockOnGroup(rot, mgr);
       DrawOrbitZoneGroup(rot, mgr);
     }
+
+#ifdef TARGET_PC
+    curr.SetTargetPositionWorld(savedCurr);
+    next.SetTargetPositionWorld(savedNext);
+#endif
 
     DrawGrappleGroup(rot, mgr, hideLockon);
 
@@ -1241,6 +1259,23 @@ void CCompoundTargetReticle::UpdateTargetParameters(CTargetReticleRenderState& s
                                      : xf4_targetPos);
   }
 }
+
+#ifdef TARGET_PC
+void CCompoundTargetReticle::PortPresentGroup(CTargetReticleRenderState& state,
+                                              const CStateManager& mgr) {
+  // Same sources as UpdateTargetParameters: an actor's point moves with the
+  // actor's drawn pose, the idle point with the drawn camera (see issue #24).
+  if (const CActor* act = TCastToConstPtr< CActor >(
+          mgr.GetObjectListById(kOL_All).GetObjectById(state.GetTargetId()))) {
+    state.SetTargetPositionWorld(act->PortPresentedPoint(state.GetTargetPositionWorld()));
+  } else if (state.GetIsOrbitZoneIdlePosition()) {
+    const CCameraManager* camMgr = mgr.GetCameraManager();
+    state.SetTargetPositionWorld(
+        camMgr->GetCurrentCameraTransform(mgr) *
+        (camMgr->GetSimulationCameraTransform(mgr).GetInverse() * state.GetTargetPositionWorld()));
+  }
+}
+#endif
 
 float CCompoundTargetReticle::CalculateRadiusWorld(const CActor& actor,
                                                    const CStateManager& mgr) const {

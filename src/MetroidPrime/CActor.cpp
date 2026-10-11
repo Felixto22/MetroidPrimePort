@@ -892,6 +892,7 @@ namespace {
 // that have not been snapshotted yet draw at their sim transform.
 uint sPortTickGeneration = 0;
 bool sPortRenderScopeActive = false;
+CTransform4f sPortScopeSavedView = CTransform4f::Identity();
 
 CTransform4f PortRigid(const CTransform4f& xf, CQuaternion& rot) {
   CVector3f right = xf.GetRight();
@@ -951,6 +952,14 @@ bool CActor::PortPresentedView(const CTransform4f& view, CTransform4f& out) cons
   return true;
 }
 
+CVector3f CActor::PortPresentedPoint(const CVector3f& world) const {
+  CTransform4f toCur = CTransform4f::Identity();
+  if (!PortPresentedView(CTransform4f::Identity(), toCur))
+    return world;
+  // toCur = cur * blend^-1; its inverse carries the sim pose onto the blend.
+  return toCur.GetQuickInverse() * world;
+}
+
 namespace {
 struct PortRigidOps {
   CTransform4f Rigid(const CTransform4f& xf, CQuaternion& rot) const { return PortRigid(xf, rot); }
@@ -983,6 +992,7 @@ CPortActorRenderScope::CPortActorRenderScope(const CActor& actor)
     return;
   xActive = true;
   sPortRenderScopeActive = true;
+  sPortScopeSavedView = xSavedView;
   CGraphics::SetViewPointMatrix(view);
 }
 
@@ -991,5 +1001,24 @@ CPortActorRenderScope::~CPortActorRenderScope() {
     return;
   sPortRenderScopeActive = false;
   CGraphics::SetViewPointMatrix(xSavedView);
+}
+
+CPortRenderScopeSuspend::CPortRenderScopeSuspend(bool enable)
+: xScopedView(CTransform4f::Identity()), xActive(enable && sPortRenderScopeActive) {
+  if (!xActive)
+    return;
+  xScopedView = CGraphics::GetViewMatrix();
+  sPortRenderScopeActive = false;
+  CGraphics::SetViewPointMatrix(sPortScopeSavedView);
+}
+
+CPortRenderScopeSuspend::~CPortRenderScopeSuspend() { Resume(); }
+
+void CPortRenderScopeSuspend::Resume() {
+  if (!xActive)
+    return;
+  xActive = false;
+  sPortRenderScopeActive = true;
+  CGraphics::SetViewPointMatrix(xScopedView);
 }
 #endif
