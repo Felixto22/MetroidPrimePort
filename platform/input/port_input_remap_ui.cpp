@@ -1102,6 +1102,15 @@ void DrawTable(const SViews& views, bool editorDrawn) {
       // Every device's inputs in one cell; the icons tell them apart.
       ImGui::TableNextColumn();
       const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+      // The Port menu's last key or controller input can't be removed (a touch one
+      // isn't enough on desktop); BuildProfile falls back to F1 if it goes anyway.
+      bool keepLast = false;
+      if (action == PortInput::Action::PortMenu) {
+        size_t reachable = 0;
+        for (const Family f : families)
+          if (f != Family::Touch) reachable += cells[int(f)].rows.size();
+        keepLast = reachable <= 1;
+      }
       bool first = true;
       for (const Family f : families) {
         ImGui::PushID(int(f));
@@ -1139,7 +1148,11 @@ void DrawTable(const SViews& views, bool editorDrawn) {
             ImGui::TextDisabled("(%s)", notes.c_str());
           }
           ImGui::SameLine(0.f, xGap);
-          if (ImGui::SmallButton("x")) {
+          const bool locked = keepLast && f != Family::Touch;
+          ImGui::BeginDisabled(locked);
+          const bool remove = ImGui::SmallButton("x");
+          ImGui::EndDisabled();
+          if (remove) {
             pending.action = action;
             pending.family = f;
             if (isDefault) {
@@ -1150,7 +1163,11 @@ void DrawTable(const SViews& views, bool editorDrawn) {
               pending.index = size_t(userIndex);
             }
           }
-          ImGui::SetItemTooltip("Remove this input.");
+          if (locked)
+            ImGui::SetItemTooltip("The Port menu needs at least one key or controller input. Add another "
+                                  "one first to remove this.");
+          else
+            ImGui::SetItemTooltip("Remove this input.");
           ImGui::PopID();
         }
         ImGui::PopID();

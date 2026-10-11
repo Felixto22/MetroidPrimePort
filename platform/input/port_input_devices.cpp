@@ -814,12 +814,28 @@ void BuildBaseProfile(Profile& out) {
   BindPortControls(out);
 }
 
+// The Port menu can't be unbound for good: with no key or mouse input left for it
+// (and no pad one while a pad is connected), F1 opens it again, so a hand-edited
+// controls.toml or an unplugged pad can't lock anyone out of the settings.
+void KeepPortMenuReachable(Profile& p) {
+  bool pad = false;
+  for (const Binding& b : p.bindings) {
+    if (b.action != Action::PortMenu || b.count == 0) continue;
+    const PortInput::Family family = PortInput::BindingFamily(b);
+    if (family == PortInput::Family::Keyboard) return;
+    pad = pad || family == PortInput::Family::Pad;
+  }
+  if (pad && SDL_HasGamepad()) return;
+  Bind(p, Action::PortMenu, Make(Device::Key, SDL_SCANCODE_F1));
+}
+
 void BuildProfile(Profile& out) {
   BuildBaseProfile(out);
   const SActiveProfiles user = ActiveUserProfiles();
   sTouchBound.store(TouchBoundMask(user), std::memory_order_relaxed);
   if (user.sel.base != nullptr) PortInput::Overlay(out, *user.sel.base);
   if (user.sel.pad != nullptr) PortInput::Overlay(out, *user.sel.pad);
+  KeepPortMenuReachable(out);
 }
 
 PADStatus Synthesize(const PortInput::Output& out) {
