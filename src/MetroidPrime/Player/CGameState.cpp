@@ -16,6 +16,12 @@
 #include "rstl/math.hpp"
 #include "dolphin/os.h"
 
+#ifdef TARGET_PC
+#include "port_debug.h"
+
+#include <cstring>
+#endif
+
 union SGameTime {
   double value;
   u64 bits;
@@ -44,6 +50,23 @@ static int CapCinematicBits(int count) {
     OSReport("CSystemState: %d cinematic bits, %d fit in the system options\n", count, maxBits);
   }
   return count > maxBits ? maxBits : count;
+}
+
+// PAL's system options keep the selected language (0x803c3788: ENGL GERM FREN
+// SPAN ITAL DUTC JAPN), which the PAL game applies at boot. Write the port's
+// text language so the save opens in it on a GameCube or Dolphin. The PAL disc
+// has no Dutch text (its GetLanguage maps Dutch to English), so Dutch is 0.
+static int PalSaveLanguage() {
+  const char* code = PortDebug::TextLanguage();
+  if (strcmp(code, "EUGE") == 0)
+    return 1;
+  if (strcmp(code, "EUFR") == 0 || strcmp(code, "USFR") == 0)
+    return 2;
+  if (strcmp(code, "EUSP") == 0 || strcmp(code, "USSP") == 0)
+    return 3;
+  if (strcmp(code, "EUIT") == 0)
+    return 4;
+  return 0;
 }
 #endif
 
@@ -164,7 +187,7 @@ void CSystemState::PutTo(COutputStream& out) {
   out.WriteBits(xbc_autoMapperKeyState, 2);
 #ifdef TARGET_PC
   if (pal)
-    out.WriteBits(xd1_palField, GetBitCount(7));
+    out.WriteBits(PalSaveLanguage(), GetBitCount(7));
 #endif
   const rstl::vector< CMemoryCard::MemoryWorld >& worlds = gpMemoryCard->GetMemoryWorlds();
   int cinematicCount = 0;

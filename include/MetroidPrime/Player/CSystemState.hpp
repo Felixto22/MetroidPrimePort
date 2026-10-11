@@ -70,8 +70,9 @@ private:
   bool xd0_28_fusionSuitActive : 1;
   bool xd0_29_allItemsCollected : 1;
 #ifdef TARGET_PC
-  // PAL's 3-bit field after the auto-mapper state (meaning unknown); kept so a PAL
-  // save round-trips. Sits in the padding after the flags.
+  // PAL's 3-bit field after the auto-mapper state: the selected language, an
+  // index into ENGL GERM FREN SPAN ITAL DUTC JAPN. Read so the save parses; PutTo
+  // writes the port's text language. Sits in the padding after the flags.
   uchar xd1_palField;
 #endif
 };

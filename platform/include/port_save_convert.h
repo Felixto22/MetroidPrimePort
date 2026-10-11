@@ -86,7 +86,9 @@ struct System {
   std::vector<uint8_t> leadBytes;
   uint32_t fps = 0, ball = 0, powerBombs = 0, logScan = 0;
   std::array<bool, 5> flags{};
-  uint32_t autoMapper = 0, palField = 0;
+  uint32_t autoMapper = 0;
+  // PAL only: the selected language (0 English .. 4 Italian, 6 Japanese).
+  uint32_t palField = 0;
   std::set<std::pair<uint32_t, uint32_t>> cine; // (MLVL, cinematic id)
   bool operator==(const System&) const = default;
 };
