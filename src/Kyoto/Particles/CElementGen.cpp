@@ -178,6 +178,7 @@ CElementGen::CElementGen(TToken< CGenDescription > gen, EModelOrientationType or
 , xPortPrevSpawnTranslation(CVector3f::Zero())
 , xPortSpawnGeneration(0)
 , xPortPrevSpawnGeneration(0)
+, xPortLineShiftSet(false)
 , xPortVsmt{}
 , xPortVsmtMask(0)
 #endif
@@ -1269,15 +1270,20 @@ void CElementGen::Render() {
   // A trail left by a moving local emitter (projectiles) is in world space: an
   // enclosing actor shift would drag it back and forth every tick, so it drops
   // that shift and moves only its newborn particles with the emitter instead.
+  const bool portLineShift = xPortLineShiftSet;
+  xPortLineShiftSet = false;
   CVector3f portSpawnOffset;
-  const bool portSpawnMoved = PortSpawnOffset(portSpawnOffset);
+  const bool portSpawnMoved = !portLineShift && PortSpawnOffset(portSpawnOffset);
   CPortRenderScopeSuspend portScopeSuspend(portSpawnMoved);
   CVector3f portSavedGlobal = xe8_globalTranslation;
   const float portSavedScale = x80_timeDeltaScale;
   xPortPresenting = PortBeginPresent(portSavedGlobal);
   if (!xPortPresenting)
     portScopeSuspend.Resume();
-  if (xPortPresenting && portSpawnMoved) {
+  if (portLineShift) {
+    PortShiftNewbornsAlongLine();
+    xPortPresenting = true;
+  } else if (xPortPresenting && portSpawnMoved) {
     PortShiftNewborns(portSpawnOffset * (x80_timeDeltaScale - 1.f));
   }
 #endif
@@ -1361,6 +1367,43 @@ void CElementGen::PortShiftNewborns(const CVector3f& shift) {
     CParticle& particle = x30_particles[i];
     if (particle.x28_startFrame != born)
       continue;
+    xPortNewbornSaved.push_back(particle.x4_pos);
+    xPortNewbornSaved.push_back(particle.x10_prevPos);
+    particle.x4_pos += shift;
+    particle.x10_prevPos += shift;
+  }
+}
+
+void CElementGen::PortSetNewbornLineShift(const CVector3f& firstEnd, const CVector3f& lastEnd,
+                                          const CVector3f& firstShift,
+                                          const CVector3f& lastShift) {
+  xPortLineEnd[0] = firstEnd;
+  xPortLineEnd[1] = lastEnd;
+  xPortLineShift[0] = firstShift;
+  xPortLineShift[1] = lastShift;
+  xPortLineShiftSet = true;
+}
+
+void CElementGen::PortShiftNewbornsAlongLine() {
+  xPortNewbornSaved.clear();
+  // Same world → particle space mapping as the spawn position.
+  const CTransform4f toLocal = x13c_globalScaleTransformInverse * x1a8_localScaleTransformInverse;
+  const CVector3f first = toLocal * xPortLineEnd[0];
+  const CVector3f line = toLocal * xPortLineEnd[1] - first;
+  const float lenSq = line.MagSquared();
+  const CVector3f firstShift = toLocal.Rotate(xPortLineShift[0]);
+  const CVector3f lastShift = toLocal.Rotate(xPortLineShift[1]);
+  const int born = x74_curFrame - 1;
+  for (int i = 0; i < x30_particles.size(); ++i) {
+    CParticle& particle = x30_particles[i];
+    if (particle.x28_startFrame != born)
+      continue;
+    float s = 0.f;
+    if (lenSq > 0.f) {
+      s = CVector3f::Dot(particle.x4_pos - first, line) / lenSq;
+      s = s < 0.f ? 0.f : (s > 1.f ? 1.f : s);
+    }
+    const CVector3f shift = firstShift + (lastShift - firstShift) * s;
     xPortNewbornSaved.push_back(particle.x4_pos);
     xPortNewbornSaved.push_back(particle.x10_prevPos);
     particle.x4_pos += shift;

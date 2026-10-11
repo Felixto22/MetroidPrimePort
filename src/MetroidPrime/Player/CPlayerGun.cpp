@@ -589,6 +589,33 @@ void CPlayerGun::PortSnapshotPresentedPose(const CStateManager& mgr) const {
   sPortGunPrevRel = PortGunRelativePose(mgr, GetGunMotionTransform());
   sPortGunPrevGeneration = CActor::PortTickGeneration();
 }
+
+CTransform4f CPlayerGun::PortGunView(const CStateManager& mgr,
+                                     const CTransform4f& worldView) const {
+  if (!mgr.GetCameraManager()->IsInFPCamera() ||
+      mgr.GetPlayer()->GetCameraState() != CPlayer::kCS_FirstPerson ||
+      mgr.GetPlayer()->GetMorphballTransitionState() != CPlayer::kMS_Unmorphed) {
+    return worldView;
+  }
+  // The held weapon and its muzzle effects are cached at simulation time.
+  // Render their relative pose against that same camera, not an interpolated
+  // world camera from a different tick. Projectile simulation is unchanged.
+  const CTransform4f simView = mgr.GetCameraManager()->GetSimulationCameraTransform(mgr);
+  // Between ticks, blend the gun's pose relative to the camera (bob, sway,
+  // recoil) from the last tick's. The view moves instead of the gun, so the
+  // arm, beam and muzzle effects all follow.
+  const float t = CCameraManager::GetPresentationInterpolation();
+  if (t >= 0.f && t < 1.f && PortDebug::ActorInterpolation() &&
+      sPortGunPrevGeneration == CActor::PortTickGeneration()) {
+    CTransform4f blend = CTransform4f::Identity();
+    CTransform4f cur = CTransform4f::Identity();
+    if (CActor::PortBlendRigid(sPortGunPrevRel, PortGunRelativePose(mgr, GetGunMotionTransform()),
+                               t, blend, cur)) {
+      return simView * cur * blend.GetQuickInverse();
+    }
+  }
+  return simView;
+}
 #endif
 
 void CPlayerGun::Render(const CStateManager& mgr, const CVector3f& pos,
@@ -599,30 +626,18 @@ void CPlayerGun::Render(const CStateManager& mgr, const CVector3f& pos,
   const PortRoomEnv::ProbeOverrideScope probeScope(probeXyz);
 #endif
   const CTransform4f worldView = CGraphics::GetViewMatrix();
+#ifdef TARGET_PC
+  CGraphics::SetViewPointMatrix(PortGunView(mgr, worldView));
+#else
   if (mgr.GetCameraManager()->IsInFPCamera() &&
       mgr.GetPlayer()->GetCameraState() == CPlayer::kCS_FirstPerson &&
       mgr.GetPlayer()->GetMorphballTransitionState() == CPlayer::kMS_Unmorphed) {
     // The held weapon and its muzzle effects are cached at simulation time.
     // Render their relative pose against that same camera, not an interpolated
     // world camera from a different tick. Projectile simulation is unchanged.
-    const CTransform4f simView = mgr.GetCameraManager()->GetSimulationCameraTransform(mgr);
-    CGraphics::SetViewPointMatrix(simView);
-#ifdef TARGET_PC
-    // Port: between ticks, blend the gun's pose relative to the camera (bob,
-    // sway, recoil) from the last tick's. The view moves instead of the gun,
-    // so the arm, beam and muzzle effects all follow.
-    const float t = CCameraManager::GetPresentationInterpolation();
-    if (t >= 0.f && t < 1.f && PortDebug::ActorInterpolation() &&
-        sPortGunPrevGeneration == CActor::PortTickGeneration()) {
-      CTransform4f blend = CTransform4f::Identity();
-      CTransform4f cur = CTransform4f::Identity();
-      if (CActor::PortBlendRigid(sPortGunPrevRel, PortGunRelativePose(mgr, GetGunMotionTransform()),
-                                 t, blend, cur)) {
-        CGraphics::SetViewPointMatrix(simView * cur * blend.GetQuickInverse());
-      }
-    }
-#endif
+    CGraphics::SetViewPointMatrix(mgr.GetCameraManager()->GetSimulationCameraTransform(mgr));
   }
+#endif
   const CGraphics::CProjectionState projState = CGraphics::GetProjectionState();
 #ifdef MP_ENABLE_SMOKE_DRIVER
   PortSmokeMouseGunView(mgr, *this, worldView);

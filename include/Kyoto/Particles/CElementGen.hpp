@@ -317,6 +317,19 @@ private:
   bool PortSpawnOffset(CVector3f& offset) const;
   void PortShiftNewborns(const CVector3f& shift);
   void PortRestoreNewborns();
+  // Particles emitted along a line each tick (grapple beam): the next Render
+  // moves the newborns by the blend of the two ends' shifts, by where each
+  // lies between them (world space ends).
+  CVector3f xPortLineEnd[2];
+  CVector3f xPortLineShift[2];
+  bool xPortLineShiftSet;
+  void PortShiftNewbornsAlongLine();
+
+public:
+  void PortSetNewbornLineShift(const CVector3f& firstEnd, const CVector3f& lastEnd,
+                               const CVector3f& firstShift, const CVector3f& lastShift);
+
+private:
   // VMAT material: VSMT results for this frame (port_vfx_particles.cpp). Bit n of the
   // mask = slot n was written; slots 0..10 are the Src values, 11+2*tex+k the warp scales.
   float xPortVsmt[19];

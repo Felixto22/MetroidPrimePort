@@ -190,6 +190,24 @@ the tick right before.
 - Limits: `CPlasmaProjectile`'s motion blur stays at the tick position.
   Not tried live: the grapple beam, `CPlasmaProjectile` (bosses only) and
   `CElectricBeamProjectile`.
+- Audit after issue #76 (rig A/B of frames at t = 0 against the frame
+  before, `build/interp-envfx/`):
+  - `CSimpleShadow` (blob shadows) draws its blended transform.
+  - The scan visor's target point goes through `PortPresentedPoint`.
+  - The morph-ball shadow is centred on the presented ball, and the ball's
+    sparks and wakes (world space) drop the actor shift.
+  - `CVisorFlare` maps the sim camera into the presented one.
+  - The arm cannon's view (`CPlayerGun::PortGunView`) is shared with the
+    grapple arm, so the arm moves with the gun's blended pose.
+  - The grapple beam ends are `PortTickPair`s, and the beam's newborn
+    particles move back along the line (`CElementGen::PortSetNewbornLineShift`).
+  - `CEnvFxManager`'s rain, snow and underwater particles step in grid
+    space once per tick, so they are drawn one step back, scaled by `1 - t`:
+    the grid transform for rain and underwater, and each particle's own snow
+    force for snow.
+  - Still at tick rate: the morph-ball glow, water ripples, and the
+    `ConvertToScreenSpace` users (`DrawSpaceWarp`, `CNewFlameThrower`,
+    `CPatternedAiFunctions`).
 
 ### 4. First-person view and look input (done)
 

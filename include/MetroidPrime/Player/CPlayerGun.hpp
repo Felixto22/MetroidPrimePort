@@ -112,6 +112,9 @@ public:
   // Port: records the gun's camera-relative pose before a tick, so frames
   // drawn between ticks can blend the bob and sway (FRAME_INTERPOLATION.md).
   void PortSnapshotPresentedPose(const CStateManager&) const;
+  // Port: the view the gun is drawn under (sim camera, blended pose) in first
+  // person, else worldView.
+  CTransform4f PortGunView(const CStateManager&, const CTransform4f& worldView) const;
 #endif
   void GetLctrWithShake(CTransform4f& xfOut, const CModelData&, const rstl::string&, bool, bool);
   void PlayAnim(NWeaponTypes::EGunAnimType type, bool);

@@ -850,6 +850,8 @@ bool CPlayerVisor::DrawScanObjectIndicators(const CStateManager& mgr) const {
                                    : gpTweakGuiColors->GetScanIconNoncriticalDimColor();
       CVector3f scanPosition = actor->GetScanObjectIndicatorPosition(mgr);
 #ifdef TARGET_PC
+      // Drawn through the presented camera, so follow the presented actor, not its last tick.
+      scanPosition = actor->PortPresentedPoint(scanPosition);
       const bool portRem = PortScanIconsRemastered(x124_scanIconNoncritical.GetObject());
       float portSmooth = 1.f;
       if (portRem) {
