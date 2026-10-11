@@ -2834,9 +2834,10 @@ CGameArea::CConstChainIterator CWorld::GetAliveAreasEnd() { return skGlobalEnd; 
 // drawn nearer than the world's depth range, is left clear, as Remastered leaves it.
 static std::vector<const PortRoomEnv::FogRegion*> sPortFogRegions;
 
-// Remastered's sun shadow (aurora's gfx/shadow): an orthographic depth map around the camera
-// along the room's directional light, cast and received by the opaque world. MP_SHADOWS=0 turns
-// it off; MP_SHADOW_RADIUS sets the map's half extent, MP_SHADOW_SIZE its resolution. For testing,
+// Remastered's sun shadow (aurora's gfx/shadow): four orthographic depth map cascades over the
+// view along the room's directional light, cast and received by the opaque world. MP_SHADOWS=0
+// turns it off; MP_SHADOW_DISTANCE sets how far it reaches (Remastered's 350), MP_SHADOW_SIZE
+// each cascade's resolution (1024). Uses SetupViewForDraw's perspective. For testing,
 // MP_SHADOW_DIR ("x,y,z", the way the light travels) and MP_SHADOW_COLOR ("r,g,b") override the
 // room's sun.
 // The room's Remastered sun (port_room_env.h), when its import has one.
@@ -2857,10 +2858,10 @@ static bool PortRoomSun(const CGameArea& area, CScriptLayerManager* layers, bool
 static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CScriptLayerManager* layers,
                             bool cinematic, bool enabled, bool roomLights) {
   static const bool sOn = port::EnvFlag("MP_SHADOWS", true);
-  static const float sRadius = port::EnvFloat("MP_SHADOW_RADIUS", 40.f);
+  static const float sDistance = port::EnvFloat("MP_SHADOW_DISTANCE", 350.f);
   float dir[3] = {0.f, 0.f, 0.f};
   float color[3] = {0.f, 0.f, 0.f};
-  float radius = 0.f;
+  float distance = 0.f;
   if (sOn && enabled) {
     static const char* sDirEnv = getenv("MP_SHADOW_DIR");
     static const char* sColorEnv = getenv("MP_SHADOW_COLOR");
@@ -2890,7 +2891,7 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
       }
     }
     if (dir[0] != 0.f || dir[1] != 0.f || dir[2] != 0.f) {
-      radius = sRadius;
+      distance = sDistance;
     }
   }
   // GX's view matrix: the camera's rows (right, up, towards the camera) and their eye offset.
@@ -2907,7 +2908,10 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
     worldToView[r][2] = axes[r][2];
     worldToView[r][3] = -(axes[r][0] * eye.GetX() + axes[r][1] * eye.GetY() + axes[r][2] * eye.GetZ());
   }
-  GXPortSetShadowFrame(worldToView, dir, radius, color);
+  const CGraphics::CProjectionState& proj = CGraphics::GetProjectionState();
+  const float frustum[6] = {proj.GetLeft(), proj.GetRight(), proj.GetTop(),
+                            proj.GetBottom(), proj.GetNear(), proj.GetFar()};
+  GXPortSetShadowFrame(worldToView, frustum, dir, distance, color);
   // Remastered's point and spot lights, in the same view space.
   static std::vector< float > sRoomLights;
   sRoomLights.clear();
@@ -2915,7 +2919,7 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
     PortRoomEnv::RoomLights(worldToView, sRoomLights);
   }
   GXPortSetRoomLights(sRoomLights.data(), u32(sRoomLights.size() / 16));
-  return radius > 0.f;
+  return distance > 0.f;
 }
 
 static void PortDrawVolumetricFog(const CStateManager& mgr, const CTransform4f& view,

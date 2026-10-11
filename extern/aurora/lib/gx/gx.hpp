@@ -95,7 +95,7 @@ struct DrawImmediateData {
   u32 vtxStart = 0;
   u32 currentPnMtx = 0;
   u32 fogRangeBase = 0;
-  u32 serial = 0; // the draw's serial, read by shaders built with ShaderConfig::drawId
+  u32 serial = 0; // the draw's serial, read by shaders built with ShaderConfig::drawId; in the shadow pass, the cascade
   std::array<u32, MaxIndexAttr> arrayStart{};
 };
 static_assert(std::has_unique_object_representations_v<DrawImmediateData>);
@@ -455,7 +455,7 @@ struct GXState {
   bool shadowCaster = false;
   bool shadowCasterOnly = false; // they cast but aren't drawn (GXPortSetShadowCasterOnly)
   bool shadowActive = false;
-  std::array<Vec4<float>, 10> shadowUniform{};
+  std::array<Vec4<float>, 36> shadowUniform{};
 
   // GX2 polygon offset state
   f32 frontOffset = 0.0f;

@@ -35,6 +35,14 @@ target_include_directories(time_tests PRIVATE
 target_link_libraries(time_tests PRIVATE gtest gtest_main)
 gtest_discover_tests(time_tests)
 
+add_executable(shadow_cascade_tests
+  shadow_cascade_test.cpp
+  ../lib/gfx/shadow_cascade.cpp
+)
+target_include_directories(shadow_cascade_tests PRIVATE ../lib)
+target_link_libraries(shadow_cascade_tests PRIVATE gtest gtest_main)
+gtest_discover_tests(shadow_cascade_tests)
+
 add_executable(os_time_tests
   os_time_test.cpp
   os_time_test_stubs.cpp

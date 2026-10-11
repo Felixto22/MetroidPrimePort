@@ -1337,24 +1337,28 @@ void handle_aurora(ByteReader& reader) noexcept {
         v = reader.read<f32>();
       }
     }
+    gfx::shadow::cascade::Frustum frustum;
+    for (f32* v : {&frustum.left, &frustum.right, &frustum.top, &frustum.bottom, &frustum.znear, &frustum.zfar}) {
+      *v = reader.read<f32>();
+    }
     f32 sunDir[3];
     for (f32& v : sunDir) {
       v = reader.read<f32>();
     }
-    const f32 radius = reader.read<f32>();
+    const f32 distance = reader.read<f32>();
     f32 color[3];
     for (f32& v : color) {
       v = reader.read<f32>();
     }
     gfx::shadow::Uniform uniform{};
-    const bool active = gfx::shadow::set_frame(worldToView, sunDir, radius, color, uniform);
+    const bool active = gfx::shadow::set_frame(worldToView, frustum, sunDir, distance, color, uniform);
     if (g_gxState.shadowActive != active) {
       g_gxState.shadowActive = active;
       g_gxState.dirty |= DirtyPipeline;
     }
     if (active) {
       static_assert(sizeof(uniform) == sizeof(g_gxState.shadowUniform));
-      std::array<Vec4<float>, 10> values;
+      std::array<Vec4<float>, 36> values;
       std::memcpy(values.data(), &uniform, sizeof(uniform));
       if (g_gxState.shadowUniform != values) {
         g_gxState.shadowUniform = values;

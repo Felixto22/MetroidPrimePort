@@ -3018,7 +3018,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
     shadowVs += fmt::format("\n    let {} = {};", vtx_attr(config, GX_VA_POS), attr_load(config, GX_VA_POS, vidxAttr));
     shadowVs += shadowWind;
     shadowVs += fmt::format("\n    let mv_pos = vec4f({}, 1.0) * ubuf.postex_mtx[in_pnmtxidx];"
-                            "\n    var pos = vec4f(mv_pos, 1.0) * ubuf.shadow_caster;"
+                            "\n    var pos = vec4f(mv_pos, 1.0) * ubuf.shadow_caster[imm.serial];"
                             // Pancaked: a caster further toward the sun than the map reaches (a roof high
                             // over the floor) sits on its near plane rather than being clipped. The map is
                             // orthographic, so that moves nothing across it.
@@ -3745,10 +3745,12 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     // An unlit surface (baked room light: pbr_func drops its light loop) has no room light to
     // shadow, but takes the sun's own colour.
     if (!pbr.empty() && info.shadowReceive) {
-      // The sun (GXPortSetShadowFrame) through its shadow map: the point pushed out along the normal,
-      // then 3x3 PCF; outside the map, or before one is drawn, it is lit. It shadows the room's own
-      // directional light along its direction (CGraphics::LoadLight puts one at -dir * 2^20 in view
-      // space) and adds its own colour, if any, as one more light.
+      // The sun (GXPortSetShadowFrame) through its cascaded shadow map, as Remastered's receivers
+      // (KB material/bfb300b6.md sec 6): the cascade picked by view depth dithered by up to 2.5 on a
+      // 4x4 Bayer pattern, a constant depth bias, 3x3 tent PCF, and faded out over the last cascade's
+      // last fifth; before a map is drawn it is lit. It shadows the room's own directional light
+      // along its direction (CGraphics::LoadLight puts one at -dir * 2^20 in view space) and adds its
+      // own colour, if any, as one more light.
       const auto put = [&](std::string_view what, std::string_view with) {
         const size_t at = pbr.find(what);
         if (at == std::string::npos) {
@@ -3758,17 +3760,26 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
       };
       put("// pbr-sun-vis", R"""(var sun_vis = 1.0;
       {
-          let sp = vec4f(in.pbr_pos + pbr_ng * ubuf.shadow_dir.w, 1.0) * ubuf.shadow_recv;
+          var bayer = array<f32, 16>(16.0, 144.0, 48.0, 176.0, 208.0, 80.0, 240.0, 112.0,
+                                     64.0, 192.0, 32.0, 160.0, 255.0, 128.0, 224.0, 96.0);
+          let fc = vec2u(in.pos.xy) & vec2u(3u);
+          let depth = -in.pbr_pos.z;
+          let dz = depth + 2.5 * (bayer[fc.y * 4u + fc.x] / 255.0);
+          let c = min(dot(select(vec4u(0u), vec4u(1u), vec4f(dz) > ubuf.shadow_splits), vec4u(1u)), 3u);
+          let sp = vec4f(in.pbr_pos, 1.0) * ubuf.shadow_recv[c];
           let suv = vec2f(sp.x * 0.5 + 0.5, 0.5 - sp.y * 0.5);
+          let sref = saturate(sp.z - 0.00025);
           let st = ubuf.shadow_color.w;
           var sum = 0.0;
           for (var sy = -1; sy <= 1; sy++) {
               for (var sx = -1; sx <= 1; sx++) {
-                  sum += textureSampleCompareLevel(shadow_map, shadow_samp, suv + vec2f(f32(sx), f32(sy)) * st, sp.z);
+                  let w = f32((2 - abs(sx)) * (2 - abs(sy))) / 16.0;
+                  sum += w * textureSampleCompareLevel(shadow_map, shadow_samp, suv + vec2f(f32(sx), f32(sy)) * st,
+                                                      c, sref);
               }
           }
-          let edge = max(max(abs(sp.x), abs(sp.y)), select(0.0, 1.0, sp.z >= 1.0));
-          sun_vis = mix(sum / 9.0, 1.0, smoothstep(0.9, 1.0, edge));
+          let f = saturate((depth - ubuf.shadow_fade.x) / (ubuf.shadow_fade.y - ubuf.shadow_fade.x));
+          sun_vis = max(sum, f * f * (3.0 - 2.0 * f));
       })""");
       if (pbr.find("// pbr-sun-view") != std::string::npos) {
         put("// pbr-sun-view", "pbr_dc = vec3f(sun_vis);");
@@ -3797,7 +3808,7 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
           pbr_lnl += rad * (nl * sun_vis);
       })""");
       texBindings += fmt::format("\n@group(2) @binding({})\n"
-                                 "var shadow_map: texture_depth_2d;\n"
+                                 "var shadow_map: texture_depth_2d_array;\n"
                                  "@group(2) @binding({})\n"
                                  "var shadow_samp: sampler_comparison;",
                                  kShadowMapBinding, kShadowSamplerBinding);
@@ -3913,13 +3924,15 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
         i, i * 2, i * 2 + 1);
   }
   if (info.usesShadow) {
-    // GXState::shadowUniform: view space to the sun's map for this frame's casters and for the map the
-    // receivers read (the previous frame's), the sun's view-space direction (w: the normal offset) and
-    // its colour (w: one texel of the map in uv).
-    uniBufAttrs += "\n    shadow_caster: mat4x4f,";
-    uniBufAttrs += "\n    shadow_recv: mat4x4f,";
+    // GXState::shadowUniform (gfx/shadow.hpp's Uniform): view space to each cascade's map for this
+    // frame's casters and for the maps the receivers read (the previous frame's), the sun's view-space
+    // direction, its colour (w: one texel of the map in uv), the receivers' cascade far ends and fade.
+    uniBufAttrs += "\n    shadow_caster: array<mat4x4f, 4>,";
+    uniBufAttrs += "\n    shadow_recv: array<mat4x4f, 4>,";
     uniBufAttrs += "\n    shadow_dir: vec4f,";
     uniBufAttrs += "\n    shadow_color: vec4f,";
+    uniBufAttrs += "\n    shadow_splits: vec4f,";
+    uniBufAttrs += "\n    shadow_fade: vec4f,";
   }
   if (!prevColorNormalized && !prevAlphaNormalized) {
     fragmentFn += "\n    prev = tev_overflow_vec4f(prev);";

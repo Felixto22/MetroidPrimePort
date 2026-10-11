@@ -2102,15 +2102,16 @@ void RunFrame() {
         (Lower(sCmd.args[2]) == "on" || Lower(sCmd.args[2]) == "off")) {
       PortRoomGeo::SetOffscreenCasters(Lower(sCmd.args[2]) == "on");
     }
-    f32 dir[3], color[3], center[3], radius = 0.f;
+    f32 dir[3], color[3], center[3], distance = 0.f;
     u32 casters = 0;
-    GXPortGetShadowInfo(dir, color, &radius, center, &casters);
-    if (radius <= 0.f) {
+    GXPortGetShadowInfo(dir, color, &distance, center, &casters);
+    if (distance <= 0.f) {
       Out("shadow map off (no sun, MP_SHADOWS=0, or a scene without shadows)");
     } else {
       Out("light travels %.3f %.3f %.3f colour %.3f %.3f %.3f", dir[0], dir[1], dir[2], color[0], color[1], color[2]);
-      Out("map radius %.1f centre %.2f %.2f %.2f, %u caster draw(s), %u of them out-of-view room models (casters %s)",
-          radius, center[0], center[1], center[2], casters, PortRoomGeo::OffscreenCasterCount(),
+      Out("4 cascades to %.1f, last centred %.2f %.2f %.2f, %u caster draw(s), %u of them out-of-view room models "
+          "(casters %s)",
+          distance, center[0], center[1], center[2], casters, PortRoomGeo::OffscreenCasterCount(),
           PortRoomGeo::OffscreenCasters() ? "on" : "off");
     }
     OutLines(PortRoomEnv::SunInfo());
