@@ -1338,6 +1338,43 @@ void DrawActiveController() {
 
 } // namespace
 
+std::string BindingsText(PortInput::Action action, const char* separator) {
+  // Hints ask every frame; the profile is rebuilt at most twice a second.
+  struct SCached {
+    PortInput::Action action;
+    std::string separator;
+    std::string text;
+    uint64_t atMs;
+  };
+  static std::vector<SCached> sCache;
+  const uint64_t now = SDL_GetTicks();
+  for (const SCached& c : sCache) {
+    if (c.action == action && c.separator == separator && now - c.atMs < 500) return c.text;
+  }
+  PortInput::Profile profile;
+  PortInputDevices::BuildProfile(profile);
+  std::vector<std::vector<Input>> seen;
+  std::string text;
+  for (const Binding& b : profile.bindings) {
+    if (b.action != action || b.count == 0) continue;
+    // A chord bound in both orders is listed once.
+    std::vector<Input> set(b.inputs.begin(), b.inputs.begin() + b.count);
+    std::sort(set.begin(), set.end(), [](const Input& x, const Input& y) {
+      return PortInput::InputToText(x) < PortInput::InputToText(y);
+    });
+    if (std::find(seen.begin(), seen.end(), set) != seen.end()) continue;
+    seen.push_back(set);
+    if (!text.empty()) text += separator;
+    for (int k = 0; k < b.count; ++k) {
+      if (k != 0) text += " + ";
+      text += InputName(b.inputs[k]);
+    }
+  }
+  std::erase_if(sCache, [&](const SCached& c) { return c.action == action && c.separator == separator; });
+  sCache.push_back({action, separator, text, now});
+  return text;
+}
+
 bool Capturing() {
   // The game thread asks too; a capture left behind when the page closed or the
   // tab changed stops counting once the page isn't drawn.

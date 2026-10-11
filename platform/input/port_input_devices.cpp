@@ -372,6 +372,25 @@ void BindPortControls(Profile& p) {
   Bind(p, Action::PadA, Make(Device::Touch, kTouchTurbo), turboHz);
   Bind(p, Action::PadZ, Make(Device::Touch, kTouchMapTap));
 
+  // The port's own keys and the pad's overlay chord. Back + Start is ordered both
+  // ways, so either can be held first; the chord also keeps Start from pausing.
+  Bind(p, Action::PortMenu, Make(Device::Key, SDL_SCANCODE_F1));
+  const Input back = NativeInput(SDL_GAMEPAD_BUTTON_BACK);
+  const Input start = NativeInput(SDL_GAMEPAD_BUTTON_START);
+  if (back.Valid() && start.Valid()) {
+    for (int order = 0; order < 2; ++order) {
+      Binding b;
+      b.action = Action::PortMenu;
+      b.inputs[0] = order == 0 ? back : start;
+      b.inputs[1] = order == 0 ? start : back;
+      b.count = 2;
+      p.bindings.push_back(b);
+    }
+  }
+  Bind(p, Action::SaveState, Make(Device::Key, SDL_SCANCODE_F5));
+  Bind(p, Action::LoadState, Make(Device::Key, SDL_SCANCODE_F9));
+  Bind(p, Action::Screenshot, Make(Device::Key, SDL_SCANCODE_F12));
+
   // The wheel cycles beams, as in PrimeHack (issue #61); retail has no wheel.
   if (!PortDebug::OriginalExperience()) {
     Bind(p, Action::BeamPrev, Make(Device::MouseWheel, 0, 1));
@@ -583,11 +602,26 @@ void RouteDirectActions(const PortInput::Output& out) {
   const int visorDir = out.Pressed(Action::VisorNext) ? 1 : out.Pressed(Action::VisorPrev) ? -1 : 0;
   PushCyclePick(false, visorDir != 0 ? CycleTarget(false, visorDir) : -1);
   if (out.Pressed(Action::SpringBall)) PortDebug::RequestSpringBall();
-  if (out.Pressed(Action::PortMenu)) PortDebug::RequestToggle();
-  if (out.Pressed(Action::SaveState)) PortDebug::RequestSaveStateHotkey(1);
-  if (out.Pressed(Action::LoadState)) PortDebug::RequestSaveStateHotkey(2);
-  if (out.Pressed(Action::Screenshot)) aurora::request_screenshot();
-  if (out.Pressed(Action::ToggleOriginal)) PortDebug::SetOriginalExperience(!PortDebug::OriginalExperience());
+}
+
+// The port's own actions: polled every frame by PollPortActions, not with the game
+// ticks, so they work while the game is paused or the F1 overlay is open.
+bool IsPortAction(Action a) {
+  return a == Action::PortMenu || a == Action::SaveState || a == Action::LoadState || a == Action::Screenshot ||
+         a == Action::ToggleOriginal;
+}
+
+// Keys pressed since the last PollPortActions, added by an SDL event watch: a short
+// tap can begin and end between two frames, so the key state alone misses it.
+std::atomic<uint64_t> sKeyDowns[(PortInput::kKeyCount + 63) / 64]{};
+
+bool SDLCALL KeyDownWatch(void*, SDL_Event* event) {
+  if (event->type != SDL_EVENT_KEY_DOWN || event->key.repeat) return true;
+  const int code = static_cast< int >(event->key.scancode);
+  if (code >= 0 && code < PortInput::kKeyCount) {
+    sKeyDowns[code / 64].fetch_or(uint64_t{1} << (code % 64), std::memory_order_relaxed);
+  }
+  return true;
 }
 
 u8 Trigger(float analog, bool click) {
@@ -838,6 +872,44 @@ SPoll Poll(unsigned mouseHeld, bool focused) {
 
   r.status = Synthesize(out);
   return r;
+}
+
+void PollPortActions() {
+  static Profile sFull;
+  static Profile sProfile;
+  static PortInput::Runtime sRuntime;
+  static bool sInit = false;
+  static bool sWatch = false;
+  if (!sWatch) sWatch = SDL_AddEventWatch(KeyDownWatch, nullptr);
+
+  Profile next;
+  BuildProfile(next);
+  if (!sInit || next != sFull) {
+    sFull = std::move(next);
+    sProfile = sFull;
+    std::erase_if(sProfile.bindings, [](const Binding& b) { return !IsPortAction(b.action); });
+    sRuntime.SetProfile(&sProfile);
+    sInit = true;
+  }
+
+  PortInput::RawState raw;
+  ReadRaw(raw);
+  for (size_t w = 0; w < std::size(sKeyDowns); ++w) {
+    uint64_t bits = sKeyDowns[w].exchange(0, std::memory_order_relaxed);
+    while (bits != 0) {
+      const int bit = std::countr_zero(bits);
+      bits &= bits - 1;
+      raw.keys.set(w * 64 + static_cast< size_t >(bit));
+    }
+  }
+  const PortInput::Output& out = sRuntime.Poll(raw, GameContexts(), static_cast< double >(SDL_GetTicksNS()) / 1e6);
+  // The F1 Remap page is recording an input: a bound PortMenu would close it.
+  if (PortInputRemap::Capturing()) return;
+  if (out.Pressed(Action::PortMenu)) PortDebug::RequestToggle();
+  if (out.Pressed(Action::SaveState)) PortDebug::RequestSaveStateHotkey(1);
+  if (out.Pressed(Action::LoadState)) PortDebug::RequestSaveStateHotkey(2);
+  if (out.Pressed(Action::Screenshot)) aurora::request_screenshot();
+  if (out.Pressed(Action::ToggleOriginal)) PortDebug::SetOriginalExperience(!PortDebug::OriginalExperience());
 }
 
 } // namespace PortInputDevices

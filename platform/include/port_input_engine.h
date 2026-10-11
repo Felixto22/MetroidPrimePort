@@ -153,7 +153,7 @@ enum class ActionKind : uint8_t {
   X(Layer2, Digital, "layer_2", "Layer 2 (hold)")                                                  \
   X(Layer3, Digital, "layer_3", "Layer 3 (hold)")                                                  \
   X(Layer4, Digital, "layer_4", "Layer 4 (hold)")                                                  \
-  X(PortMenu, Digital, "port_menu", "Port menu (F1)")                                              \
+  X(PortMenu, Digital, "port_menu", "Port menu")                                              \
   X(SaveState, Digital, "save_state", "Save state")                                                \
   X(LoadState, Digital, "load_state", "Load state")                                                \
   X(Screenshot, Digital, "screenshot", "Screenshot")                                               \

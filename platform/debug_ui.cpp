@@ -963,17 +963,8 @@ bool IsPhysicalInput(const SDL_Event& event) {
 }
 
 bool SDLCALL debug_event_watch(void*, SDL_Event* event) {
-  // F1 toggles the overlay. Watch the event rather than polling the key state:
-  // a short tap can begin and end between two frames, so polling misses it.
-  if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
-      event->key.scancode == SDL_SCANCODE_F1) {
-    PortDebug::RequestToggle();
-  }
-  if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
-      (event->key.scancode == SDL_SCANCODE_F5 || event->key.scancode == SDL_SCANCODE_F9)) {
-    sSaveStateHotkey.store(event->key.scancode == SDL_SCANCODE_F5 ? 1 : 2,
-                           std::memory_order_release);
-  }
+  // The port menu, save state and screenshot keys are bindings
+  // (PortInputDevices::PollPortActions).
   if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
       event->key.scancode == SDL_SCANCODE_F11) {
     sFullscreenHotkey.store(true, std::memory_order_release);
@@ -3853,6 +3844,7 @@ void UpdateControllerNav() {
   }
   UpdateUiScale();
   ApplyThemeIfChanged();
+  PortInputDevices::PollPortActions();
   if (sToggleRequested.exchange(false, std::memory_order_acq_rel)) {
     Toggle();
   }
@@ -3931,13 +3923,6 @@ void UpdateControllerNav() {
   io.AddKeyEvent(ImGuiKey_GamepadFaceUp, held(nintendo ? SDL_GAMEPAD_BUTTON_WEST : SDL_GAMEPAD_BUTTON_NORTH));
   io.AddKeyEvent(ImGuiKey_GamepadL1, held(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
   io.AddKeyEvent(ImGuiKey_GamepadR1, held(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER));
-
-  static bool sChordHeld = false;
-  const bool chord = held(SDL_GAMEPAD_BUTTON_START) && held(SDL_GAMEPAD_BUTTON_BACK);
-  if (chord && !sChordHeld) {
-    Toggle();
-  }
-  sChordHeld = chord;
 }
 
 void Toggle() {
@@ -4935,6 +4920,17 @@ void DrawShaderCompilationToast() {
   ImGui::End();
 }
 
+// The panel's hotkey hint, from the live Port menu/Screenshot bindings.
+std::string HotkeyHint() {
+  std::string hint;
+  const std::string menu = PortInputRemap::BindingsText(PortInput::Action::PortMenu, " / ");
+  if (!menu.empty()) hint += menu + ": hide   ";
+  hint += "F10: frame limit";
+  const std::string shot = PortInputRemap::BindingsText(PortInput::Action::Screenshot, " / ");
+  if (!shot.empty()) hint += "   " + shot + ": screenshot";
+  return hint;
+}
+
 // Once per launch, for 8 s, until the panel is first opened: how to open it. Top left,
 // clear of the other toasts (top and bottom centre) and Android's START/MENU buttons.
 void DrawMenuHintToast() {
@@ -4965,10 +4961,19 @@ void DrawMenuHintToast() {
                    ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
                        ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings |
                        ImGuiWindowFlags_AlwaysAutoResize)) {
+    const std::string keys = PortInputRemap::BindingsText(PortInput::Action::PortMenu);
 #if defined(__ANDROID__)
-    ImGui::TextUnformatted("Tap the cog button (F1 on a keyboard) for settings");
+    if (keys.empty()) {
+      ImGui::TextUnformatted("Tap the cog button for settings");
+    } else {
+      ImGui::Text("Tap the cog button (or %s) for settings", keys.c_str());
+    }
 #else
-    ImGui::TextUnformatted("Press F1 for settings");
+    if (keys.empty()) {
+      ImGui::TextUnformatted("Open settings from the Port menu binding in Remap");
+    } else {
+      ImGui::Text("Press %s for settings", keys.c_str());
+    }
 #endif
   }
   ImGui::End();
@@ -6686,7 +6691,10 @@ void DrawGameSection() {
     RequestReset();
   }
   ImGui::SameLine();
-  if (ImGui::Button("Screenshot (F12)")) {
+  const std::string shotKeys = PortInputRemap::BindingsText(PortInput::Action::Screenshot, " / ");
+  const std::string shotLabel =
+      (shotKeys.empty() ? std::string("Screenshot") : "Screenshot (" + shotKeys + ")") + "###screenshot";
+  if (ImGui::Button(shotLabel.c_str())) {
     aurora::request_screenshot();
   }
   ImGui::SameLine();
@@ -7843,7 +7851,13 @@ void DrawSaveStatesTab() {
            "morph ball. Loading rebuilds the room as a memory card load does, so enemies and moving "
            "parts start over. While the game is paused, a save or load waits until you unpause.");
   bool hotkeys = sSaveStateHotkeys;
-  if (ImGui::Checkbox("F5 saves, F9 loads the selected slot", &hotkeys)) {
+  const std::string saveKeys = PortInputRemap::BindingsText(PortInput::Action::SaveState, " / ");
+  const std::string loadKeys = PortInputRemap::BindingsText(PortInput::Action::LoadState, " / ");
+  const std::string hotkeysLabel = (saveKeys.empty() ? std::string("Save state binding") : saveKeys) +
+                                   " saves, " +
+                                   (loadKeys.empty() ? std::string("Load state binding") : loadKeys) +
+                                   " loads the selected slot###savestate-hotkeys";
+  if (ImGui::Checkbox(hotkeysLabel.c_str(), &hotkeys)) {
     sSaveStateHotkeys = hotkeys;
     MarkDirty();
   }
@@ -8669,7 +8683,8 @@ bool DrawPageWindow() {
     }
 #if !defined(__ANDROID__)
     // Only when it fits beside the title, the build and the Close button.
-    const char* const kKeys = "F1: hide   F10: frame limit   F12: screenshot";
+    const std::string keyHint = HotkeyHint();
+    const char* const kKeys = keyHint.c_str();
     if (ImGui::GetContentRegionAvail().x > ImGui::CalcTextSize(kTitle).x + buildWidth +
                                                ImGui::CalcTextSize(kKeys).x + closeWidth +
                                                style.ItemSpacing.x * 8.f) {
@@ -8731,8 +8746,7 @@ bool DrawDesktopWindow() {
   bool open = true;
   if (ImGui::Begin("Metroid Prime Port", &open, ImGuiWindowFlags_MenuBar)) {
     if (ImGui::BeginMenuBar()) {
-      const char* const kKeys = "F1: hide   F10: frame limit   F12: screenshot";
-      ImGui::TextUnformatted(kKeys);
+      ImGui::TextUnformatted(HotkeyHint().c_str());
       // Only when it fits beside the hotkey hint.
       const ImGuiStyle& style = ImGui::GetStyle();
       if (ImGui::GetContentRegionAvail().x >
