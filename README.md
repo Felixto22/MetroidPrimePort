@@ -159,5 +159,6 @@ and remains Nintendo's. See `NOTICE`.
 Metroid Prime is a trademark of Nintendo. This project is unaffiliated with
 Nintendo and Retro Studios, and ships no game data.
 
-`docs/NATIVE_PORT.md` is the detailed reference: build options, every setting
-and environment variable, the smoke-test hooks, and the platform notes.
+`docs/NATIVE_PORT.md` is the detailed reference: build options, the smoke-test hooks,
+and the platform notes. Every setting and environment variable lives in
+`docs/SETTINGS.md` (debug console: `docs/CONSOLE.md`, mods: `docs/MODS.md`).

@@ -59,7 +59,8 @@ self-contained — and it is why `MP_USER_PATH` cannot be used to move saves.
 - **Windows**: `windows.yml` copies the port's grant and notice, Aurora's and
   MusyX's licences, and every `LICENSE*`/`COPYING*`/`NOTICE*` from the fetched
   packages into `dist/licenses/`, preserving the dependency path, and puts
-  `docs/NATIVE_PORT.md` in as the `README`. It also packages `textures/` (the
+  `docs/NATIVE_PORT.md` in as the `README`, with `docs/SETTINGS.md`, `docs/MODS.md`
+  and `docs/CONSOLE.md` alongside it. It also packages `textures/` (the
   HD and button-prompt sets), so the artefact zips as-is with no copy from a
   Linux build. SDL3 (built from source), zlib, libpng, nod and OpenSSL are
   linked statically into the exe, so their licences (including `openssl.txt`
