@@ -2722,14 +2722,15 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
     assert(at != std::string::npos);
     source.insert(at, R"""(
       if (pbr_kind > 33.5 && pbr_kind < 34.5) {
-          // Kind 34, Remastered's 788360de (coloured translucency, blend One / Src1Color): o0 is the lit
-          // colour (diffuse scaled by A, kind 10's diffTint) and o1 = exposure x (1 - T (1 - A)), with
-          // T = BCLR.rgb x DIFC.rgb and A = BCLR.a² x DIFC.w. Emulated through the screen copy (map 7),
-          // as 2f95a061 is: the scene target holds sRGB-encoded values, so a GPU blend would not be exact.
-          // Drawn opaque (alpha 1) with the scene behind this fragment kept by o1 in linear light.
+          // Kind 34, Remastered's 788360de / 4c37625c with the material's MFC0 feature off (every current
+          // material): ordinary premultiplied blend. o0 = lit colour x C and alpha = A x C (C = 1 here), so
+          // One / InvSrcAlpha keeps the scene behind by 1 - A x C, independent of the base colour (no
+          // transmission tint). Emulated through the screen copy (map 7), as 2f95a061 is: the scene target
+          // holds sRGB-encoded values, so a GPU blend would not be exact. Drawn opaque (alpha 1) with that
+          // weight of the scene kept in linear light. The MFC0-on form (1 - C + C T (1 - A)) is not wired.
           let pbr_sdst = srgb_dec(textureSampleLevel(tex7, tex7_samp,
                                   clamp(in.pbr_scr.xy / in.pbr_scr.w * vec2f(0.5, -0.5) + 0.5, vec2f(0.0), vec2f(1.0)), 0.0).rgb);
-          pbr_pass += pbr_sdst * (vec3f(1.0) - pbr_base * (1.0 - pbr_alpha));
+          pbr_pass += pbr_sdst * vec3f(1.0 - pbr_alpha);
           pbr_alpha = 1.0;
       })""");
   }
