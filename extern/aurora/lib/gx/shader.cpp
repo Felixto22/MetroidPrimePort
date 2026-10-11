@@ -2057,7 +2057,7 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
           if (pbr_hdr > 0.0 && ubuf.pbr_probe[0].w > 0.0 && ubuf.pbr_probe[2].w > 0.0) {{
               let pbr_xc = textureSampleLevel(pbr_cube, pbr_cube_samp, pbr_pd, pbr_xr * pbr_lod).rgb * pbr_hdr;
               var pbr_xl = 1.0;
-              if (ubuf.pbr_lmap_rect.z != 0.0) {{
+              if (ubuf.pbr_lmap_rect.w != 0.0) {{
                   pbr_xl = max(pbr_l0v.r, max(pbr_l0v.g, pbr_l0v.b)) * dot(pbr_blcm, vec3f(0.2126, 0.7152, 0.0722));
               }} else if (pbr_kind > 29.5 && pbr_bmeanok) {{
                   // cc8afd0f's probe perms (BLPD 008-011, grid 014-017): the same occlusion from the mean.
@@ -2069,7 +2069,7 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
           pbr_alpha = 1.0;
           pbr_glow = vec3f(0.0);
           pbr_lo = pbr_xenv * (pbr_xab.x * 0.04 + pbr_xab.y);
-          if (ubuf.pbr_lmap_rect.z != 0.0) {{
+          if (ubuf.pbr_lmap_rect.w != 0.0) {{
               pbr_lo += pbr_xbase * pbr_l0v * pbr_blcm * ((1.0 - pbr_xv3.w) / pbr_pi);
           }} else if (pbr_kind > 29.5 && pbr_bmeanok) {{
               pbr_lo += pbr_xbase * pbr_bmean * pbr_blcm * ((1.0 - pbr_xv3.w) / pbr_pi);
@@ -2504,7 +2504,7 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
       }}
       // The same modulation on the lights where the baked ambient is a lobe or a grid volume
       // (not a lightmap, which does it below): BLCM x (ambient + lights), mode 4096.
-      if (pbr_blit && ubuf.pbr_lmap_rect.z == 0.0 && (ubuf.pbr_ambient[0].w > 0.0 || ubuf.pbr_volume[3].w > 0.0)) {{
+      if (pbr_blit && ubuf.pbr_lmap_rect.w == 0.0 && (ubuf.pbr_ambient[0].w > 0.0 || ubuf.pbr_volume[3].w > 0.0)) {{
           pbr_lo += pbr_ldiff * (pbr_blcm - 1.0);
       }}
       // CharacterBacklight (ae819893) without probe data (no baked ambient, no volume) is
@@ -2747,7 +2747,7 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
   // A baked lightmap (GX_AURORA_SET_PBR_LIGHTMAP) replaces the diffuse ambient: its level L0 in layer 0 and the
   // direction's x, y, z in layers 1-3, each relative to L0, along the three axes in pbr_lmap_axes. The volume's
   // reflection stays, dimmed where the lightmap is dark. Cost test 3 (no ambient volume) goes without it too.
-  cut("// pbr-lightmap", lightmapUsed && costTest != 3 ? R"""(if (ubuf.pbr_lmap_rect.z != 0.0) {
+  cut("// pbr-lightmap", lightmapUsed && costTest != 3 ? R"""(if (ubuf.pbr_lmap_rect.w != 0.0) {
           let pbr_luv = ubuf.pbr_lmap_rect.xy + in.pbr_lmuv * ubuf.pbr_lmap_rect.z;
           let pbr_l0 = textureSampleLevel(pbr_lmap, pbr_cube_samp, pbr_luv, 0, 0.0).rgb;
           pbr_l0v = pbr_l0;

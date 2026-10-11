@@ -428,7 +428,7 @@ struct GXState {
   u32 pbrVolume = 0; // GX_AURORA_SET_PBR_VOLUME
   std::array<Vec4<float>, 6> pbrVolumeRows{}; // see GXSetPBRVolume
   u32 pbrLightmap = 0; // GX_AURORA_SET_PBR_LIGHTMAP
-  Vec4<float> pbrLightmapRect{};                  // offU, offV, scale (0: off), level
+  Vec4<float> pbrLightmapRect{};                  // offU, offV, scale (0: one texel), level (0: off)
   std::array<Vec4<float>, 3> pbrLightmapAxes{};   // xyz: a row taking a view-space normal to the lightmap's axes
   Vec4<float> pbrRoomLights{}; // GX_AURORA_PORT_ROOM_LIGHTS: x the first record (u32 bits, in words), y the count
   u8 pbrLightmapAttr = GX_VA_NULL; // GX_AURORA_SET_PBR_LIGHTMAP_ATTR
