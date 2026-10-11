@@ -413,7 +413,12 @@ F1 > Game > Cutscenes > "1.00 sequence-break compatibility" (INI key
 `revision_100_compatibility`, default false; forced on in randomizer and
 Archipelago games, reload needed) puts back what 1.00 sequence breaks rely on.
 `platform/port_revision_scripts.cpp` adds room-script ops (applied through
-`PortSkipCutscenes::PatchArea`, whose op stream it shares) for the rev2 locks.
+`PortSkipCutscenes::PatchArea`, whose op stream it shares) for the rev2 locks, the 1.02 Hive Totem
+trigger and lock, and the PAL Ore Processing, Main Quarry and Central Dynamo
+locks (randomprime's values, not byte-exact 1.00). Every op target is checked first (layer, object
+type, property size, lock model, active byte), and a mismatch leaves the room
+untouched (logged, all or nothing); deactivations are EDITs of the active byte,
+removals are DELETEs of the verified full ids.
 It reads the setting at use through
 `PortDebug::Revision100Compatibility() || PortSkipCutscenes::Forced()`. Only the
 named script locks are fixed; missing 1.00 geometry (e.g. the Ruined Shrine

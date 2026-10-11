@@ -356,13 +356,15 @@
   restores 1.00 sequence breaks that newer discs (USA 1.01/1.02, PAL) fixed.
   It is independent of Skippable cutscenes and is not under the Original
   experience lock. Changing it needs a game reload: the room scripts are patched
-  at load. Script
-  blockers restored on rev2 (USA 1.02): Geothermal Core, Main Quarry and Ore
+  at load. Script blockers restored on rev2 (USA 1.02): Geothermal Core, Main Quarry and Ore
   Processing lose their added lock actors; Ruined Courtyard gets 1.00's
   trigger/relay wiring back; Elite Research's pickup-gated exit unlock is
-  rewired so the Phazon Elite's death unlocks it directly. Only these script
-  locks are fixed; missing 1.00 geometry (such as the Ruined Shrine root) is not
-  restored, so the setting is not exact all-1.00 behavior.
+  rewired so the Phazon Elite's death unlocks it directly. USA 1.02 Hive
+  Totem gets randomprime's boss trigger box back and loses its added door lock;
+  PAL keeps Ore Processing's destructible rock and Main Quarry's layer-7 door
+  lock switched off and loses Central Dynamo's extra door lock. Only these
+  script locks are fixed; missing 1.00 geometry (such as the Ruined Shrine
+  root) is not restored, so the setting is not exact all-1.00 behavior.
 - Elevator ride (F1 > Game > Cutscenes, pause Options > Visor,
   `elevator_ride`: 0 Original, 1 Fast, 2 Skip; Original by default) sets the
   ride shown between worlds. Retail holds it at least 5 s whatever the load

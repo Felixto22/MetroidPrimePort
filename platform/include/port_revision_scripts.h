@@ -9,7 +9,10 @@
 // Room script (SCLY) patches that make a later disc revision play like USA
 // 1.00 (and so like the randomizer logic, built from 1.00): the PAL Geothermal
 // Core Power Bomb rock, the USA 1.01/1.02 Arboretum gate platform, and the
-// four USA 1.02 inventory locks plus the Elite Research exit lock. Pure: the
+// four USA 1.02 inventory locks plus the Elite Research exit lock, the USA 1.02
+// Hive Totem trigger and door lock, and the PAL Ore Processing rock, Main
+// Quarry lock and Central Dynamo lock (ops guarded by the targets' layer, type,
+// size and model; a mismatch is Missed). Pure: the
 // caller decides when they apply (PortSkipCutscenes::PatchArea).
 namespace PortRevisionScripts {
 
