@@ -6,8 +6,7 @@ phase 3 (skinned poses) and phase 4 (`CElementGen` particles) are done; phase 5
 electric effects and beam weapons, section 3) is done. One setting,
 `smooth_frames` ("Smooth uncapped frames", on by default), turns all of them on
 or off; the parts are still separate flags in code (`PortDebug::ActorInterpolation`
-etc., console `interp`), and the per-part names used below are those flags. The
-HUD sway is scope only.
+etc., console `interp`), and the per-part names used below are those flags.
 
 Goal: smooth motion above 60 FPS while the game logic stays at its console rate
 (60 Hz fixed step). Rendered frames between two ticks draw the world at a blend
@@ -255,12 +254,17 @@ through the blended transforms. The lock-on and thermal/X-ray reticle groups
 are placed at sim time; `CTargetReticles` `PortPresentGroup` moves them for the
 draw: a target actor's point through its presented transform
 (`CActor::PortPresentedPoint`), an idle point from the sim camera's frame into
-the presented camera's (as the free-aim crosshair). GUI frames (`CGuiFrame`) animate by tick and
-can stay at 60 Hz for a first pass. The helmet and HUD lag/bob
-(`CSamusHud::UpdateHudLag`) is pushed into the helmet and deco interfaces and
-the base frame camera once per tick; blending it would mean keeping the last
-tick's lag rotation and offset and re-applying a blend around `Draw`. Its
-motion is a few pixels per tick, so it is left at 60 Hz.
+the presented camera's (as the free-aim crosshair). GUI frames (`CGuiFrame`)
+animate by tick, but the GUI clock they and the HUD materials read
+(`CGraphics::GetSecondsMod900`) lags by (1−t)/60 s during the draw
+(`SetRenderTimePresentLag`, particle toggle). The helmet and HUD lag/bob
+(`CSamusHud::UpdateHudLag`) keeps the last two ticks' states (rotation, inverse,
+offset, deco yaw); `CInGameGuiManager::Draw` blends them for the draw
+(`CSamusHud::PortPresentHudLag`: slerp/lerp, re-applied to the helmet, the deco
+interface's `PortApplyHudLag` and the base frame camera) and restores the tick
+state afterwards (actor toggle; skipped when the pair is stale, lag switches
+on/off, or the yaw jumps). Rig `build/interp-envfx/hud.sh` (turn starting):
+HUD bands 425 px off the previous tick → 0.
 
 ### 6. Resets and edge cases
 

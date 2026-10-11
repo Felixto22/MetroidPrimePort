@@ -338,6 +338,19 @@ void CInGameGuiManager::Draw(const CStateManager& mgr) const {
   }
   // Re-published below if the minimap is drawn this frame.
   PortDebug::SetMinimapRect(false, false, 0.f, 0.f, 0.f, 0.f);
+#ifdef TARGET_PC
+  // Draw the HUD lag/bob blended to the presented time; the tick state is
+  // restored when the draw ends.
+  struct HudLagScope {
+    const CSamusHud* hud;
+    ~HudLagScope() {
+      if (hud)
+        hud->PortPresentHudLag(false);
+    }
+  } hudLagScope = {x34_samusHud.get()};
+  if (hudLagScope.hud)
+    hudLagScope.hud->PortPresentHudLag(true);
+#endif
   if (x1d8_onScreenTexAlpha > 0.f && !x1dc_onScreenTexTok.null() &&
       x1dc_onScreenTexTok->GetObject() != nullptr) {
     const CTexture& tex = *x1dc_onScreenTexTok->GetObject();

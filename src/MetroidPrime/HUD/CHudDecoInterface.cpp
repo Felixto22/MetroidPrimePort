@@ -117,6 +117,14 @@ void CHudDecoInterfaceCombat::Update(float dt, const CStateManager& mgr) {
       x2c_camPos);
 }
 
+#ifdef TARGET_PC
+void CHudDecoInterfaceCombat::PortApplyHudLag() {
+  x6c_camera->SetHudO2WTransform(
+      CSamusHud::BuildFinalCameraTransform(x4_rotation, x14_pivotPosition + x20_offset, x2c_camPos),
+      x2c_camPos);
+}
+#endif
+
 void CHudDecoInterfaceCombat::UpdateCameraDebugSettings(float fov, float y, float z) {
   CGuiCamera::UCameraParms parms = x6c_camera->GetParms();
   parms.perspective.fov = fov;
@@ -221,6 +229,16 @@ void CHudDecoInterfaceXRay::Update(float dt, const CStateManager& mgr) {
   xa8_basewidget_seeker->SetO2PTransform(
       CTransform4f(CMatrix3f::Scale(x4_seekerScale) * x3c_reticuleXf, x60_seekerPosition));
 }
+
+#ifdef TARGET_PC
+void CHudDecoInterfaceXRay::PortApplyHudLag() {
+  xa0_camera->SetHudO2WTransform(
+      CSamusHud::BuildFinalCameraTransform(x8_rotation, x18_pivotPosition + x24_offset, x30_camPos),
+      x30_camPos);
+  xa8_basewidget_seeker->SetO2PTransform(
+      CTransform4f(CMatrix3f::Scale(x4_seekerScale) * x3c_reticuleXf, x60_seekerPosition));
+}
+#endif
 
 void CHudDecoInterfaceXRay::UpdateCameraDebugSettings(float fov, float y, float z) {
   CGuiCamera::UCameraParms parms = xa0_camera->GetParms();
@@ -419,6 +437,15 @@ void CHudDecoInterfaceScan::Update(float dt, const CStateManager& mgr) {
   x10_loadedScanHudFlat->Update(dt);
   UpdateScanDisplay(mgr, dt);
 }
+
+#ifdef TARGET_PC
+void CHudDecoInterfaceScan::PortApplyHudLag() {
+  x244_camera->SetHudO2WTransform(
+      CSamusHud::BuildFinalCameraTransform(x1e4_rotation, x1f4_pivotPosition + x200_offset,
+                                           x20c_camPos),
+      x20c_camPos);
+}
+#endif
 
 void CHudDecoInterfaceScan::Draw() const {
   x18_scanDisplay.Draw();
@@ -656,6 +683,15 @@ void CHudDecoInterfaceThermal::Update(float dt, const CStateManager& mgr) {
       x2c_camPos);
   x7c_basewidget_reticle->SetO2PTransform(CTransform4f(x38_reticuleXf, x5c_reticulePosition));
 }
+
+#ifdef TARGET_PC
+void CHudDecoInterfaceThermal::PortApplyHudLag() {
+  x74_camera->SetHudO2WTransform(
+      CSamusHud::BuildFinalCameraTransform(x4_rotation, x14_pivotPosition + x20_offset, x2c_camPos),
+      x2c_camPos);
+  x7c_basewidget_reticle->SetO2PTransform(CTransform4f(x38_reticuleXf, x5c_reticulePosition));
+}
+#endif
 
 void CHudDecoInterfaceThermal::UpdateCameraDebugSettings(float fov, float y, float z) {
   CGuiCamera::UCameraParms parms = x74_camera->GetParms();

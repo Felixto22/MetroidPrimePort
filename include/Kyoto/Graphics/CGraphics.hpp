@@ -332,6 +332,8 @@ public:
   // behind the last tick (the game sets it while drawing, 0 otherwise).
   static void SetSimTimePresentLag(float seconds);
   static float GetSimTimePresentLag();
+  // Port: seconds GetSecondsMod900 lags by during a smooth-frames draw.
+  static void SetRenderTimePresentLag(float seconds);
   // Seconds the last TickSimTime added.
   static float GetLastSimTimeStep();
   static const CProjectionState& GetProjectionState();

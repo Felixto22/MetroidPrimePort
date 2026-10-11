@@ -352,7 +352,12 @@ void CActor::Render(const CStateManager& mgr) const {
       if (xe5_29_globalTimeProvider) {
         RenderInternal(mgr);
       } else {
-        const float timeSince = CGraphics::GetSecondsMod900() - xbc_time;
+        float timeSince = CGraphics::GetSecondsMod900() - xbc_time;
+#ifdef TARGET_PC
+        // The smooth-frames clock lag can put the draw just before xbc_time.
+        if (timeSince < 0.f && timeSince > -(1.f / 60.f))
+          timeSince = 0.f;
+#endif
         CTimeProvider tp(CMath::FastFmod(timeSince, 900.f));
         RenderInternal(mgr);
       }

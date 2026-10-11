@@ -1108,10 +1108,16 @@ int CMain::RsMain(int argc, const char* const* argv) {
           interpolation = -1.f;
         PortDebug::PresentOverride(interpolation);
         CCameraManager::SetPresentationInterpolation(interpolation);
+        // The render clock steps 1/60 s per tick (TickRenderTimings above).
+        CGraphics::SetRenderTimePresentLag(
+            interpolation >= 0.f && interpolation < 1.f && PortDebug::ParticleInterpolation()
+                ? (1.f - interpolation) / 60.f
+                : 0.f);
         aurora::phase::set(aurora::phase::Main, "game draw");
         archSupport->GetIOWinManager().Draw();
         CCameraManager::SetPresentationInterpolation(-1.f);
         CGraphics::SetSimTimePresentLag(0.f);
+        CGraphics::SetRenderTimePresentLag(0.f);
         PortSpeedrunTimer::Draw();
         DrawDebugMetrics(t1, archSupport->GetStopwatch2());
 

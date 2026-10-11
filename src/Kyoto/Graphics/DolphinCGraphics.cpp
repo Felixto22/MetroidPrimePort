@@ -1452,6 +1452,7 @@ void CGraphics::TickRenderTimings(uint ticks) {
 namespace {
 uint sLastSimTickAdd = 0;
 double sSimTimePresentLag = 0.0;
+double sRenderTimePresentLag = 0.0;
 } // namespace
 
 void CGraphics::TickSimTime(float dt) {
@@ -1471,6 +1472,8 @@ void CGraphics::SetSimTimePresentLag(float seconds) { sSimTimePresentLag = secon
 
 float CGraphics::GetSimTimePresentLag() { return static_cast< float >(sSimTimePresentLag); }
 
+void CGraphics::SetRenderTimePresentLag(float seconds) { sRenderTimePresentLag = seconds; }
+
 float CGraphics::GetLastSimTimeStep() {
   return static_cast< float >(static_cast< double >(sLastSimTickAdd) / 600.0);
 }
@@ -1478,6 +1481,14 @@ float CGraphics::GetLastSimTimeStep() {
 float CGraphics::GetSecondsMod900() {
   if (mpExternalTimeProvider != nullptr) {
     return mpExternalTimeProvider->GetSecondsMod900();
+  }
+  // Port: during a smooth-frames draw the GUI/HUD clock is read where the
+  // presented frame sits, (1 - t) ticks behind the last tick.
+  if (sRenderTimePresentLag > 0.0) {
+    double s = static_cast< double >(mSecondsMod900) - sRenderTimePresentLag;
+    if (s < 0.0)
+      s += 900.0;
+    return static_cast< float >(s);
   }
   return mSecondsMod900;
 }
