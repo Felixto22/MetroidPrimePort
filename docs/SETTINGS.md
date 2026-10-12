@@ -786,9 +786,12 @@ the flamethrower still step at 60 Hz.
 A frozen free camera for screenshots, entered from the pause menu's "Photo
 mode" row (works with touch), the Port binding "Photo mode" (F8 by default,
 rebindable on the Controls page), F1 > Game > "Photo mode (keys)", or the
-console's `photo`. It is refused, with a toast, outside gameplay, while Samus
-is dead and during a cutscene. Entering freezes the simulation and starts the
-free camera at the game camera; the HUD, arm cannon, helmet and visor effects
+console's `photo`. It is refused, with a toast, outside gameplay and while
+Samus is dead. It works during cutscenes too (the pause menu is not available
+then, so use F8, the F1 button or `photo on`): the cutscene freezes where it
+is, the free camera starts at the cinematic camera's view, and leaving resumes
+the cutscene from the same frame, without skipping it. Entering freezes the
+simulation and starts the free camera at the game camera; the HUD, arm cannon, helmet and visor effects
 are hidden. Leaving restores all of them, and the free camera and freeze
 states the session had before.
 

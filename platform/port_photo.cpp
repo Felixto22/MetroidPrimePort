@@ -94,10 +94,6 @@ bool CanEnter(CStateManager& mgr, std::string& why) {
     why = "Samus is dead";
     return false;
   }
-  if (mgr.GetCameraManager()->IsInCinematicCamera()) {
-    why = "a cutscene is playing";
-    return false;
-  }
   if (mgr.GetDeferredStateTransition() != kSMT_InGame) {
     why = "the game is changing screens";
     return false;
