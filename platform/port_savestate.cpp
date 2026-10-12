@@ -899,11 +899,6 @@ bool ResumeAccept(uint64_t cardSerial, uint32_t& fileIdx) {
   return true;
 }
 
-void ResumeDecline() {
-  RemoveResumeFile();
-  SetMessage("Resume state deleted");
-}
-
 bool RequestResumeLoad() {
   if (PortDebug::StateManager() == nullptr) {
     SetMessage("Can't load the resume state: no game running");

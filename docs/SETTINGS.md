@@ -449,7 +449,7 @@ other `X:\Users\<name>`: `X:\Users\<user>`); the
   where you left off?" with the room and time; Yes (A or Start, D-pad
   left/right to choose) starts the file it came from and loads the state like a
   save state (with `savestate_room_state` the room keeps its enemies and doors as saved; boss progress is not kept),
-  No deletes it; B only dismisses the prompt and keeps the file. Yes deletes it once Samus is placed. Nothing is written
+  No dismisses the prompt and keeps the file; B does nothing. Yes deletes it once Samus is placed. Nothing is written
   (and a previous resume file stays) on the title screen or before the first
   safe point of a session.
   A resume from another card, randomizer seed or Archipelago session is never

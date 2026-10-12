@@ -186,8 +186,6 @@ bool ResumeOffer(ResumeInfo& info);
 // with. The file is deleted once Samus is placed. False if the file is gone
 // or from another game or card.
 bool ResumeAccept(uint64_t cardSerial, uint32_t& fileIdx);
-// No: deletes the file.
-void ResumeDecline();
 // Console: load the resume state from inside a game; delete it; one line.
 bool RequestResumeLoad();
 void ResumeClear();

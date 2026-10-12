@@ -2246,21 +2246,17 @@ void CFrontEndUI::ProcessUserInput(const CFinalInput& input, CArchitectureQueue&
       if (input.PDPLeft() || input.PDPRight() || input.PDPUp() || input.PDPDown()) {
         sResumeYes = !sResumeYes;
         PlayAdvanceSfx();
-      } else if (input.PA() || input.PStart() || input.PB()) {
+      } else if (input.PA() || input.PStart()) {
+        // Only an explicit choice answers; B (Android's back gesture, a stray
+        // touch) does nothing. No keeps the state: the next play replaces it.
         PlayAdvanceSfx();
-        if (input.PB()) {
-          // B only dismisses: a stray press (Android's back gesture, a touch
-          // button) must not throw the state away. "No" deletes it.
-          fprintf(stderr, "[resume] prompt dismissed; state kept\n");
-          sResumeStage = kRS_Done;
-        } else if (sResumeYes) {
+        if (sResumeYes) {
           fprintf(stderr, "[resume] prompt accepted\n");
           sResumeStage = kRS_Accepting;
           sResumeFrames = 0;
         } else {
-          fprintf(stderr, "[resume] prompt declined\n");
+          fprintf(stderr, "[resume] prompt dismissed; state kept\n");
           sResumeStage = kRS_Done;
-          PortSaveState::ResumeDecline();
         }
       }
     }
