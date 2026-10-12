@@ -451,9 +451,11 @@ other `X:\Users\<name>`: `X:\Users\<user>`); the
   so and starts on No. On Android the write runs from the system's
   pause notification itself, not from the game loop, which the system may block
   before it runs. The file is written to a temp file and renamed. It also records the memory card, file slot and the randomizer seed
-  or Archipelago session. At the next launch the title screen asks "Resume
-  where you left off?" with the room and time; Yes (A or Start, D-pad
-  left/right to choose) starts the file it came from and loads the state like a
+  or Archipelago session. At the next launch a window in the middle of the
+  screen asks "Resume where you left off?" with the room and time, from the
+  opening logos on (it holds the attract movie off). Tap or click Yes or No,
+  or use the pad or keyboard (D-pad left/right to choose, A or Start to
+  answer); Yes starts the file it came from and loads the state like a
   save state (with `savestate_room_state` the room keeps its enemies and doors as saved; boss progress is not kept),
   No dismisses the prompt and keeps the file; B does nothing. The file stays after Yes too, until the next safe point replaces it. Nothing is written
   (and a previous resume file stays) on the title screen or before the first

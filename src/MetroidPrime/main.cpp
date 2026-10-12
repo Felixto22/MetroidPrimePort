@@ -1032,14 +1032,17 @@ int CMain::RsMain(int argc, const char* const* argv) {
         }
         if (sCaptureWindow != nullptr) {
           const bool focused = SDL_GetKeyboardFocus() == sCaptureWindow;
+          PortSaveState::ResumeInfo promptInfo;
+          bool promptYes = true;
+          const bool resumePrompt = PortSaveState::ResumePromptShown(promptInfo, promptYes);
           const bool wantRelative = PortDebug::MouseAim() && PortDebug::MouseGameplayActive() &&
-                                    !PortDebug::Visible() && !PortPhoto::PanelWantsCursor() && focused;
+                                    !PortDebug::Visible() && !PortPhoto::PanelWantsCursor() && !resumePrompt && focused;
 #ifdef __ANDROID__
           // A free (hidden) cursor flung to the screen edge brings up the nav bar
           // or taskbar, so keep the pointer captured unless the overlay is open.
           // Photo mode keeps it free even with the panel hidden: taps arrive as
           // mouse events, and a captured pointer has no position for its touch bar.
-          const bool wantLock = !PortDebug::Visible() && !PortPhoto::Active() && focused;
+          const bool wantLock = !PortDebug::Visible() && !PortPhoto::Active() && !resumePrompt && focused;
 #else
           const bool wantLock = wantRelative;
 #endif
@@ -1051,7 +1054,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
           // which is navigated with the mouse (and the controller), and while the
           // clickable update toast is up and the mouse isn't captured.
           const bool wantCursor =
-              (PortDebug::Visible() || PortPhoto::PanelWantsCursor() ||
+              (PortDebug::Visible() || PortPhoto::PanelWantsCursor() || resumePrompt ||
                (PortDebug::UpdateToastShowing() && !wantLock)) &&
               SDL_GetKeyboardFocus() == sCaptureWindow;
           if (wantCursor) {

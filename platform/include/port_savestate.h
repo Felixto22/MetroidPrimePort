@@ -193,6 +193,15 @@ bool ResumeOffer(ResumeInfo& info);
 // after the resume can resume again. False if the file is gone or from
 // another game or card.
 bool ResumeAccept(uint64_t cardSerial, uint32_t& fileIdx);
+
+// The prompt's window (platform/debug_ui.cpp draws it, ImGui buttons answer).
+// Any thread. CFrontEndUI keeps the prompt current every tick (nullptr: none)
+// and takes the answer a button gave; pad and keyboard answers it reads itself.
+void SetResumePrompt(const ResumeInfo* info, bool yesSelected);
+bool ResumePromptShown(ResumeInfo& out, bool& yesSelected);
+void AnswerResumePrompt(bool yes);
+// -1 none, 0 No, 1 Yes. Clears it.
+int TakeResumePromptAnswer();
 // Console: load the resume state from inside a game; delete it; one line.
 bool RequestResumeLoad();
 void ResumeClear();

@@ -1622,12 +1622,16 @@ bool sResumeYes = true;
 int sResumeFrames = 0;
 PortSaveState::ResumeInfo sResumeInfo;
 
-std::wstring ResumeWide(const std::string& text) {
-  std::wstring out;
-  for (const char c : text) {
-    out += static_cast< unsigned char >(c) < 0x80 ? static_cast< wchar_t >(c) : L'?';
+// Pad, keyboard and the window's buttons all end here.
+void AnswerResume(bool yes) {
+  if (yes) {
+    fprintf(stderr, "[resume] prompt accepted\n");
+    sResumeStage = kRS_Accepting;
+    sResumeFrames = 0;
+  } else {
+    fprintf(stderr, "[resume] prompt dismissed; state kept\n");
+    sResumeStage = kRS_Done;
   }
-  return out;
 }
 } // namespace
 #endif
@@ -1672,6 +1676,7 @@ CFrontEndUI::CFrontEndUI()
   sResumeStage = kRS_Check;
   sResumeYes = true;
   sResumeFrames = 0;
+  PortSaveState::SetResumePrompt(nullptr, false);
 #endif
 #ifndef TARGET_PC
   // Port: the options persist across launches and save files (issue #45).
@@ -1766,17 +1771,20 @@ CIOWin::EMessageReturn CFrontEndUI::Update(float dt, CArchitectureQueue& queue) 
 #ifdef TARGET_PC
   if (!PortDebug::FastBoot() && x14_phase == kP_DisplayFrontEnd) {
     const bool onTitle = IsInScreenNotTransitioning(kS_Title);
+    // The prompt lives from the opening logos through the move to the title.
+    const auto resumeScreen = [](EScreen screen) { return screen == kS_OpenCredits || screen == kS_Title; };
+    const bool inResumeFlow = resumeScreen(x50_curScreen) && resumeScreen(x54_nextScreen);
     if (sResumeStage == kRS_Check) {
       // The Archipelago identity is known a moment after launch: look again
-      // while the title waits.
-      if (onTitle && (sResumeFrames++ % 15) == 0 && PortSaveState::ResumeOffer(sResumeInfo)) {
+      // while the logos and the title wait.
+      if (inResumeFlow && (sResumeFrames++ % 15) == 0 && PortSaveState::ResumeOffer(sResumeInfo)) {
         sResumeStage = kRS_Prompt;
         // A state that already crashed once after resuming starts on No.
         sResumeYes = !sResumeInfo.crashedAgain;
       } else if (!onTitle && x50_curScreen != kS_OpenCredits && x50_curScreen != kS_AttractMovie) {
         sResumeStage = kRS_Done;
       }
-    } else if (sResumeStage == kRS_Prompt && !onTitle) {
+    } else if (sResumeStage == kRS_Prompt && !inResumeFlow) {
       sResumeStage = kRS_Done;
     } else if (sResumeStage == kRS_Accepting) {
       // Passing through file select is not shown (Draw is black): finish the
@@ -1785,6 +1793,8 @@ CIOWin::EMessageReturn CFrontEndUI::Update(float dt, CArchitectureQueue& queue) 
         CompleteStateTransition();
       } else if (onTitle) {
         StartStateTransition(kS_FileSelect);
+      } else if (x50_curScreen == kS_OpenCredits) {
+        StartStateTransition(kS_Title);
       } else if (IsInScreenNotTransitioning(kS_FileSelect)) {
         const SNewFileSelectFrame* files = xe0_frontendCardFrme.get();
         const CSaveGameScreen* saveUI = xdc_saveUI.get();
@@ -1810,6 +1820,19 @@ CIOWin::EMessageReturn CFrontEndUI::Update(float dt, CArchitectureQueue& queue) 
           sResumeStage = kRS_Done;
         }
       }
+    }
+    // The window's buttons answer like A on the highlighted one.
+    if (sResumeStage == kRS_Prompt) {
+      const int answer = PortSaveState::TakeResumePromptAnswer();
+      if (answer >= 0) {
+        sResumeYes = answer == 1;
+        AnswerResume(sResumeYes);
+      }
+    }
+    if (sResumeStage == kRS_Prompt) {
+      PortSaveState::SetResumePrompt(&sResumeInfo, sResumeYes);
+    } else {
+      PortSaveState::SetResumePrompt(nullptr, false);
     }
   }
 #endif
@@ -2243,23 +2266,14 @@ void CFrontEndUI::ProcessUserInput(const CFinalInput& input, CArchitectureQueue&
   if (sResumeStage == kRS_Accepting)
     return;
   if (sResumeStage == kRS_Prompt) {
-    if (IsInScreenNotTransitioning(kS_Title)) {
-      if (input.PDPLeft() || input.PDPRight() || input.PDPUp() || input.PDPDown()) {
-        sResumeYes = !sResumeYes;
-        PlayAdvanceSfx();
-      } else if (input.PA() || input.PStart()) {
-        // Only an explicit choice answers; B (Android's back gesture, a stray
-        // touch) does nothing. No keeps the state: the next play replaces it.
-        PlayAdvanceSfx();
-        if (sResumeYes) {
-          fprintf(stderr, "[resume] prompt accepted\n");
-          sResumeStage = kRS_Accepting;
-          sResumeFrames = 0;
-        } else {
-          fprintf(stderr, "[resume] prompt dismissed; state kept\n");
-          sResumeStage = kRS_Done;
-        }
-      }
+    if (input.PDPLeft() || input.PDPRight() || input.PDPUp() || input.PDPDown()) {
+      sResumeYes = !sResumeYes;
+      PlayAdvanceSfx();
+    } else if (input.PA() || input.PStart()) {
+      // Only an explicit choice answers; B (Android's back gesture, a stray
+      // touch) does nothing. No keeps the state: the next play replaces it.
+      PlayAdvanceSfx();
+      AnswerResume(sResumeYes);
     }
     return;
   }
@@ -2356,58 +2370,6 @@ void CFrontEndUI::ProcessUserInput(const CFinalInput& input, CArchitectureQueue&
   }
 }
 
-#ifdef TARGET_PC
-void CFrontEndUI::DrawResumePrompt() const {
-  const CViewport viewport = CGraphics::GetViewport();
-  char when[32] = "";
-  const std::time_t at = static_cast< std::time_t >(sResumeInfo.savedAt);
-  if (const std::tm* tm = std::localtime(&at)) {
-    std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M", tm);
-  }
-  std::string where = sResumeInfo.world;
-  if (!where.empty() && !sResumeInfo.room.empty()) {
-    where += " - ";
-  }
-  where += sResumeInfo.room;
-  const std::wstring whereText = ResumeWide(where) + L"\n";
-  const std::wstring whenText = ResumeWide(when) + L"\n";
-
-  CTextExecuteBuffer text;
-  text.AddWordWrapping(true);
-  // The top strip is the only part of the title art the logo and the prompt do not fight over.
-  text.BeginBlock(0, 16, viewport.mWidth, viewport.mHeight - 16, false, kTD_Horizontal,
-                  kJustification_Center, kVerticalJustification_Top);
-  text.AddFont(TToken< CRasterFont >(*gpDefaultFont));
-  const CTextColor selected(255, 255, 255, 255);
-  const CTextColor unselected(96, 96, 96, 255);
-  text.AddColor(kCT_Foreground, selected);
-  if (sResumeInfo.crashedAgain) {
-    text.AddString(rstl::wstring_l(L"The game closed unexpectedly again after resuming here.\nResume anyway?\n"));
-  } else if (sResumeInfo.afterCrash) {
-    text.AddString(rstl::wstring_l(L"The game closed unexpectedly.\nResume where you left off?\n"));
-  } else {
-    text.AddString(rstl::wstring_l(L"Resume where you left off?\n"));
-  }
-  text.AddString(rstl::wstring_l(whereText.c_str()));
-  text.AddString(rstl::wstring_l(whenText.c_str()));
-  text.AddColor(kCT_Foreground, sResumeYes ? selected : unselected);
-  text.AddString(rstl::wstring_l(L"Yes     "));
-  text.AddColor(kCT_Foreground, sResumeYes ? unselected : selected);
-  text.AddString(rstl::wstring_l(L"No"));
-  text.EndBlock();
-
-  gpRender->SetViewportOrtho(false, -4096.f, 4096.f);
-  CGraphics::SetBlendMode(kBM_Blend, kBF_SrcAlpha, kBF_InvSrcAlpha, kLO_Clear);
-  CGraphics::SetCullMode(kCM_None);
-  const CTransform4f xf =
-      CTransform4f::FromColumns(CVector3f::Right(), CVector3f::Forward(), CVector3f::Down(),
-                                CVector3f(0.f, 0.f, float(viewport.mHeight)));
-  CGraphics::SetModelMatrix(xf);
-  text.BuildRenderBuffer().Render(CColor::White(), 0.f);
-  CGraphics::SetCullMode(kCM_Front);
-}
-#endif
-
 void CFrontEndUI::Draw() const {
   if (x14_phase < kP_DisplayFrontEnd)
     return;
@@ -2464,11 +2426,6 @@ void CFrontEndUI::Draw() const {
       xe4_fusionBonusFrme->Draw();
     }
   }
-#ifdef TARGET_PC
-  if (sResumeStage == kRS_Prompt && IsInScreenNotTransitioning(kS_Title)) {
-    DrawResumePrompt();
-  }
-#endif
   if (x64_pressStartAlpha > 0.f && x38_pressStart.GetObject() != nullptr) {
     CTexture* tex = x38_pressStart.GetObject();
     short width = tex->GetWidth();

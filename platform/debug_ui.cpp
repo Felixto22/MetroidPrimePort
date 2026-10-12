@@ -2532,8 +2532,12 @@ unsigned MouseWeaponButtons(unsigned held) {
                                MouseCaptured() && !Visible(), held);
 }
 unsigned MouseMenuButtons(unsigned held, bool focused) {
+  // The resume prompt's buttons take the click; the game must not also read it as A.
+  PortSaveState::ResumeInfo promptInfo;
+  bool promptYes = true;
+  const bool resumePrompt = PortSaveState::ResumePromptShown(promptInfo, promptYes);
   return sMouseMenuGate.Poll(MouseAim() && MouseButtons() && !MouseGameplayActive() &&
-                                 !Visible() && focused,
+                                 !Visible() && !resumePrompt && focused,
                              held);
 }
 void NoteMouseButton(bool synthetic, unsigned mask, bool down) {
@@ -5353,6 +5357,80 @@ void DrawPhotoUI() {
     touchWindows.push_back(PhotoWindowRect(viewport));
   }
   ImGui::End();
+}
+
+// Quick resume's question (CFrontEndUI keeps the decision; the pad and keyboard answer on the game
+// side). A window in the middle of the screen that draws with the F1 overlay hidden and takes touch
+// and mouse; ImGui navigation stays off so the pad is not read twice.
+void DrawResumePrompt() {
+  PortSaveState::ResumeInfo info;
+  bool yesSelected = true;
+  if (!PortSaveState::ResumePromptShown(info, yesSelected) || OverlayVisible()) {
+    return;
+  }
+  const ImGuiViewport* viewport = ImGui::GetMainViewport();
+  const float scale = sUiAppliedScale;
+  ImGui::GetBackgroundDrawList(const_cast<ImGuiViewport*>(viewport))
+      ->AddRectFilled(viewport->Pos, ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y),
+                      IM_COL32(0, 0, 0, 150));
+  const float width = std::min(viewport->Size.x - 24.f * scale, 440.f * scale);
+  ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.5f),
+                          ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+  ImGui::SetNextWindowSize(ImVec2(width, 0.f));
+  ImGui::SetNextWindowBgAlpha(0.92f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.f * scale, 16.f * scale));
+  if (ImGui::Begin("##resume-prompt", nullptr,
+                   ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav |
+                       ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing)) {
+    const char* title = "Resume where you left off?";
+    if (info.crashedAgain) {
+      title = "The game closed unexpectedly again after resuming here.\nResume anyway?";
+    } else if (info.afterCrash) {
+      title = "The game closed unexpectedly.\nResume where you left off?";
+    }
+    ImGui::SetWindowFontScale(1.3f);
+    ImGui::PushTextWrapPos(0.f);
+    ImGui::TextUnformatted(title);
+    ImGui::PopTextWrapPos();
+    ImGui::SetWindowFontScale(1.f);
+    ImGui::Spacing();
+    std::string where = info.world;
+    if (!where.empty() && !info.room.empty()) {
+      where += " - ";
+    }
+    where += info.room;
+    ImGui::TextWrapped("%s", where.c_str());
+    char when[32] = "";
+    const std::time_t at = static_cast<std::time_t>(info.savedAt);
+    if (const std::tm* tm = std::localtime(&at)) {
+      std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M", tm);
+    }
+    ImGui::TextDisabled("%s", when);
+    ImGui::Spacing();
+    ImGui::Spacing();
+    const float gap = ImGui::GetStyle().ItemSpacing.x;
+    const ImVec2 button((ImGui::GetContentRegionAvail().x - gap) * 0.5f, 56.f * scale);
+    for (int i = 0; i < 2; ++i) {
+      const bool yes = i == 0;
+      const bool highlighted = yes == yesSelected;
+      if (i > 0) {
+        ImGui::SameLine();
+      }
+      if (highlighted) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+      }
+      ImGui::SetWindowFontScale(1.2f);
+      if (ImGui::Button(yes ? "Yes" : "No", button)) {
+        PortSaveState::AnswerResumePrompt(yes);
+      }
+      ImGui::SetWindowFontScale(1.f);
+      if (highlighted) {
+        ImGui::PopStyleColor();
+      }
+    }
+  }
+  ImGui::End();
+  ImGui::PopStyleVar();
 }
 
 void DrawUpdateToast() {
@@ -9429,6 +9507,7 @@ void DrawUI() {
   DrawShaderCompilationToast();
   DrawUpdateToast();
   DrawPhotoUI();
+  DrawResumePrompt();
   if (sTouchLayoutSavePending.exchange(false, std::memory_order_acq_rel)) {
     MarkDirty();
     SaveSettings();
@@ -9714,7 +9793,11 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_org_metroidprime_port_TouchControlsView_nativeDebugOverlayVisible(JNIEnv*, jclass) {
   // Photo mode is touched like the F1 overlay: the controls hide and leave the touches to SDL, where
   // its panel takes the ones on it and the rest fly the camera (PhotoTouchEvent).
-  return PortDebug::OverlayVisible() || PortPhoto::Active() ? JNI_TRUE : JNI_FALSE;
+  PortSaveState::ResumeInfo promptInfo;
+  bool promptYes = true;
+  return PortDebug::OverlayVisible() || PortPhoto::Active() || PortSaveState::ResumePromptShown(promptInfo, promptYes)
+             ? JNI_TRUE
+             : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL

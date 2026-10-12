@@ -1002,4 +1002,45 @@ std::string ResumeStatus() {
          when + (ResumeMatches(meta, current) ? "" : " (another game's)");
 }
 
+namespace {
+std::mutex sPromptMutex;
+bool sPromptShown = false;
+bool sPromptYes = true;
+int sPromptAnswer = -1;
+ResumeInfo sPromptInfo;
+} // namespace
+
+void SetResumePrompt(const ResumeInfo* info, bool yesSelected) {
+  std::lock_guard< std::mutex > lock(sPromptMutex);
+  sPromptShown = info != nullptr;
+  if (info != nullptr) {
+    sPromptInfo = *info;
+    sPromptYes = yesSelected;
+  } else {
+    sPromptAnswer = -1;
+  }
+}
+
+bool ResumePromptShown(ResumeInfo& out, bool& yesSelected) {
+  std::lock_guard< std::mutex > lock(sPromptMutex);
+  if (!sPromptShown)
+    return false;
+  out = sPromptInfo;
+  yesSelected = sPromptYes;
+  return true;
+}
+
+void AnswerResumePrompt(bool yes) {
+  std::lock_guard< std::mutex > lock(sPromptMutex);
+  if (sPromptShown && sPromptAnswer < 0)
+    sPromptAnswer = yes ? 1 : 0;
+}
+
+int TakeResumePromptAnswer() {
+  std::lock_guard< std::mutex > lock(sPromptMutex);
+  const int answer = sPromptAnswer;
+  sPromptAnswer = -1;
+  return answer;
+}
+
 } // namespace PortSaveState
