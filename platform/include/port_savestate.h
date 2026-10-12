@@ -244,3 +244,14 @@ bool TakeFrontEndReload();
 void ReloadModsNow();
 
 } // namespace PortSaveState
+
+// The prompt starts with the Nintendo splash. Splashes and the front end both
+// drive it from their tick and input (src/MetroidPrime/CFrontEndUI.cpp).
+// Tick: poll for an offer, take a button's answer, refresh the window.
+// Input: pad/keyboard (controller 0); true if consumed. Sound: true once after
+// a choice moved or answered. Accepted: Yes was chosen and the start is under way.
+class CFinalInput;
+void PortResumePromptTick();
+bool PortResumePromptInput(const CFinalInput& input);
+bool PortResumePromptTakeSound();
+bool PortResumePromptAccepted();

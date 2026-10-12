@@ -228,6 +228,7 @@ bool sSkippableCutscenes = false;
 bool sRevision100Compatibility = false;
 std::string sTextLanguage;
 int sElevatorRide = PortDebug::kElevatorRide_Original;
+int sBootLogos = PortDebug::kBootLogos_Skippable;
 bool sSaveStateHotkeys = true;
 bool sQuickResume = true;
 bool sSaveStateRoomState = true;
@@ -623,6 +624,11 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sElevatorRide = mode >= PortDebug::kElevatorRide_Original && mode <= PortDebug::kElevatorRide_Skip
                         ? mode
                         : PortDebug::kElevatorRide_Original;
+  } else if (key == "boot_logos") {
+    const int mode = std::atoi(value.c_str());
+    sBootLogos = mode >= PortDebug::kBootLogos_Show && mode <= PortDebug::kBootLogos_Off
+                     ? mode
+                     : PortDebug::kBootLogos_Skippable;
   } else if (key == "savestate_hotkeys") {
     sSaveStateHotkeys = ParseBool(value);
   } else if (key == "quick_resume") {
@@ -817,6 +823,7 @@ std::string SettingsText() {
   file << "revision_100_compatibility=" << (sRevision100Compatibility ? 1 : 0) << '\n';
   file << "text_language=" << sTextLanguage << '\n';
   file << "elevator_ride=" << sElevatorRide << '\n';
+  file << "boot_logos=" << sBootLogos << '\n';
   file << "savestate_hotkeys=" << (sSaveStateHotkeys ? 1 : 0) << '\n';
   file << "quick_resume=" << (sQuickResume ? 1 : 0) << '\n';
   file << "savestate_room_state=" << (sSaveStateRoomState ? 1 : 0) << '\n';
@@ -1745,6 +1752,17 @@ void SetElevatorRide(EElevatorRide mode) {
   EnsureInitialized();
   sElevatorRide = mode >= kElevatorRide_Original && mode <= kElevatorRide_Skip ? mode
                                                                                : kElevatorRide_Original;
+  MarkDirty();
+}
+
+EBootLogos BootLogos() {
+  EnsureInitialized();
+  return sOriginalExperience ? kBootLogos_Show : static_cast< EBootLogos >(sBootLogos);
+}
+
+void SetBootLogos(EBootLogos mode) {
+  EnsureInitialized();
+  sBootLogos = mode >= kBootLogos_Show && mode <= kBootLogos_Off ? mode : kBootLogos_Skippable;
   MarkDirty();
 }
 
@@ -6018,6 +6036,13 @@ void DrawCutscenesSection() {
            "far faster; Fast ends it about 2 s in, once the next area is loaded; Skip shows black "
            "until the area is loaded. The cinematic played in the elevator room before the ride is "
            "not affected.");
+  int bootLogos = sBootLogos;
+  if (ImGui::Combo("Boot logos", &bootLogos, "Show\0Skip with A or Start\0Off\0")) {
+    SetBootLogos(static_cast< EBootLogos >(bootLogos));
+  }
+  ItemHelp("The Nintendo, Retro and Dolby logos at launch. Skip with A or Start ends the current "
+           "logo with a short fade; Off goes straight to the opening (which A or Start skips to "
+           "the title). Applies at the next launch.");
   if (ImGui::SliderInt("Scan speed", &sScanSpeed, kScanSpeedMin, kScanSpeedMax, "%d%%",
                        ImGuiSliderFlags_AlwaysClamp)) {
     MarkDirty();

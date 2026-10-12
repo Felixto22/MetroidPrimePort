@@ -1616,9 +1616,15 @@ void CFrontEndUI::SFusionBonusFrame::DoOptionsCancel(CGuiTableGroup* caller) {
 // through file select to start the file it came from, as a press of A on that
 // slot would; the state is installed when the game starts. No deletes it.
 namespace {
-enum EResumeStage { kRS_Check, kRS_Prompt, kRS_Accepting, kRS_Done };
+// The prompt starts with the Nintendo splash (CSplashScreen drives it through
+// the Port functions below) and goes on through the front end's loading. Starting
+// is the game start after Yes: black, with the file-select->game movie skipped.
+enum EResumeStage { kRS_Check, kRS_Prompt, kRS_Accepting, kRS_Starting, kRS_Done };
 EResumeStage sResumeStage = kRS_Check;
 bool sResumeYes = true;
+bool sResumeSound = false;
+// Whether the offer may still appear (the opening logos and the title).
+bool sResumeInFlow = true;
 int sResumeFrames = 0;
 PortSaveState::ResumeInfo sResumeInfo;
 
@@ -1634,6 +1640,63 @@ void AnswerResume(bool yes) {
   }
 }
 } // namespace
+
+void PortResumePromptTick() {
+  if (sResumeStage == kRS_Check) {
+    // The Archipelago identity is known a moment after launch: look again
+    // while the splashes, loading, logos and title wait.
+    if (sResumeInFlow && (sResumeFrames++ % 15) == 0 && PortSaveState::ResumeOffer(sResumeInfo)) {
+      sResumeStage = kRS_Prompt;
+      // A state that already crashed once after resuming starts on No.
+      sResumeYes = !sResumeInfo.crashedAgain;
+    }
+  }
+  // The window's buttons answer like A on the highlighted one.
+  if (sResumeStage == kRS_Prompt) {
+    const int answer = PortSaveState::TakeResumePromptAnswer();
+    if (answer >= 0) {
+      sResumeYes = answer == 1;
+      AnswerResume(sResumeYes);
+    }
+  }
+  if (sResumeStage == kRS_Prompt) {
+    PortSaveState::SetResumePrompt(&sResumeInfo, sResumeYes);
+  } else {
+    PortSaveState::SetResumePrompt(nullptr, false);
+  }
+}
+
+bool PortResumePromptInput(const CFinalInput& input) {
+  if (input.ControllerNumber() != 0) {
+    return false;
+  }
+  if (sResumeStage == kRS_Accepting || sResumeStage == kRS_Starting) {
+    return true;
+  }
+  if (sResumeStage != kRS_Prompt) {
+    return false;
+  }
+  if (input.PDPLeft() || input.PDPRight() || input.PDPUp() || input.PDPDown()) {
+    sResumeYes = !sResumeYes;
+    sResumeSound = true;
+  } else if (input.PA() || input.PStart()) {
+    // Only an explicit choice answers; B (Android's back gesture, a stray
+    // touch) does nothing. No keeps the state: the next play replaces it.
+    sResumeSound = true;
+    AnswerResume(sResumeYes);
+  }
+  return true;
+}
+
+bool PortResumePromptTakeSound() {
+  const bool sound = sResumeSound;
+  sResumeSound = false;
+  return sound;
+}
+
+bool PortResumePromptAccepted() {
+  return sResumeStage == kRS_Accepting || sResumeStage == kRS_Starting;
+}
 #endif
 
 CFrontEndUI::CFrontEndUI()
@@ -1673,10 +1736,18 @@ CFrontEndUI::CFrontEndUI()
   gpMain->ResetGameState();
   gpGameState->SetCurrentWorldId(skDefaultWorld.GetId());
 #ifdef TARGET_PC
-  sResumeStage = kRS_Check;
-  sResumeYes = true;
-  sResumeFrames = 0;
-  PortSaveState::SetResumePrompt(nullptr, false);
+  // The first front end of a launch keeps a prompt that began (or was answered)
+  // during the splashes; one built after a game ended starts over.
+  static bool sFrontEndBuilt = false;
+  if (sFrontEndBuilt) {
+    sResumeStage = kRS_Check;
+    sResumeYes = true;
+    sResumeSound = false;
+    sResumeInFlow = true;
+    sResumeFrames = 0;
+    PortSaveState::SetResumePrompt(nullptr, false);
+  }
+  sFrontEndBuilt = true;
 #endif
 #ifndef TARGET_PC
   // Port: the options persist across launches and save files (issue #45).
@@ -1769,24 +1840,20 @@ bool CFrontEndUI::PumpLoad() {
 
 CIOWin::EMessageReturn CFrontEndUI::Update(float dt, CArchitectureQueue& queue) {
 #ifdef TARGET_PC
-  if (!PortDebug::FastBoot() && x14_phase == kP_DisplayFrontEnd) {
-    const bool onTitle = IsInScreenNotTransitioning(kS_Title);
-    // The prompt lives from the opening logos through the move to the title.
+  if (!PortDebug::FastBoot()) {
+    const bool display = x14_phase == kP_DisplayFrontEnd;
+    const bool onTitle = display && IsInScreenNotTransitioning(kS_Title);
+    // The prompt lives from the first splash through the opening logos and the
+    // move to the title; loading counts as inside it.
     const auto resumeScreen = [](EScreen screen) { return screen == kS_OpenCredits || screen == kS_Title; };
-    const bool inResumeFlow = resumeScreen(x50_curScreen) && resumeScreen(x54_nextScreen);
-    if (sResumeStage == kRS_Check) {
-      // The Archipelago identity is known a moment after launch: look again
-      // while the logos and the title wait.
-      if (inResumeFlow && (sResumeFrames++ % 15) == 0 && PortSaveState::ResumeOffer(sResumeInfo)) {
-        sResumeStage = kRS_Prompt;
-        // A state that already crashed once after resuming starts on No.
-        sResumeYes = !sResumeInfo.crashedAgain;
-      } else if (!onTitle && x50_curScreen != kS_OpenCredits && x50_curScreen != kS_AttractMovie) {
-        sResumeStage = kRS_Done;
-      }
-    } else if (sResumeStage == kRS_Prompt && !inResumeFlow) {
+    const bool inResumeFlow = !display || (resumeScreen(x50_curScreen) && resumeScreen(x54_nextScreen));
+    sResumeInFlow = inResumeFlow;
+    if (display && sResumeStage == kRS_Check && !onTitle && x50_curScreen != kS_OpenCredits &&
+        x50_curScreen != kS_AttractMovie) {
       sResumeStage = kRS_Done;
-    } else if (sResumeStage == kRS_Accepting) {
+    } else if (display && sResumeStage == kRS_Prompt && !inResumeFlow) {
+      sResumeStage = kRS_Done;
+    } else if (display && sResumeStage == kRS_Accepting) {
       // Passing through file select is not shown (Draw is black): finish the
       // screen transitions at once, as fast boot does.
       if (x50_curScreen != x54_nextScreen) {
@@ -1811,6 +1878,9 @@ CIOWin::EMessageReturn CFrontEndUI::Update(float dt, CArchitectureQueue& queue) 
               PortSaveState::ResumeAccept(saveUI->GetCardSerial(), fileIdx)) {
             fprintf(stderr, "[resume] loading file %u\n", fileIdx);
             xdc_saveUI->StartGame(static_cast< int >(fileIdx));
+            // Black from here, and no file-select->game movie.
+            sResumeStage = kRS_Starting;
+            sResumeFrames = 0;
           } else {
             fprintf(stderr, "[resume] not accepted: file %u is %s or belongs to another game\n", sResumeInfo.fileIdx,
                     sResumeInfo.fileIdx < 3 && saveUI->GetGameData(sResumeInfo.fileIdx) != nullptr ? "present" : "empty");
@@ -1820,20 +1890,15 @@ CIOWin::EMessageReturn CFrontEndUI::Update(float dt, CArchitectureQueue& queue) 
           sResumeStage = kRS_Done;
         }
       }
-    }
-    // The window's buttons answer like A on the highlighted one.
-    if (sResumeStage == kRS_Prompt) {
-      const int answer = PortSaveState::TakeResumePromptAnswer();
-      if (answer >= 0) {
-        sResumeYes = answer == 1;
-        AnswerResume(sResumeYes);
+    } else if (sResumeStage == kRS_Starting) {
+      if (x14_phase == kP_ToPlayGame && x50_curScreen != x54_nextScreen) {
+        CompleteStateTransition(); // -> kP_ExitFrontEnd
+      } else if (++sResumeFrames > 1200) {
+        fprintf(stderr, "[resume] game start never followed; showing the front end\n");
+        sResumeStage = kRS_Done;
       }
     }
-    if (sResumeStage == kRS_Prompt) {
-      PortSaveState::SetResumePrompt(&sResumeInfo, sResumeYes);
-    } else {
-      PortSaveState::SetResumePrompt(nullptr, false);
-    }
+    PortResumePromptTick();
   }
 #endif
   // Port: MP_FAST_BOOT=1 drives the title screen through file select into a new
@@ -2247,6 +2312,15 @@ void CFrontEndUI::UpdateMovies(float dt) {
 }
 
 void CFrontEndUI::ProcessUserInput(const CFinalInput& input, CArchitectureQueue& queue) {
+#ifdef TARGET_PC
+  // The resume prompt answers during loading too, and ahead of the card check.
+  if (PortResumePromptInput(input)) {
+    if (PortResumePromptTakeSound()) {
+      PlayAdvanceSfx();
+    }
+    return;
+  }
+#endif
   if (gpMain->GetCardBusy())
     return;
   if (input.ControllerNumber() > 1)
@@ -2261,23 +2335,6 @@ void CFrontEndUI::ProcessUserInput(const CFinalInput& input, CArchitectureQueue&
     return;
   if (input.ControllerNumber() != 0)
     return;
-
-#ifdef TARGET_PC
-  if (sResumeStage == kRS_Accepting)
-    return;
-  if (sResumeStage == kRS_Prompt) {
-    if (input.PDPLeft() || input.PDPRight() || input.PDPUp() || input.PDPDown()) {
-      sResumeYes = !sResumeYes;
-      PlayAdvanceSfx();
-    } else if (input.PA() || input.PStart()) {
-      // Only an explicit choice answers; B (Android's back gesture, a stray
-      // touch) does nothing. No keeps the state: the next play replaces it.
-      PlayAdvanceSfx();
-      AnswerResume(sResumeYes);
-    }
-    return;
-  }
-#endif
 
   if (x50_curScreen != x54_nextScreen) {
     if (x54_nextScreen == kS_AttractMovie) {
@@ -2374,7 +2431,7 @@ void CFrontEndUI::Draw() const {
   if (x14_phase < kP_DisplayFrontEnd)
     return;
 #ifdef TARGET_PC
-  if (sResumeStage == kRS_Accepting)
+  if (sResumeStage == kRS_Accepting || sResumeStage == kRS_Starting)
     return; // black until the game starts
 #endif
 

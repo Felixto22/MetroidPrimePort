@@ -379,6 +379,12 @@
   no-model transition it stops all sound effects at the switch. The elevator
   room's own cinematic is not affected. `MP_SMOKE_ELEVATOR`'s `passed` line
   prints the ride's wall time.
+- Boot logos (F1 > Game > Cutscenes, `boot_logos`: 0 Show, 1 Skip with A or
+  Start, 2 Off; 1 by default, Show under Original experience) sets the
+  Nintendo, Retro and Dolby logos at launch. Skip with A or Start ends the
+  current logo with its 0.5 s fade out; Off goes straight to the opening
+  (which A or Start already skips to the title). Read at launch. The quick
+  resume prompt takes A and Start first while it is up.
 - F1 > Debug > Audio holds the audio switches and the MusyX voice list (collapsed), and F1 > Debug > Cheats holds the
   cheats: health, items, ammo, area and world teleport. The cheats stay hidden
   until Show cheats is ticked (`cheats`, off by default). Invulnerable
@@ -453,10 +459,12 @@ other `X:\Users\<name>`: `X:\Users\<user>`); the
   before it runs. The file is written to a temp file and renamed. It also records the memory card, file slot and the randomizer seed
   or Archipelago session. At the next launch a window in the middle of the
   screen asks "Resume where you left off?" with the room and time, from the
-  opening logos on (it holds the attract movie off). Tap or click Yes or No,
+  Nintendo splash on and through the other splashes, loading and opening logos
+  (it holds the attract movie off). Tap or click Yes or No,
   or use the pad or keyboard (D-pad left/right to choose, A or Start to
   answer); Yes starts the file it came from and loads the state like a
-  save state (with `savestate_room_state` the room keeps its enemies and doors as saved; boss progress is not kept),
+  save state, straight from black without the file-select movie (a Yes during a
+  splash skips the rest of the splashes; with `savestate_room_state` the room keeps its enemies and doors as saved; boss progress is not kept),
   No dismisses the prompt and keeps the file; B does nothing. The file stays after Yes too, until the next safe point replaces it. Nothing is written
   (and a previous resume file stays) on the title screen or before the first
   safe point of a session.

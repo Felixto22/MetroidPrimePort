@@ -464,7 +464,8 @@ CGameArchitectureSupport::CGameArchitectureSupport(COsContext& osContext)
   gpMain->ResetGameState();
   CIOWinManager& ioWinManager = x58_ioWinMgr;
   uint32_t bootWorld, bootArea;
-  if (!gpTweakGame->GetSplashScreensDisabled() && !PortDebug::BootWorld(bootWorld, bootArea)) {
+  if (!gpTweakGame->GetSplashScreensDisabled() && !PortDebug::BootWorld(bootWorld, bootArea) &&
+      PortDebug::BootLogos() != PortDebug::kBootLogos_Off) {
     ioWinManager.AddIOWin(rs_new CSplashScreen(CSplashScreen::kSplashScreen_Nintendo), 1000, 10000);
   }
   ioWinManager.AddIOWin(rs_new CMainFlow(), 0, 0);

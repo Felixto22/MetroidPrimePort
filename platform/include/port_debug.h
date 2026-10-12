@@ -273,6 +273,12 @@ void SetTextLanguage(const char* code);
 enum EElevatorRide { kElevatorRide_Original, kElevatorRide_Fast, kElevatorRide_Skip };
 EElevatorRide ElevatorRide();
 void SetElevatorRide(EElevatorRide mode);
+// The Nintendo, Retro and Dolby logos at launch (CSplashScreen). Skippable ends
+// the current one with a short fade on A or Start; Off goes straight to the
+// front end. Original experience shows them in full.
+enum EBootLogos { kBootLogos_Show, kBootLogos_Skippable, kBootLogos_Off };
+EBootLogos BootLogos();
+void SetBootLogos(EBootLogos mode);
 // First-person vertical field of view in degrees (retail 55). The arm cannon is
 // drawn at the retail FOV whatever this is, like a view-model FOV.
 const float kFovRetail = 55.f;
