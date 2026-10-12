@@ -1467,6 +1467,21 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.pbrLightScale = value;
       g_gxState.dirty |= DirtyUniform;
     }
+  } else if (subCmd == GX_AURORA_SET_PBR_MODEL_MODULATION) {
+    f32 v[8];
+    for (f32& f : v) {
+      f = reader.read<f32>();
+    }
+    const Vec4<float> diffuse{v[0], v[1], v[2], v[3]};
+    const Vec4<float> incan{v[4], v[5], v[6], v[7]};
+    const Vec4<float> coverage{reader.read<f32>(), 0.f, 0.f, 0.f};
+    if (g_gxState.pbrModelDiffuse != diffuse || g_gxState.pbrModelIncan != incan ||
+        g_gxState.pbrModelCoverage != coverage) {
+      g_gxState.pbrModelDiffuse = diffuse;
+      g_gxState.pbrModelIncan = incan;
+      g_gxState.pbrModelCoverage = coverage;
+      g_gxState.dirty |= DirtyUniform;
+    }
   } else if (subCmd == GX_AURORA_SET_PBR_MATERIAL) {
     for (Vec4<float>* v :
          {&g_gxState.pbrEmissive, &g_gxState.pbrBacklight, &g_gxState.pbrLayer, &g_gxState.pbrLayerHeight,

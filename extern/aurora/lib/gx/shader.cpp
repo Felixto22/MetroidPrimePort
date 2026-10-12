@@ -33,6 +33,14 @@ using namespace std::string_view_literals;
 namespace {
 constexpr Module Log{"aurora::gfx::gx"};
 
+// The inventory visor kinds (36: Remastered's coloured coverage glass 4c37625c, 37: the visor backlight 17dd0a37).
+// The scalar expressions the shader emits, over the lets it declares: inv_ba = BCLR.a, inv_da = DIFC.a, inv_c = COVG,
+// inv_b = BCLR.rgb x DIFC.rgb (per channel), inv_a = the opacity. Exported (inventory_visor_expr) so the tests run
+// the very text the shader contains.
+constexpr std::string_view InvAlphaExpr = "clamp(inv_ba * inv_ba * inv_da, 0.0, 1.0)";
+// MFC0 on (O2, One / InvSrc1Color): the scene keeps 1 - C + C b (1 - A).
+constexpr std::string_view InvWeightExpr = "vec3f(1.0 - inv_c) + inv_c * inv_b * (1.0 - inv_a)";
+
 // Adreno 730 (Vulkan, driver V@0615.98) drops every GX draw whose fragment shader reads a
 // varying when load_word branches on arrayLength, so the world renders black (issue #7).
 // An Adreno 710 shows the same black world on some drivers. A clamp works there; it only
@@ -1068,7 +1076,7 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
   const bool layered = mapStage[4] != -1;
   // The fragment's screen position, for everything below that reads the screen copy (map 7): the
   // layered block's glass/holo/field/shield branches, kind 34, and kinds 23/30. Declared once here.
-  if (screen && (layered || config.pbrKind == 34 ||
+  if (screen && (layered || config.pbrKind == 34 || config.pbrKind == 36 ||
                  ((config.pbrKind == 23 || config.pbrKind == 30) && mapStage[2] != -1))) {
     vtxOutAttrs += fmt::format("\n    @location({}) pbr_scr: vec4f,", vtxOutIdx++);
     vtxXfrAttrs += "\n    out.pbr_scr = out.pos;";
@@ -1076,8 +1084,15 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
   std::string base = sampled(0, ""), orm = sampled(1, "vec4f(1.0, 0.6, 0.0, 1.0)");
   // Kind 10, lit glass drawn premultiplied (One, InvSrcAlpha): the opacity scales only the
   // diffuse light, so the reflection and the glow are not dimmed with it.
+  // Kinds 36/37 (inventory visor): BCLR x DIFC is the albedo and BCLR.a^2 x DIFC.a the opacity, explicit (no TEV
+  // alpha, no vertex alpha, no generic fade). Kind 36 premultiplies the diffuse by it, like kind 34.
+  const bool inventory = (config.pbrKind == 36 || config.pbrKind == 37) && mapStage[0] != -1 && !layered;
+  const std::string& alphaTint = inventory ? std::string() : tintAlpha;
   const std::string diffTint =
-      (config.pbrKind == 10 || config.pbrKind == 34) ? fmt::format("{} * ({}{})", tint, layered ? "1.0" : "prev.a", tintAlpha) : tint;
+      inventory ? (config.pbrKind == 36 ? tint + " * inv_a" : tint)
+      : (config.pbrKind == 10 || config.pbrKind == 34)
+          ? fmt::format("{} * ({}{})", tint, layered ? "1.0" : "prev.a", tintAlpha)
+          : tint;
   // Remastered's diffuse vertex colour (MFVC) is decoded in its vertex shader as
   // 2 |c|^2.2 (alpha raw), so a white vertex doubles the diffuse: 882014ee, f22feb5b,
   // the layered 7248969b/a978d507, 11b30369 and every kShaderTints shader. Only the premultiplied
@@ -1628,6 +1643,7 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
     }
   }
   const std::string baseRgb =
+      inventory ? "inv_b"s :
       layered ? fmt::format("mix(max({0}.rgb, vec3f(0.0)), max(sampled{1}.rgb, vec3f(0.0)), pbr_ls)", base,
                             mapStage[4])
               : fmt::format("max({}.rgb, vec3f(0.0))", base);
@@ -2272,6 +2288,15 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
       }})""",
                              mapStage[3]);
   }
+  if (inventory) {
+    layer += fmt::format(R"""(
+      let inv_ba = {0}.a;
+      let inv_da = ubuf.pbr_model_diffuse.a;
+{1}
+      let inv_b = max({0}.rgb, vec3f(0.0)) * ubuf.pbr_model_diffuse.rgb;
+      let inv_a = {2};)""",
+                         base, config.pbrKind == 36 ? "\n      let inv_c = ubuf.pbr_model_coverage.x;" : "", InvAlphaExpr);
+  }
   std::string source = fmt::format(R"""(
     // PBR (GX_AURORA_SET_PBR)
     {{
@@ -2711,7 +2736,8 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
                                        "vec2f(0.5), 16.0).rgb, vec3f(1.0)) < 0.004)",
                                        sampled(3, "vec4f(0.0)"), base),
                      normal, GX::MaxLights, attn, amb,
-                     gfx::probe::MipCount - 1, diffTint, tintAlpha, layer, baseRgb, layered ? "1.0" : "prev.a", kinds, liquid,
+                     gfx::probe::MipCount - 1, diffTint, alphaTint, layer, baseRgb,
+                     inventory ? "inv_a"s : layered ? "1.0"s : "prev.a"s, kinds, liquid,
                      shadowed ? "(ubuf.lightState0 | ubuf.lightState1)" : "ubuf.lightState0",
                      shadowed ? " * select(vec3f(1.0), sampled0.rgb, (ubuf.lightState0 & (1u << i)) == 0u)" : "",
                      (layered ? "\n      if (pbr_kind < 0.5 && ubuf.pbr_emissive.w <= 0.0) {\n          pbr_alpha = pbr_lalpha;\n      }"
@@ -2733,6 +2759,41 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
           pbr_pass += pbr_sdst * vec3f(1.0 - pbr_alpha);
           pbr_alpha = 1.0;
       })""");
+  }
+  if (inventory) {
+    // The incandescence ICMC (rgb only; its alpha is not DMGI) is added linearly after the exposure scaling.
+    // DMGI is CCH2.y = 1 on all three inventory materials and is not carried: the bounded default 1.
+    const size_t out = source.find("      let pbr_out = max(pbr_lo + pbr_glow, vec3f(0.0));");
+    assert(out != std::string::npos);
+    source.insert(out, R"""(      pbr_glow += ubuf.pbr_model_incan.rgb;
+)""");
+    if (config.pbrKind == 36) {
+      // Kind 36 coverage C scales the foreground after the port's tone curve, so C = 0 leaves the scene
+      // unchanged whatever the global tone (a toe/offset cannot inject a nonzero foreground). o0 = (lit + ICMC) C
+      // of the source is not exact through the port tone; C is applied once, here.
+      const size_t at = source.find("      // A model fading (w of the light scale)");
+      assert(at != std::string::npos);
+      source.insert(at, "      pbr_tm *= inv_c;\n");
+    }
+    if (config.pbrKind == 36 && screen) {
+      const size_t at = source.find("      // A model fading (w of the light scale)");
+      assert(at != std::string::npos);
+      source.insert(at, fmt::format(R"""(
+      if (pbr_kind > 35.5 && pbr_kind < 36.5) {{
+          // Kind 36, Remastered's 4c37625c with MFC0 on (O2: One / InvSrc1Color): the scene keeps
+          // 1 - C + C b (1 - A), by the screen copy (map 7) as kind 34 does; drawn opaque.
+          let pbr_sdst = srgb_dec(textureSampleLevel(tex7, tex7_samp,
+                                  clamp(in.pbr_scr.xy / in.pbr_scr.w * vec2f(0.5, -0.5) + 0.5, vec2f(0.0), vec2f(1.0)), 0.0).rgb);
+          pbr_pass += pbr_sdst * ({});
+          pbr_alpha = 1.0;
+      }})""",
+                                    InvWeightExpr));
+    }
+    // DIFC alpha is explicit: no generic model fade.
+    const size_t fade = source.find("      // A model fading (w of the light scale)");
+    const size_t fadeEnd = source.find("      // Encoded as Remastered's sRGB swapchain");
+    assert(fade != std::string::npos && fadeEnd != std::string::npos && fade < fadeEnd);
+    source.erase(fade, fadeEnd - fade);
   }
   if (!lit || costTest == 2) {
     // The uniform block has no lights then.
@@ -2788,6 +2849,10 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
 
 absl::flat_hash_set<gfx::ShaderRef> s_seenShaders;
 } // namespace
+
+std::string_view inventory_visor_expr(std::string_view name) noexcept {
+  return name == "alpha" ? InvAlphaExpr : name == "weight" ? InvWeightExpr : std::string_view{};
+}
 
 std::string build_shader_source(const ShaderConfig& config) noexcept {
   ZoneScoped;
@@ -3742,6 +3807,9 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    pbr_lmap_rect: vec4f,";
     uniBufAttrs += "\n    pbr_lmap_axes: array<vec4f, 3>,";
     uniBufAttrs += "\n    pbr_room_lights: vec4f,";
+    uniBufAttrs += "\n    pbr_model_diffuse: vec4f,";
+    uniBufAttrs += "\n    pbr_model_incan: vec4f,";
+    uniBufAttrs += "\n    pbr_model_coverage: vec4f,";
     auto pbr = pbr_func(config, info, vtxOutAttrs, vtxXfrAttrs, vtxOutIdx, vidxAttr);
     // An unlit surface (baked room light: pbr_func drops its light loop) has no room light to
     // shadow, but takes the sun's own colour.

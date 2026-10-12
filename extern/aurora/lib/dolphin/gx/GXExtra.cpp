@@ -679,6 +679,35 @@ void GXSetPBRBakedLightModulation(const f32 rgb[3]) {
   }
 }
 
+void GXSetPBRModelModulation(const f32 diffuse[4], const f32 incan[4], f32 coverage) {
+  struct Write {
+    f32 diffuse[4];
+    f32 incan[4];
+    f32 coverage;
+  };
+  static LastPBRWrite<Write> sLast;
+  Write now{{1.f, 1.f, 1.f, 1.f}, {0.f, 0.f, 0.f, 1.f}, coverage};
+  for (u32 i = 0; i < 4; ++i) {
+    if (diffuse != nullptr) {
+      now.diffuse[i] = diffuse[i];
+    }
+    if (incan != nullptr) {
+      now.incan[i] = incan[i];
+    }
+  }
+  if (sLast.repeats(now)) {
+    return;
+  }
+  GX_WRITE_AURORA(GX_AURORA_SET_PBR_MODEL_MODULATION);
+  for (f32 v : now.diffuse) {
+    GX_WRITE_F32(v);
+  }
+  for (f32 v : now.incan) {
+    GX_WRITE_F32(v);
+  }
+  GX_WRITE_F32(now.coverage);
+}
+
 void GXSetPBRBacklight(const f32 plane[4], const f32 backDir[3], f32 back, f32 top, f32 bindScale, f32 bindOffset) {
   struct Write {
     f32 values[11];

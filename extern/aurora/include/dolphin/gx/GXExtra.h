@@ -230,6 +230,14 @@ void GXSetPBRLightHdr(GXLightID light, const f32 color[3], const f32 viewPos[3],
 // alpha fades the draws: their alpha is multiplied by it, or is it where alphaReplaces is set
 // (an opaque material drawn blended, whose own alpha means nothing). 1 and GX_FALSE are neutral.
 void GXSetPBRLightScale(f32 diffuse, f32 f0, f32 alpha, GXBool alphaReplaces);
+// Aurora extension: the model colours of the following PBR draws, as full vectors: the diffuse
+// modulation (r, g, b, a), the incandescence (r, g, b, a) and the coverage, a scalar kept apart
+// from the diffuse alpha. Stays in effect until changed. They reach the PBR uniforms
+// (pbr_model_diffuse, pbr_model_incan, pbr_model_coverage); only the pause visor's kinds 36 and
+// 37 read them.
+// Null `diffuse` is (1, 1, 1, 1), null `incan` is (0, 0, 0, 1), each independently; 1 is the
+// neutral coverage.
+void GXSetPBRModelModulation(const f32 diffuse[4], const f32 incan[4], f32 coverage);
 
 // Aurora extension: Remastered's bloom over what the EFB holds now (see lib/gfx/bloom.cpp).
 // The EFB is taken as drawn through the tone curve `tone` (as GXSetPBRTone); light above
