@@ -796,5 +796,10 @@ if(MP_BUILD_TESTS)
         add_test(NAME port_pipeline_seed
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/pipeline_seed.py check)
         set_tests_properties(port_pipeline_seed PROPERTIES TIMEOUT 60 LABELS port)
+        # The F1 settings search index against the widgets it names, both ways.
+        add_test(NAME port_settings_index
+            COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_settings_index.py
+                    ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(port_settings_index PROPERTIES TIMEOUT 15 LABELS port)
     endif()
 endif()

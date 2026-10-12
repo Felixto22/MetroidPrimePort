@@ -6,6 +6,17 @@
   precedence. SDL controllers are supported.
 - F1: debug overlay. F10: 60 FPS cap on/off (off: F1 Video > Frame rate "FPS cap", `fps_cap=`, `MP_FPS_CAP`; 0 = unlimited). F11: fullscreen.
   F12: screenshot.
+- Settings search: the box at the top of the F1 overlay (Ctrl+F) lists the
+  settings whose name, page, section or keywords contain every typed word;
+  picking one opens its page, sub-tab and collapsed section, scrolls to it and flashes it. Escape
+  clears the box. The index is `platform/port_settings_index.inc` (one row per
+  widget, in draw order; ctest `port_settings_index` checks it against the
+  sources, so a new setting must be added there). `MP_DEBUG_SEARCH=<query>`
+  types a query into the box when the overlay first opens, for captures.
+  `MP_DEBUG_SEARCH_AUDIT=1` (with `MP_SHOW_DEBUG_UI=1`) opens every row in turn
+  and logs `search audit: found|MISSED: <row>`, then a total: a row missed on
+  every platform and in every state is in the wrong place. Rows only drawn on
+  Android sit in an `#if defined(__ANDROID__)` block of the index.
 - Fullscreen (F1 > Video > Display, persisted as `fullscreen`): a borderless window over
   the whole screen on desktop, toggled with F11; on Android it hides the status
   and navigation bars (on by default there; a swipe from the edge shows them

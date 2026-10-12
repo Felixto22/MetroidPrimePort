@@ -108,6 +108,7 @@ extern char** environ;
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -133,6 +134,11 @@ void request_screenshot() noexcept;
 extern "C" void AIPortSetOutputEnabled(int enabled);
 extern "C" int AIPortOutputEnabled(void);
 extern "C" void salSetMuted(int muted);
+
+// ImGui's item hooks, forwarded by extern/aurora/extern/imgui_item_hook.cpp.
+extern void (*gImGuiItemAddHook)(ImGuiContext* ctx, ImGuiID id, const ImRect& rect);
+extern void (*gImGuiItemInfoHook)(ImGuiContext* ctx, ImGuiID id, const char* label,
+                                  ImGuiItemStatusFlags flags);
 
 namespace {
 
@@ -8335,6 +8341,8 @@ void DrawDebugTab() {
   if (ImGui::CollapsingHeader("Sounds playing")) {
     DrawVoices();
   }
+
+  DrawRemasteredDebug();
 }
 
 void DrawTrackerCount(const char* label, const PortTracker::Count& count) {
@@ -8431,8 +8439,6 @@ void DrawTrackerLogic() {
       }
     }
   }
-
-  DrawRemasteredDebug();
 }
 
 void DrawTrackerTab() {
@@ -9214,6 +9220,39 @@ const StartTarget& GetStartTarget() {
   return target;
 }
 
+struct SettingsIndexRow;
+
+// A settings search result being opened (see JumpTo).
+struct SearchJump {
+  const SettingsIndexRow* row = nullptr;
+  int page = -1;      // kDebugPages index still to select
+  bool sub = false;   // the row's sub-tab is still to select
+  int occurrence = 0; // which of the items with this label on the page
+  int seen = 0;       // items with the label drawn so far this frame
+  bool found = false;
+  double start = 0.0;            // when the jump began, then when the widget was found
+  ImGuiID added = 0;             // the widget, when the item-add hook matched it
+  ImGuiWindow* window = nullptr; // where the widget was drawn this frame, to flash it
+  ImRect rect;
+  bool inPage = false; // inside a page's body, not the page list, tabs or results
+};
+SearchJump sJump;
+
+int TakeJumpPage() {
+  const int page = sJump.page;
+  sJump.page = -1;
+  return page;
+}
+
+bool TakeJumpSub(const char* page, const char* name);
+
+// A page's settings, where a jump looks for its widget.
+void DrawPageBody(const DebugPage& page) {
+  sJump.inPage = true;
+  page.draw();
+  sJump.inPage = false;
+}
+
 // A page's inner tab, opened first when MP_DEBUG_TAB names it. The caller ends
 // the item with EndTabItem when this returns true.
 bool SubTab(const char* page, const char* name) {
@@ -9221,11 +9260,291 @@ bool SubTab(const char* page, const char* name) {
   const StartTarget& target = GetStartTarget();
   const bool start = pending && SDL_strcasecmp(target.page.c_str(), page) == 0 &&
                      SDL_strcasecmp(target.sub.c_str(), name) == 0;
-  const bool shown = ImGui::BeginTabItem(name, nullptr, start ? ImGuiTabItemFlags_SetSelected : 0);
+  const bool jump = TakeJumpSub(page, name);
+  const bool inPage = std::exchange(sJump.inPage, false); // the tab is not a setting
+  const bool shown =
+      ImGui::BeginTabItem(name, nullptr, start || jump ? ImGuiTabItemFlags_SetSelected : 0);
+  sJump.inPage = inPage;
   if (start) {
     pending = false;
   }
   return shown;
+}
+
+// The settings search: a query lists the matching rows of the settings index,
+// and picking one opens its page, sub-tab and collapsing header, scrolls to the
+// widget and flashes it. The widget is found by its label through ImGui's item
+// hook, which reports items only while a jump is under way.
+struct SettingsIndexRow {
+  const char* page;
+  const char* sub;
+  const char* section;
+  const char* label;
+  const char* keywords;
+};
+
+constexpr SettingsIndexRow kSettingsIndex[] = {
+#include "port_settings_index.inc"
+};
+
+constexpr double kJumpTimeout = 2.0; // gives up on a widget that is never drawn
+constexpr double kFlashTime = 1.5;
+
+char sSearch[128] = "";
+
+std::string Lowercase(std::string text) {
+  for (char& c : text) {
+    c = static_cast< char >(std::tolower(static_cast< unsigned char >(c)));
+  }
+  return text;
+}
+
+// The label without its "##id" part is the text, which may go on with a key
+// hint ("Screenshot (F12)").
+bool LabelIs(const char* label, const char* text) {
+  const char* end = ImGui::FindRenderedTextEnd(label);
+  const size_t length = std::strlen(text);
+  const size_t shown = static_cast< size_t >(end - label);
+  return shown >= length && std::memcmp(label, text, length) == 0 &&
+         (shown == length || (shown > length + 1 && label[length] == ' ' && label[length + 1] == '('));
+}
+
+// The row's widget, drawn this frame: the occurrence it wants is scrolled to
+// and focused once, then flashed until the flash fades.
+void SearchItemFound(ImGuiContext& g, ImGuiID id, const ImRect& rect) {
+  SearchJump& jump = sJump;
+  if (jump.seen++ != jump.occurrence) {
+    return;
+  }
+  ImGuiWindow* window = g.CurrentWindow;
+  if (!jump.found) {
+    jump.found = true;
+    jump.start = g.Time;
+    ImGui::ScrollToRectEx(window, rect, ImGuiScrollFlags_AlwaysCenterY);
+    ImGui::SetFocusID(id, window); // so a pad carries on from it
+  }
+  jump.window = window; // flashed by EndSearchJump, over the widget
+  jump.rect = rect;
+}
+
+// Combos report no label, so an item whose id is the row's label is its widget
+// too. The label hook then skips it.
+void SearchItemAddHook(ImGuiContext* ctx, ImGuiID id, const ImRect& rect) {
+  SearchJump& jump = sJump;
+  ImGuiWindow* window = ctx->CurrentWindow;
+  // Begin reports a window while its id stack is still empty.
+  if (jump.row == nullptr || !jump.inPage || id == 0 || window == nullptr || window->IDStack.Size == 0 ||
+      id != window->GetID(jump.row->label)) {
+    return;
+  }
+  jump.added = id;
+  SearchItemFound(*ctx, id, rect);
+}
+
+void SearchItemHook(ImGuiContext* ctx, ImGuiID id, const char* label, ImGuiItemStatusFlags flags) {
+  SearchJump& jump = sJump;
+  if (jump.row == nullptr || !jump.inPage || label == nullptr || id == 0 || id == jump.added) {
+    return;
+  }
+  ImGuiContext& g = *ctx;
+  const SettingsIndexRow& row = *jump.row;
+  if ((flags & ImGuiItemStatusFlags_Openable) != 0 && *row.section != '\0' && LabelIs(label, row.section)) {
+    // The header the widget sits under, opened on the next frame if closed.
+    if ((flags & ImGuiItemStatusFlags_Opened) == 0) {
+      g.CurrentWindow->DC.StateStorage->SetInt(id, 1);
+    }
+  } else if (LabelIs(label, row.label)) {
+    SearchItemFound(g, id, g.LastItemData.Rect);
+  }
+}
+
+void JumpTo(const SettingsIndexRow& row) {
+  sJump = SearchJump{};
+  for (int i = 0; i < static_cast< int >(ARRAY_SIZE(kDebugPages)); ++i) {
+    if (std::strcmp(kDebugPages[i].name, row.page) == 0) {
+      sJump.page = i;
+    }
+  }
+  sJump.row = &row;
+  sJump.sub = *row.sub != '\0';
+  // Rows with the same label on one page are in draw order.
+  for (const SettingsIndexRow& other : kSettingsIndex) {
+    if (&other == &row) {
+      break;
+    }
+    if (std::strcmp(other.page, row.page) == 0 && std::strcmp(other.sub, row.sub) == 0 &&
+        std::strcmp(other.label, row.label) == 0) {
+      ++sJump.occurrence;
+    }
+  }
+  sJump.start = ImGui::GetTime();
+  sSearch[0] = '\0';
+}
+
+bool TakeJumpSub(const char* page, const char* name) {
+  if (!sJump.sub || std::strcmp(sJump.row->page, page) != 0 ||
+      std::strcmp(sJump.row->sub, name) != 0) {
+    return false;
+  }
+  sJump.sub = false;
+  return true;
+}
+
+// Around the overlay window only: while a jump looks for its widget, items are
+// reported even when scrolled out of view.
+// MP_DEBUG_SEARCH_AUDIT=1 opens every index row in turn with the overlay up and
+// logs whether its widget was found, to check the index against the pages.
+void AuditSearchIndex(const SearchJump& jump, double now) {
+  static int next = port::EnvFlag("MP_DEBUG_SEARCH_AUDIT") ? 0 : -1;
+  static int missed = 0;
+  if (next < 0 || (jump.row != nullptr && !jump.found && now - jump.start <= kJumpTimeout)) {
+    return;
+  }
+  if (jump.row != nullptr) {
+    missed += jump.found ? 0 : 1;
+    std::fprintf(stderr, "metroid_prime_port: search audit: %s: %s > %s > %s > %s\n",
+                 jump.found ? "found" : "MISSED", jump.row->page, jump.row->sub, jump.row->section,
+                 jump.row->label);
+  }
+  if (next == static_cast< int >(ARRAY_SIZE(kSettingsIndex))) {
+    std::fprintf(stderr, "metroid_prime_port: search audit: done, %d of %d missed\n", missed, next);
+    next = -1;
+    sJump = SearchJump{};
+    return;
+  }
+  JumpTo(kSettingsIndex[next++]);
+}
+
+void BeginSearchJump() {
+  ImGuiContext& g = *ImGui::GetCurrentContext();
+  SearchJump& jump = sJump;
+  AuditSearchIndex(jump, g.Time);
+  if (jump.row != nullptr &&
+      g.Time - jump.start > (jump.found ? kFlashTime : kJumpTimeout)) {
+    jump = SearchJump{};
+  }
+  const bool active = jump.row != nullptr;
+  jump.seen = 0;
+  jump.window = nullptr;
+  gImGuiItemAddHook = active ? SearchItemAddHook : nullptr;
+  gImGuiItemInfoHook = active ? SearchItemHook : nullptr;
+  g.TestEngineHookItems = active;
+  g.ItemUnclipByLog = active && !jump.found;
+}
+
+void EndSearchJump() {
+  ImGuiContext& g = *ImGui::GetCurrentContext();
+  const SearchJump& jump = sJump;
+  const float fade = 1.f - static_cast< float >((g.Time - jump.start) / kFlashTime);
+  if (jump.found && jump.window != nullptr && fade > 0.f) {
+    const ImRect& rect = jump.rect;
+    const float padX = g.Style.FramePadding.x * 0.5f;
+    const float padY = g.Style.FramePadding.y * 0.5f;
+    ImDrawList* draw = jump.window->DrawList;
+    draw->PushClipRect(jump.window->InnerClipRect.Min, jump.window->InnerClipRect.Max);
+    draw->AddRectFilled(ImVec2(rect.Min.x - padX, rect.Min.y - padY), ImVec2(rect.Max.x + padX, rect.Max.y + padY),
+                        ImGui::GetColorU32(ImGuiCol_NavCursor, 0.45f * fade), g.Style.FrameRounding);
+    draw->PopClipRect();
+  }
+  gImGuiItemAddHook = nullptr;
+  gImGuiItemInfoHook = nullptr;
+  g.TestEngineHookItems = false;
+  g.ItemUnclipByLog = false;
+}
+
+void DrawSearchField() {
+  // MP_DEBUG_SEARCH=<query> opens with it typed, for captures of the overlay.
+  static bool sPrefill = true;
+  if (sPrefill) {
+    sPrefill = false;
+    if (const char* query = port::EnvString("MP_DEBUG_SEARCH")) {
+      SDL_strlcpy(sSearch, query, sizeof(sSearch));
+    }
+  }
+  if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_F)) {
+    ImGui::SetKeyboardFocusHere();
+  }
+#if defined(__ANDROID__)
+  const char* const kHint = "Search settings";
+#else
+  const char* const kHint = "Search settings (Ctrl+F)";
+#endif
+  ImGui::SetNextItemWidth(-FLT_MIN);
+  ImGui::InputTextWithHint("##settings-search", kHint, sSearch, sizeof(sSearch),
+                           ImGuiInputTextFlags_EscapeClearsAll);
+}
+
+bool Searching() { return sSearch[0] != '\0'; }
+
+// Every word of the query must be in the row's label, place or keywords. Rows
+// whose label starts with the query come first, then those that contain it,
+// then those whose label has every word.
+void DrawSearchResults() {
+  static std::string sQuery;
+  static std::vector< const SettingsIndexRow* > sHits;
+  const std::string query = Lowercase(Trim(sSearch));
+  if (query != sQuery) {
+    sQuery = query;
+    sHits.clear();
+    std::vector< std::string > words;
+    std::istringstream stream(query);
+    for (std::string word; stream >> word;) {
+      words.push_back(word);
+    }
+    std::vector< std::pair< int, const SettingsIndexRow* > > scored;
+    for (const SettingsIndexRow& row : kSettingsIndex) {
+      const std::string label = Lowercase(row.label);
+      const std::string all = label + ' ' + Lowercase(row.section) + ' ' + Lowercase(row.sub) + ' ' +
+                              Lowercase(row.page) + ' ' + Lowercase(row.keywords);
+      bool match = true;
+      bool inLabel = true;
+      for (const std::string& word : words) {
+        match = match && all.find(word) != std::string::npos;
+        inLabel = inLabel && label.find(word) != std::string::npos;
+      }
+      if (!match) {
+        continue;
+      }
+      const int score = label.rfind(query, 0) == 0                ? 0
+                        : label.find(query) != std::string::npos ? 1
+                        : inLabel                                ? 2
+                                                                 : 3;
+      scored.emplace_back(score, &row);
+    }
+    std::stable_sort(scored.begin(), scored.end(),
+                     [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (const auto& hit : scored) {
+      sHits.push_back(hit.second);
+    }
+  }
+
+  if (sHits.empty()) {
+    ImGui::TextDisabled("No settings match \"%s\".", sSearch);
+    return;
+  }
+  const ImGuiStyle& style = ImGui::GetStyle();
+  const float rowHeight = ImGui::GetTextLineHeight() * 2.f + style.ItemSpacing.y;
+  for (size_t i = 0; i < sHits.size(); ++i) {
+    const SettingsIndexRow& row = *sHits[i];
+    std::string place = row.page;
+    for (const char* part : {row.sub, row.section}) {
+      if (*part != '\0') {
+        place += std::string(" > ") + part;
+      }
+    }
+    ImGui::PushID(static_cast< int >(i));
+    if (ImGui::Selectable("##hit", false, ImGuiSelectableFlags_None, ImVec2(0.f, rowHeight))) {
+      JumpTo(row);
+    }
+    const ImVec2 min = ImGui::GetItemRectMin();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    draw->PushClipRect(min, ImGui::GetItemRectMax(), true); // long labels stop at the row
+    draw->AddText(min, ImGui::GetColorU32(ImGuiCol_Text), row.label);
+    draw->AddText(ImVec2(min.x, min.y + ImGui::GetTextLineHeight()),
+                  ImGui::GetColorU32(ImGuiCol_TextDisabled), place.c_str());
+    draw->PopClipRect();
+    ImGui::PopID();
+  }
 }
 
 // The innermost window under the finger that can actually scroll vertically,
@@ -9412,8 +9731,12 @@ bool DrawPageWindow() {
       open = false;
     }
     ImGui::Separator();
+    DrawSearchField();
 
     static int sPage = 0;
+    if (const int jumpPage = TakeJumpPage(); jumpPage >= 0) {
+      sPage = jumpPage;
+    }
     // MP_DEBUG_TAB=<name> opens on that page, for captures of the overlay.
     static bool sStartPending = true;
     if (sStartPending) {
@@ -9432,18 +9755,24 @@ bool DrawPageWindow() {
     const float rowHeight = ImGui::GetFrameHeight() * 1.2f;
     if (ImGui::BeginChild("##pages", ImVec2(listWidth, 0.f), ImGuiChildFlags_Borders)) {
       for (int i = 0; i < static_cast< int >(ARRAY_SIZE(kDebugPages)); ++i) {
-        if (ImGui::Selectable(kDebugPages[i].name, sPage == i, ImGuiSelectableFlags_None,
-                              ImVec2(0.f, rowHeight))) {
+        if (ImGui::Selectable(kDebugPages[i].name, sPage == i && !Searching(),
+                              ImGuiSelectableFlags_None, ImVec2(0.f, rowHeight))) {
           sPage = i;
+          sSearch[0] = '\0';
         }
       }
     }
     ImGui::EndChild();
     ImGui::SameLine();
     // Keyed by page, so each page keeps its own scroll position.
-    ImGui::PushID(sPage);
+    const bool searching = Searching();
+    ImGui::PushID(searching ? -1 : sPage);
     if (ImGui::BeginChild("##page", ImVec2(0.f, 0.f), ImGuiChildFlags_Borders)) {
-      kDebugPages[sPage].draw();
+      if (searching) {
+        DrawSearchResults();
+      } else {
+        DrawPageBody(kDebugPages[sPage]);
+      }
     }
     ImGui::EndChild();
     ImGui::PopID();
@@ -9471,16 +9800,25 @@ bool DrawDesktopWindow() {
       ImGui::EndMenuBar();
     }
 
-    if (ImGui::BeginTabBar("##debug_tabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
+    DrawSearchField();
+    if (Searching()) {
+      if (ImGui::BeginChild("##search-results")) {
+        DrawSearchResults();
+      }
+      ImGui::EndChild();
+    } else if (ImGui::BeginTabBar("##debug_tabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
       // MP_DEBUG_TAB=<name> opens on that tab, for captures of the overlay.
       static bool sStartPending = true;
-      for (const DebugPage& page : kDebugPages) {
+      const int jumpPage = TakeJumpPage();
+      for (int i = 0; i < static_cast< int >(ARRAY_SIZE(kDebugPages)); ++i) {
+        const DebugPage& page = kDebugPages[i];
         const bool start =
             sStartPending && SDL_strcasecmp(GetStartTarget().page.c_str(), page.name) == 0;
-        if (ImGui::BeginTabItem(page.name, nullptr, start ? ImGuiTabItemFlags_SetSelected : 0)) {
+        if (ImGui::BeginTabItem(page.name, nullptr,
+                                start || i == jumpPage ? ImGuiTabItemFlags_SetSelected : 0)) {
           if (start)
             sStartPending = false;
-          page.draw();
+          DrawPageBody(page);
           ImGui::EndTabItem();
         }
       }
@@ -9556,7 +9894,9 @@ void DrawUI() {
   }
 
   UpdateTouchScroll();
+  BeginSearchJump();
   const bool open = PageLayout() ? DrawPageWindow() : DrawDesktopWindow();
+  EndSearchJump();
   ClearTouchHover();
   DrawGalleryWindow();
 
