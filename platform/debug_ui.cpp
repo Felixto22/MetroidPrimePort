@@ -5136,9 +5136,19 @@ void DrawPhotoUI() {
     }
     return;
   }
-  ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - 12.f, viewport->Pos.y + 12.f),
-                          ImGuiCond_Always, ImVec2(1.f, 0.f));
-  ImGui::SetNextWindowSize(ImVec2(std::min(viewport->Size.x - 24.f, 320.f), 0.f));
+  // Sized in scaled units so it fits a phone (density ~3); the touch overlay's shoulder buttons
+  // fill the top corners, so on touch the panel sits at the top centre instead of the right.
+  const float margin = 12.f * sUiAppliedScale;
+  const float width = std::min(viewport->Size.x - 2.f * margin, 320.f * sUiAppliedScale);
+  if (TouchActive()) {
+    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + margin),
+                            ImGuiCond_Always, ImVec2(0.5f, 0.f));
+  } else {
+    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - margin, viewport->Pos.y + margin),
+                            ImGuiCond_Always, ImVec2(1.f, 0.f));
+  }
+  // Height 0 fits the content each frame; the width stays fixed so wide content wraps, not overflows.
+  ImGui::SetNextWindowSize(ImVec2(width, 0.f));
   ImGui::SetNextWindowBgAlpha(0.85f);
   // The pad's d-pad and A also fly, roll and capture, so the panel only navigates while it has the
   // pad (Y); the nav cursor starts on the first widget when it takes it.
@@ -5151,8 +5161,7 @@ void DrawPhotoUI() {
   sWasPadFocus = padFocus;
   if (ImGui::Begin("Photo mode##photo", nullptr,
                    ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-                       ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize |
-                       (padFocus ? 0 : ImGuiWindowFlags_NoNav))) {
+                       ImGuiWindowFlags_NoSavedSettings | (padFocus ? 0 : ImGuiWindowFlags_NoNav))) {
     float fov = PortPhoto::Fov();
     if (ImGui::SliderFloat("FOV", &fov, 20.f, 120.f, "%.0f")) {
       PortPhoto::SetFov(fov);
@@ -5192,11 +5201,13 @@ void DrawPhotoUI() {
     if (ImGui::Button("Exit")) {
       PortPhoto::RequestExit();
     }
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     if (padFocus) {
-      ImGui::TextDisabled("Pad: d-pad move, A change, Y or B back to the camera");
+      ImGui::TextWrapped("Pad: d-pad move, A change, Y or B back to the camera");
     } else {
-      ImGui::TextDisabled("Pad: A capture, B exit, Y panel, d-pad roll, X+d-pad FOV");
+      ImGui::TextWrapped("Pad: A capture, B exit, Y panel, d-pad roll, X+d-pad FOV");
     }
+    ImGui::PopStyleColor();
   }
   ImGui::End();
 }
