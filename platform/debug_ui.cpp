@@ -5136,17 +5136,11 @@ void DrawPhotoUI() {
     }
     return;
   }
-  // Sized in scaled units so it fits a phone (density ~3); the touch overlay's shoulder buttons
-  // fill the top corners, so on touch the panel sits at the top centre instead of the right.
+  // Sized in scaled units so it fits a phone (density ~3). The touch controls hide while it shows.
   const float margin = 12.f * sUiAppliedScale;
   const float width = std::min(viewport->Size.x - 2.f * margin, 320.f * sUiAppliedScale);
-  if (TouchActive()) {
-    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + margin),
-                            ImGuiCond_Always, ImVec2(0.5f, 0.f));
-  } else {
-    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - margin, viewport->Pos.y + margin),
-                            ImGuiCond_Always, ImVec2(1.f, 0.f));
-  }
+  ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - margin, viewport->Pos.y + margin),
+                          ImGuiCond_Always, ImVec2(1.f, 0.f));
   // Height 0 fits the content each frame; the width stays fixed so wide content wraps, not overflows.
   ImGui::SetNextWindowSize(ImVec2(width, 0.f));
   ImGui::SetNextWindowBgAlpha(0.85f);
@@ -5202,7 +5196,9 @@ void DrawPhotoUI() {
       PortPhoto::RequestExit();
     }
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    if (padFocus) {
+    if (TouchActive()) {
+      ImGui::TextWrapped("Hide panel to fly with the touch controls; their Y shows it again");
+    } else if (padFocus) {
       ImGui::TextWrapped("Pad: d-pad move, A change, Y or B back to the camera");
     } else {
       ImGui::TextWrapped("Pad: A capture, B exit, Y panel, d-pad roll, X+d-pad FOV");
@@ -9569,7 +9565,9 @@ Java_org_metroidprime_port_TouchControlsView_nativeTapUpdateToast(JNIEnv*, jclas
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_org_metroidprime_port_TouchControlsView_nativeDebugOverlayVisible(JNIEnv*, jclass) {
-  return PortDebug::OverlayVisible() ? JNI_TRUE : JNI_FALSE;
+  // The photo mode panel is touched like the F1 overlay: the controls hide and leave the touches to
+  // it. Hiding the panel brings them back to fly the camera, and their Y shows it again.
+  return PortDebug::OverlayVisible() || PortPhoto::PanelWantsCursor() ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL
