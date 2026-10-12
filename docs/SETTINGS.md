@@ -816,7 +816,9 @@ one on the right half drags the view, and a hidden panel leaves a small bar
 (Panel, Capture, Exit) in its place.
 
 Capture writes `metroid-prime-photo-<time>.png` to the screenshot folder with
-the panel, overlays and toasts hidden. 2x and 4x raise the render scale
+the panel, overlays and toasts hidden. On Android it is then moved to the
+shared `Pictures/Metroid Prime` folder, where the gallery shows it (if that
+fails it stays in the app's `screenshots`). 2x and 4x raise the render scale
 temporarily (the base is the window's pixel height / 480) and render the
 frame at that size. The result is at least N times the 1x size in both
 directions and exactly N times where the rounding allows: the frame buffer is

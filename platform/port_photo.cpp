@@ -16,6 +16,11 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#if defined(__ANDROID__)
+#include <SDL3/SDL_system.h>
+#include <filesystem>
+#include <jni.h>
+#endif
 
 namespace aurora {
 void request_screenshot_png(const char* path) noexcept;
@@ -154,6 +159,43 @@ float PickCaptureScale() {
   }
   return sCaptureFactor > 1 ? scale : 0.f;
 }
+
+#if defined(__ANDROID__)
+// The photo is written under the app's private folder; MetroidPrimeActivity.exportPhoto moves it
+// to the shared Pictures/Metroid Prime, where the gallery finds it. Returns that place, or "" when
+// it stays where it was.
+std::string ExportToPictures(const std::string& path) {
+  std::error_code ec;
+  const std::string absolute = std::filesystem::absolute(path, ec).string();
+  JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+  jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
+  if (ec || env == nullptr || activity == nullptr) {
+    return {};
+  }
+  std::string result;
+  jclass cls = env->GetObjectClass(activity);
+  if (jmethodID method = env->GetMethodID(cls, "exportPhoto", "(Ljava/lang/String;)Ljava/lang/String;")) {
+    jstring jpath = env->NewStringUTF(absolute.c_str());
+    auto shared = static_cast<jstring>(env->CallObjectMethod(activity, method, jpath));
+    if (!env->ExceptionCheck() && shared != nullptr) {
+      const char* chars = env->GetStringUTFChars(shared, nullptr);
+      result = chars != nullptr ? chars : "";
+      env->ReleaseStringUTFChars(shared, chars);
+    }
+    if (shared != nullptr) {
+      env->DeleteLocalRef(shared);
+    }
+    env->DeleteLocalRef(jpath);
+  }
+  if (env->ExceptionCheck()) {
+    env->ExceptionClear();
+    result.clear();
+  }
+  env->DeleteLocalRef(cls);
+  env->DeleteLocalRef(activity);
+  return result;
+}
+#endif
 
 } // namespace
 
@@ -329,6 +371,11 @@ void Frame() {
     sLast.width = w;
     sLast.height = h;
     if (state > 0) {
+#if defined(__ANDROID__)
+      if (std::string shared = ExportToPictures(sLast.path); !shared.empty()) {
+        sLast.path = std::move(shared);
+      }
+#endif
       Say("Saved " + sLast.path + " (" + std::to_string(w) + "x" + std::to_string(h) + ")" +
           (sLast.clamped ? ", smaller than asked: too large for this GPU" : ""));
     } else {
