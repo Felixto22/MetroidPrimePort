@@ -246,6 +246,11 @@
   drawn at the retail FOV whatever the setting (a view-model FOV), so it keeps
   its size and place. Morph ball, cutscene and other scripted cameras keep
   their own FOVs; cutscenes that end in Samus's eyes ease to the setting.
+- Arm cannon offset (Video > Display, persisted as `gun_offset=right,forward,up`,
+  metres, each -0.3 to 0.3, default 0,0,0; like PrimeHack's): moves the arm
+  cannon from its retail place along the camera's axes. It moves the real gun,
+  so shots leave from the moved muzzle; the grapple arm follows. Off in the
+  original experience. Console: `gunoffset <r> <f> <u>`.
 - Anti-aliasing and anisotropic filtering (Video > Quality, persisted as `msaa`,
   1 or 4, default 1, and `anisotropy`, 1-16, default 16; pause Options >
   Display has an Anti-Aliasing on/off row): 4x MSAA on the scene framebuffer

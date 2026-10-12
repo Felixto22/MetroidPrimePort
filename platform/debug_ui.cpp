@@ -242,6 +242,7 @@ bool sLogFile = true;
 std::mutex sRandoMutex;
 PortRandoGen::Settings sRandoSettings;
 float sFirstPersonFov = PortDebug::kFovRetail;
+float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
 // Setting `opengles`; sOpenGlesAtStart is what this run was started with.
@@ -642,6 +643,15 @@ void ApplySetting(const std::string& key, const std::string& value) {
     if (std::isfinite(f) && f >= PortDebug::kFovMin && f <= PortDebug::kFovMax) {
       sFirstPersonFov = f;
     }
+  } else if (key == "gun_offset") {
+    float v[3] = {};
+    if (std::sscanf(value.c_str(), "%f,%f,%f", &v[0], &v[1], &v[2]) == 3) {
+      for (int i = 0; i < 3; ++i) {
+        sGunOffset[i] = std::isfinite(v[i]) ? std::clamp(v[i], -PortDebug::kGunOffsetMax,
+                                                         PortDebug::kGunOffsetMax)
+                                            : 0.f;
+      }
+    }
   } else if (key == "game_options") {
     sGameOptions = value;
   } else if (key == "speedrun_timer") {
@@ -795,6 +805,7 @@ std::string SettingsText() {
   file << "elevator_ride=" << sElevatorRide << '\n';
   file << "savestate_hotkeys=" << (sSaveStateHotkeys ? 1 : 0) << '\n';
   file << "fov=" << sFirstPersonFov << '\n';
+  file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
   file << "gpu_driver=" << sGpuDriver << '\n';
@@ -1621,6 +1632,23 @@ void SetFirstPersonFov(float degrees) {
     sFirstPersonFov = std::clamp(degrees, kFovMin, kFovMax);
     MarkDirty();
   }
+}
+
+void GunOffset(float out[3]) {
+  EnsureInitialized();
+  for (int i = 0; i < 3; ++i) {
+    out[i] = sOriginalExperience ? 0.f : sGunOffset[i];
+  }
+}
+
+void SetGunOffset(const float offset[3]) {
+  EnsureInitialized();
+  for (int i = 0; i < 3; ++i) {
+    if (std::isfinite(offset[i])) {
+      sGunOffset[i] = std::clamp(offset[i], -kGunOffsetMax, kGunOffsetMax);
+    }
+  }
+  MarkDirty();
 }
 
 int Msaa() {
@@ -5968,6 +5996,23 @@ void DrawVideoDisplay() {
     ImGui::TextDisabled("About %.0f deg horizontal at this aspect.", hfov);
     ImGui::SetItemTooltip("First-person vertical FOV (retail 55). The arm cannon stays at the retail\n"
                           "FOV; morph ball and cutscene cameras are unchanged.");
+  }
+  {
+    // Issue #72: PrimeHack-style arm cannon placement.
+    float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};
+    bool changed = ImGui::SliderFloat("Arm cannon right", &offset[0], -kGunOffsetMax, kGunOffsetMax, "%.2f m");
+    changed |= ImGui::SliderFloat("Arm cannon forward", &offset[1], -kGunOffsetMax, kGunOffsetMax, "%.2f m");
+    changed |= ImGui::SliderFloat("Arm cannon up", &offset[2], -kGunOffsetMax, kGunOffsetMax, "%.2f m");
+    if (changed) {
+      SetGunOffset(offset);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Retail##gunoffset")) {
+      const float zero[3] = {};
+      SetGunOffset(zero);
+    }
+    ImGui::SetItemTooltip("Back to the retail place.");
+    ImGui::TextDisabled("Moves the arm cannon; shots leave from where it is.");
   }
   EndOriginalLocked(locked);
 

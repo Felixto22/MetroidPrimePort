@@ -582,6 +582,7 @@ void CmdHelp() {
   Out("keypreset classic|mouse   apply a keyboard preset (Controls > Remap), as its button");
   Out("padpreset gamecube|remastered|modern|southpaw   apply a controller preset to pad 1");
   Out("fov <45..90>               first-person vertical FOV, as the Options row does");
+  Out("gunoffset <r> <f> <u>      arm cannon offset in metres (+-0.3), as the Video row does");
   Out("window [<w> <h>]           resize the window (leaves fullscreen); prints the size");
   Out("msaa <1|4>, aniso <1..16>  anti-aliasing and anisotropic filtering, applied next frame");
   Out("hudscale <50..100>         HUD scale in percent, as the Options row does");
@@ -1963,6 +1964,15 @@ void RunFrame() {
       return Finish("usage: fov <45..90>   first-person vertical FOV (retail 55)");
     }
     PortDebug::SetFirstPersonFov(fov);
+    Finish();
+  } else if (name == "gunoffset") {
+    if (sCmd.args.size() != 4) {
+      return Finish("usage: gunoffset <right> <forward> <up>   arm cannon offset in metres (+-0.3)");
+    }
+    const float offset[3] = {static_cast< float >(std::atof(sCmd.args[1].c_str())),
+                             static_cast< float >(std::atof(sCmd.args[2].c_str())),
+                             static_cast< float >(std::atof(sCmd.args[3].c_str()))};
+    PortDebug::SetGunOffset(offset);
     Finish();
   } else if (name == "window") {
     int count = 0;

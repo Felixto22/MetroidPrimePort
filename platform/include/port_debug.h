@@ -272,6 +272,12 @@ const float kFovMin = 45.f;
 const float kFovMax = 90.f;
 float FirstPersonFov();
 void SetFirstPersonFov(float degrees);
+// Arm cannon offset from its retail place, in metres along the camera's right,
+// forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
+// shots leave from the new muzzle. Zero in the original experience.
+const float kGunOffsetMax = 0.3f;
+void GunOffset(float out[3]);
+void SetGunOffset(const float offset[3]);
 // Multisample anti-aliasing (1 = off, or 4) and the max texture anisotropy
 // (1-16, retail-style mipmapped textures ask for the max). Applied next frame.
 int Msaa();
