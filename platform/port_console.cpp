@@ -1981,6 +1981,7 @@ void RunFrame() {
   } else if (name == "quit") {
     // As closing the window: the quick resume is written first.
     PortSaveState::ResumeSave();
+    PortSaveState::ResumeQuitCleanly();
     Finish();
     sQuit = true;
   } else if (name == "phazongun") {

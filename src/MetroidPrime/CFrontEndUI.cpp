@@ -1771,7 +1771,8 @@ CIOWin::EMessageReturn CFrontEndUI::Update(float dt, CArchitectureQueue& queue) 
       // while the title waits.
       if (onTitle && (sResumeFrames++ % 15) == 0 && PortSaveState::ResumeOffer(sResumeInfo)) {
         sResumeStage = kRS_Prompt;
-        sResumeYes = true;
+        // A state that already crashed once after resuming starts on No.
+        sResumeYes = !sResumeInfo.crashedAgain;
       } else if (!onTitle && x50_curScreen != kS_OpenCredits && x50_curScreen != kS_AttractMovie) {
         sResumeStage = kRS_Done;
       }
@@ -2380,7 +2381,13 @@ void CFrontEndUI::DrawResumePrompt() const {
   const CTextColor selected(255, 255, 255, 255);
   const CTextColor unselected(96, 96, 96, 255);
   text.AddColor(kCT_Foreground, selected);
-  text.AddString(rstl::wstring_l(L"Resume where you left off?\n"));
+  if (sResumeInfo.crashedAgain) {
+    text.AddString(rstl::wstring_l(L"The game closed unexpectedly again after resuming here.\nResume anyway?\n"));
+  } else if (sResumeInfo.afterCrash) {
+    text.AddString(rstl::wstring_l(L"The game closed unexpectedly.\nResume where you left off?\n"));
+  } else {
+    text.AddString(rstl::wstring_l(L"Resume where you left off?\n"));
+  }
   text.AddString(rstl::wstring_l(whereText.c_str()));
   text.AddString(rstl::wstring_l(whenText.c_str()));
   text.AddColor(kCT_Foreground, sResumeYes ? selected : unselected);

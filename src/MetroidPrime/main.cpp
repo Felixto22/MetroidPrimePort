@@ -961,6 +961,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
             // (Android's background events never get here: SDL only calls
             // watchers for them, see PortSaveState::ResumeInstallEventWatch.)
             PortSaveState::ResumeSave();
+            PortSaveState::ResumeQuitCleanly();
             x160_24_finished = true;
           } else if (event->type == AURORA_SDL_EVENT && event->sdl.type == SDL_EVENT_KEY_DOWN &&
                      !event->sdl.key.repeat && event->sdl.key.scancode == SDL_SCANCODE_F10) {
@@ -1088,6 +1089,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
       CARAMToken::UpdateAllDMAs();
       aurora::phase::set(aurora::phase::Main, "game tick (UpdateTicks)");
       if (!archSupport->UpdateTicks()) {
+        PortSaveState::ResumeQuitCleanly();
         x160_24_finished = true;
       }
       // Track the step UpdateTicks actually used (fixed or adaptive).

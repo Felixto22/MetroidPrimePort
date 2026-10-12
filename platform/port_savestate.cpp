@@ -93,6 +93,15 @@ RoomApplyStats sRoomStats;
 bool sResumeLoading = false;
 bool sResumeLoadRequest = false;
 
+// The run marker ("running" next to resume.mpss): present while the game runs,
+// removed on a clean quit and while Android has the app in the background
+// (where it may be killed without warning). One left at launch means the last
+// run crashed or hung. It holds "resumed <savedAt>" once the run resumed, so a
+// crash before any newer snapshot shows as the same state crashing again.
+bool sLastRunCrashed = false;
+std::string sLastRunMarker;
+std::string sMarker;
+
 // The resume snapshot: the bytes resume.mpss will hold, built on the game
 // thread at a safe moment and written from wherever the quit or background
 // event arrives. Everything but the game-thread-only timers is under the mutex.
@@ -385,6 +394,31 @@ void RemoveResumeFile() {
   fs::remove(path, ec);
 }
 
+fs::path MarkerPath() {
+  const std::string folder = Folder();
+  if (folder.empty())
+    return {};
+  return PortGci::PathFromString(folder) / "running";
+}
+
+void WriteMarker() {
+  const fs::path path = MarkerPath();
+  if (path.empty())
+    return;
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  file << sMarker;
+}
+
+void RemoveMarker() {
+  const fs::path path = MarkerPath();
+  if (path.empty())
+    return;
+  std::error_code ec;
+  fs::remove(path, ec);
+}
+
+std::string ResumedMarker(int64_t savedAt) { return "resumed " + std::to_string(savedAt); }
+
 bool ReadResume(ResumeMeta& meta, Header& header, std::vector< uint8_t >& blob) {
   const fs::path path = ResumePath();
   if (path.empty())
@@ -548,8 +582,11 @@ bool Tick(CStateManager& mgr) {
       Place(mgr);
     }
     if (sResumeLoading) {
+      // The file stays until the next snapshot replaces it: a crash before
+      // then resumes here again, and the marker tells the prompt so.
       sResumeLoading = false;
-      RemoveResumeFile();
+      sMarker = ResumedMarker(sPendingHeader.savedAt);
+      WriteMarker();
       SetMessage("Resumed");
     }
     PortStartStateLoadMusic(mgr);
@@ -712,6 +749,11 @@ bool SDLCALL ResumeEventWatch(void*, SDL_Event* event) {
     if (sResumeEnabled.load()) {
       ResumeFlush();
     }
+    // Android may kill a background app at any time: that is no crash.
+    RemoveMarker();
+    break;
+  case SDL_EVENT_DID_ENTER_FOREGROUND:
+    WriteMarker();
     break;
   default:
     break;
@@ -721,7 +763,9 @@ bool SDLCALL ResumeEventWatch(void*, SDL_Event* event) {
 
 } // namespace
 
-bool ResumeFlush() {
+namespace {
+
+bool FlushSnapshot(bool quiet) {
   std::lock_guard< std::mutex > lock(sSnapMutex);
   if (!sSnap.valid || sSnap.writtenGen == sSnap.gen)
     return false;
@@ -741,16 +785,36 @@ bool ResumeFlush() {
   if (ec)
     return false;
   sSnap.writtenGen = sSnap.gen;
-  const double age = std::chrono::duration< double >(Clock::now() - sSnap.taken).count();
-  std::fprintf(stderr, "[resume] written: %s - %s (snapshot %.1f s old)\n", sSnap.world.c_str(),
-               sSnap.room.c_str(), age);
+  if (!quiet) {
+    const double age = std::chrono::duration< double >(Clock::now() - sSnap.taken).count();
+    std::fprintf(stderr, "[resume] written: %s - %s (snapshot %.1f s old)\n", sSnap.world.c_str(),
+                 sSnap.room.c_str(), age);
+  }
   return true;
 }
+
+} // namespace
+
+bool ResumeFlush() { return FlushSnapshot(false); }
 
 void ResumeInstallEventWatch() {
   sGameThread = std::this_thread::get_id();
   SDL_AddEventWatch(ResumeEventWatch, nullptr);
+  const fs::path marker = MarkerPath();
+  std::error_code ec;
+  if (!marker.empty() && fs::exists(marker, ec)) {
+    sLastRunCrashed = true;
+    std::ifstream file(marker, std::ios::binary);
+    std::getline(file, sLastRunMarker);
+    std::fprintf(stderr, "[resume] the last run did not quit cleanly%s\n",
+                 sLastRunMarker.empty() ? "" : (" (" + sLastRunMarker + ")").c_str());
+  }
+  WriteMarker();
+  // Returning from main or exit() is a clean quit too; a crash or a kill is not.
+  std::atexit(ResumeQuitCleanly);
 }
+
+void ResumeQuitCleanly() { RemoveMarker(); }
 
 void SetEventPumpSafe(bool safe) { sPumpSafe.store(safe); }
 
@@ -793,7 +857,9 @@ void ResumeTick(CStateManager& mgr) {
   const bool safe = SafeNow(mgr);
   if (ResumeRefreshDue(safe, haveSnap, sameRoom, std::chrono::duration< double >(now - sRoomSince).count(),
                        sinceSnap)) {
-    TakeSnapshot(mgr);
+    // Written at once (a few KB): a crash leaves this snapshot to resume from.
+    if (TakeSnapshot(mgr))
+      FlushSnapshot(true);
   }
 }
 
@@ -870,6 +936,8 @@ bool ResumeOffer(ResumeInfo& info) {
   info.room = header.room;
   info.playTime = header.playTime;
   info.savedAt = header.savedAt;
+  info.afterCrash = sLastRunCrashed;
+  info.crashedAgain = sLastRunCrashed && sLastRunMarker == ResumedMarker(header.savedAt);
   return true;
 }
 

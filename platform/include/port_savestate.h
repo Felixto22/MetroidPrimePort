@@ -136,7 +136,8 @@ const char* ResumeSkipReason(const ResumeContext& ctx);
 // The resume file is built from an in-memory snapshot kept on the game thread
 // (a "last safe point", refreshed on room entry and every kResumeRefreshSeconds
 // while nothing below applies), so the write at background or quit needs no
-// game state and works from an SDL event watch. What to write then:
+// game state and works from an SDL event watch. Each new snapshot is also
+// written at once, so a crash leaves the last one behind. What to write then:
 enum class ResumeWriteChoice {
   kNothing,          // no snapshot yet (title screen): keep the old file
   kRefreshThenWrite, // safe right now: take a fresh snapshot, write it
@@ -161,6 +162,8 @@ struct ResumeInfo {
   std::string room;
   double playTime = 0.0;
   int64_t savedAt = 0;
+  bool afterCrash = false;   // the last run did not quit cleanly
+  bool crashedAgain = false; // ...and had resumed from this same state
 };
 // Quit or background, between ticks: refreshes the snapshot when it is safe,
 // then writes resume.mpss (synchronously, atomically) from the last snapshot.
@@ -171,7 +174,10 @@ bool ResumeSave(bool force = false);
 void ResumeTick(CStateManager& mgr);
 // Registers the SDL event watch that writes on WILL/DID_ENTER_BACKGROUND (SDL
 // never queues those events, it only calls watchers, on the thread that pumps).
+// Also notes whether the last run crashed, and marks this one as running.
 void ResumeInstallEventWatch();
+// A clean quit: the next launch must not take this run for a crash.
+void ResumeQuitCleanly();
 // True around the main loop's event pump: a background event arriving there
 // may take a fresh snapshot first (the game is between ticks).
 void SetEventPumpSafe(bool safe);
@@ -183,8 +189,9 @@ bool ResumeFlush();
 bool ResumeOffer(ResumeInfo& info);
 // Yes at the title screen, once the card serial is known: queues the state
 // for the game CFrontEndUI is about to start, and gives the file to start it
-// with. The file is deleted once Samus is placed. False if the file is gone
-// or from another game or card.
+// with. The file is kept until the next snapshot replaces it, so a crash right
+// after the resume can resume again. False if the file is gone or from
+// another game or card.
 bool ResumeAccept(uint64_t cardSerial, uint32_t& fileIdx);
 // Console: load the resume state from inside a game; delete it; one line.
 bool RequestResumeLoad();

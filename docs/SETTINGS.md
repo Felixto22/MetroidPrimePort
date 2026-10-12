@@ -442,14 +442,20 @@ other `X:\Users\<name>`: `X:\Users\<user>`); the
   after each room load and then every 30 s while Samus is alive, out of
   cutscenes, elevators and transitions; about 0.3 ms and 4 KB each), so what is
   written is the current moment when that is safe and otherwise that last safe
-  point, at most about 30 s old. On Android the write runs from the system's
+  point, at most about 30 s old. Each new safe point is also written at once,
+  so after a crash, a hang you had to kill or a power loss the next launch
+  still offers the last one; the prompt then says the game closed
+  unexpectedly (a `savestates/running` marker, removed on a clean quit and
+  while Android has the app in the background). If the game closes
+  unexpectedly again after resuming, before a newer safe point, the prompt says
+  so and starts on No. On Android the write runs from the system's
   pause notification itself, not from the game loop, which the system may block
   before it runs. The file is written to a temp file and renamed. It also records the memory card, file slot and the randomizer seed
   or Archipelago session. At the next launch the title screen asks "Resume
   where you left off?" with the room and time; Yes (A or Start, D-pad
   left/right to choose) starts the file it came from and loads the state like a
   save state (with `savestate_room_state` the room keeps its enemies and doors as saved; boss progress is not kept),
-  No dismisses the prompt and keeps the file; B does nothing. Yes deletes it once Samus is placed. Nothing is written
+  No dismisses the prompt and keeps the file; B does nothing. The file stays after Yes too, until the next safe point replaces it. Nothing is written
   (and a previous resume file stays) on the title screen or before the first
   safe point of a session.
   A resume from another card, randomizer seed or Archipelago session is never
