@@ -2097,7 +2097,12 @@ CIOWin::EMessageReturn CFrontEndUI::Update(float dt, CArchitectureQueue& queue) 
       }
 
       // Handle fade timer
-      if (x58_fadeBlackTimer > 0.f && !x5c_fadeBlackWithMovie) {
+      bool resumeHold = false;
+#ifdef TARGET_PC
+      // The attract movie would end the resume prompt for good: wait for an answer.
+      resumeHold = sResumeStage == kRS_Prompt && IsInScreenNotTransitioning(kS_Title);
+#endif
+      if (x58_fadeBlackTimer > 0.f && !x5c_fadeBlackWithMovie && !resumeHold) {
         SetFadeBlackTimer(rstl::max_val(x58_fadeBlackTimer - dt, 0.f));
         if (x58_fadeBlackTimer == 0.f) {
           if (IsInScreenNotTransitioning(kS_Title)) {
