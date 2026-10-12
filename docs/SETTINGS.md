@@ -810,7 +810,10 @@ hidden panel, and when it is shown gives it the pad: the d-pad moves between
 the widgets (a slider changes with left/right), A presses or toggles, and Y or B
 hands the pad back to the camera (Start still exits). The camera is still while
 the panel has the pad. None of this reaches the game. The sliders also take
-mouse or touch.
+mouse or touch. On a touchscreen the touch controls hide for all of photo
+mode: a finger on the left half is an invisible stick centred where it lands,
+one on the right half drags the view, and a hidden panel leaves a small bar
+(Panel, Capture, Exit) in its place.
 
 Capture writes `metroid-prime-photo-<time>.png` to the screenshot folder with
 the panel, overlays and toasts hidden. 2x and 4x raise the render scale

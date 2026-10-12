@@ -37,6 +37,11 @@ void SetPose(const Pose& pose);
 float FovOverride();
 void SetFovOverride(float degrees);
 
+// Touch (photo mode on a phone): a stick in [-1, 1] added to the left stick until changed
+// (y is ahead), and a turn in degrees taken at the next tick.
+void SetTouchMove(float x, float y);
+void AddTouchTurn(float yaw, float pitch);
+
 // Once per tick with the pad's input: left stick moves, C stick turns, R is fast,
 // L and Z (or the d-pad's up and down) go down and up. Returns true when the input was
 // taken and the player must not see it.

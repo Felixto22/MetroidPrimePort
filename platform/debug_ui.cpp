@@ -1009,7 +1009,79 @@ bool IsPhysicalInput(const SDL_Event& event) {
   }
 }
 
+// Photo mode on a touchscreen: the touch controls hide (nativeDebugOverlayVisible), a finger
+// put down on the left half is an invisible stick centred where it landed, and one on the right
+// half drags the view. Fingers that land on the photo windows are left to ImGui. Events arrive on
+// Android's UI thread, so the state is shared under a lock and the game thread takes it each frame.
+constexpr float kPhotoStickRadius = 0.12f; // of the screen height, for a full stick
+constexpr float kPhotoLookDegrees = 100.f; // per screen height dragged
+struct PhotoTouch {
+  bool stickDown = false, lookDown = false; // Android finger ids start at 0
+  SDL_FingerID stick = 0;
+  SDL_FingerID look = 0;
+  float stickX = 0.f, stickY = 0.f; // where the stick finger landed
+  float moveX = 0.f, moveY = 0.f;
+  float lookX = 0.f, lookY = 0.f; // the look finger's last place
+  float yaw = 0.f, pitch = 0.f;   // not taken yet
+  bool enabled = false;
+  float aspect = 1.f; // window width over height
+  std::vector<ImVec4> windows; // x0, y0, x1, y1 as fractions of the window
+};
+std::mutex sPhotoTouchMutex;
+PhotoTouch sPhotoTouch;
+
+void PhotoTouchEvent(const SDL_Event& event) {
+  if (event.type != SDL_EVENT_FINGER_DOWN && event.type != SDL_EVENT_FINGER_MOTION &&
+      event.type != SDL_EVENT_FINGER_UP && event.type != SDL_EVENT_FINGER_CANCELED) {
+    return;
+  }
+  const SDL_TouchFingerEvent& f = event.tfinger;
+  std::lock_guard lock(sPhotoTouchMutex);
+  PhotoTouch& t = sPhotoTouch;
+  if (event.type == SDL_EVENT_FINGER_DOWN) {
+    if (!t.enabled) {
+      return;
+    }
+    for (const ImVec4& r : t.windows) {
+      if (f.x >= r.x && f.x <= r.z && f.y >= r.y && f.y <= r.w) {
+        return;
+      }
+    }
+    if (f.x < 0.5f && !t.stickDown) {
+      t.stickDown = true;
+      t.stick = f.fingerID;
+      t.stickX = f.x;
+      t.stickY = f.y;
+      t.moveX = t.moveY = 0.f;
+    } else if (f.x >= 0.5f && !t.lookDown) {
+      t.lookDown = true;
+      t.look = f.fingerID;
+      t.lookX = f.x;
+      t.lookY = f.y;
+    }
+  } else if (event.type == SDL_EVENT_FINGER_MOTION) {
+    if (t.stickDown && f.fingerID == t.stick) {
+      t.moveX = std::clamp((f.x - t.stickX) * t.aspect / kPhotoStickRadius, -1.f, 1.f);
+      t.moveY = std::clamp((t.stickY - f.y) / kPhotoStickRadius, -1.f, 1.f);
+    } else if (t.lookDown && f.fingerID == t.look) {
+      t.yaw -= (f.x - t.lookX) * t.aspect * kPhotoLookDegrees;
+      t.pitch -= (f.y - t.lookY) * kPhotoLookDegrees;
+      t.lookX = f.x;
+      t.lookY = f.y;
+    }
+  } else {
+    if (t.stickDown && f.fingerID == t.stick) {
+      t.stickDown = false;
+      t.moveX = t.moveY = 0.f;
+    }
+    if (t.lookDown && f.fingerID == t.look) {
+      t.lookDown = false;
+    }
+  }
+}
+
 bool SDLCALL debug_event_watch(void*, SDL_Event* event) {
+  PhotoTouchEvent(*event);
   // The port menu, save state and screenshot keys are bindings
   // (PortInputDevices::PollPortActions).
   if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
@@ -5102,8 +5174,58 @@ void TopToastPlaced(const ImGuiViewport* viewport) {
   sTopToastNextY = ImGui::GetWindowPos().y - viewport->Pos.y + ImGui::GetWindowSize().y + 8.f;
 }
 
+// Once per frame on the game thread: hands the touches to the free camera, and records where the
+// photo windows are (`windows`) and whether fingers may fly the camera now.
+void PhotoTouchFrame(bool enabled, std::vector<ImVec4> windows) {
+  const ImGuiViewport* viewport = ImGui::GetMainViewport();
+  float moveX = 0.f, moveY = 0.f, yaw = 0.f, pitch = 0.f;
+  {
+    std::lock_guard lock(sPhotoTouchMutex);
+    PhotoTouch& t = sPhotoTouch;
+    t.enabled = enabled;
+    t.windows = std::move(windows);
+    if (viewport->Size.y > 0.f) {
+      t.aspect = viewport->Size.x / viewport->Size.y;
+    }
+    if (!enabled) {
+      t.stickDown = t.lookDown = false;
+      t.moveX = t.moveY = 0.f;
+    }
+    moveX = t.moveX;
+    moveY = t.moveY;
+    yaw = t.yaw;
+    pitch = t.pitch;
+    t.yaw = t.pitch = 0.f;
+  }
+  if (PortPhoto::Active()) {
+    PortFreeCam::SetTouchMove(moveX, moveY);
+    if (enabled) {
+      PortFreeCam::AddTouchTurn(yaw, pitch);
+    }
+  }
+}
+
+// The window just drawn, as fractions of the main viewport.
+ImVec4 PhotoWindowRect(const ImGuiViewport* viewport) {
+  const ImVec2 pos = ImGui::GetWindowPos();
+  const ImVec2 size = ImGui::GetWindowSize();
+  if (viewport->Size.x <= 0.f || viewport->Size.y <= 0.f) {
+    return ImVec4();
+  }
+  return ImVec4((pos.x - viewport->Pos.x) / viewport->Size.x, (pos.y - viewport->Pos.y) / viewport->Size.y,
+                (pos.x + size.x - viewport->Pos.x) / viewport->Size.x,
+                (pos.y + size.y - viewport->Pos.y) / viewport->Size.y);
+}
+
 // The photo mode panel (top right, compact) and its messages (a toast under the others).
 void DrawPhotoUI() {
+  std::vector<ImVec4> touchWindows;
+  const bool touchEnabled = PortPhoto::Active() && !PortPhoto::Capturing() && !OverlayVisible();
+  struct TouchFrameAtExit {
+    const bool& enabled;
+    std::vector<ImVec4>& windows;
+    ~TouchFrameAtExit() { PhotoTouchFrame(enabled, std::move(windows)); }
+  } touchFrame{touchEnabled, touchWindows};
   PortPhoto::Frame();
   static std::string sMessage;
   static double sMessageAt = 0.0;
@@ -5134,9 +5256,33 @@ void DrawPhotoUI() {
     if (ImGui::IsKeyPressed(ImGuiKey_H, false) && !ImGui::GetIO().WantTextInput) {
       PortPhoto::SetPanelShown(true);
     }
+    // The touch controls are gone in photo mode, so a touchscreen gets a small bar for it.
+    if (TouchActive()) {
+      const float margin = 12.f * sUiAppliedScale;
+      ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - margin, viewport->Pos.y + margin),
+                              ImGuiCond_Always, ImVec2(1.f, 0.f));
+      ImGui::SetNextWindowBgAlpha(0.6f);
+      if (ImGui::Begin("##photo-bar", nullptr,
+                       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav |
+                           ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::Button("Panel")) {
+          PortPhoto::SetPanelShown(true);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Capture")) {
+          PortPhoto::RequestCapture();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Exit")) {
+          PortPhoto::RequestExit();
+        }
+        touchWindows.push_back(PhotoWindowRect(viewport));
+      }
+      ImGui::End();
+    }
     return;
   }
-  // Sized in scaled units so it fits a phone (density ~3). The touch controls hide while it shows.
+  // Sized in scaled units so it fits a phone (density ~3). The touch controls hide in photo mode.
   const float margin = 12.f * sUiAppliedScale;
   const float width = std::min(viewport->Size.x - 2.f * margin, 320.f * sUiAppliedScale);
   ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - margin, viewport->Pos.y + margin),
@@ -5197,13 +5343,14 @@ void DrawPhotoUI() {
     }
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     if (TouchActive()) {
-      ImGui::TextWrapped("Hide panel to fly with the touch controls; their Y shows it again");
+      ImGui::TextWrapped("Touch: left half moves, right half looks around");
     } else if (padFocus) {
       ImGui::TextWrapped("Pad: d-pad move, A change, Y or B back to the camera");
     } else {
       ImGui::TextWrapped("Pad: A capture, B exit, Y panel, d-pad roll, X+d-pad FOV");
     }
     ImGui::PopStyleColor();
+    touchWindows.push_back(PhotoWindowRect(viewport));
   }
   ImGui::End();
 }
@@ -9565,9 +9712,9 @@ Java_org_metroidprime_port_TouchControlsView_nativeTapUpdateToast(JNIEnv*, jclas
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_org_metroidprime_port_TouchControlsView_nativeDebugOverlayVisible(JNIEnv*, jclass) {
-  // The photo mode panel is touched like the F1 overlay: the controls hide and leave the touches to
-  // it. Hiding the panel brings them back to fly the camera, and their Y shows it again.
-  return PortDebug::OverlayVisible() || PortPhoto::PanelWantsCursor() ? JNI_TRUE : JNI_FALSE;
+  // Photo mode is touched like the F1 overlay: the controls hide and leave the touches to SDL, where
+  // its panel takes the ones on it and the rest fly the camera (PhotoTouchEvent).
+  return PortDebug::OverlayVisible() || PortPhoto::Active() ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL
