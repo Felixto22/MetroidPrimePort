@@ -9,6 +9,7 @@
 #include "port_debug.h"
 #include "port_discord.h"
 #include "port_freecam.h"
+#include "port_photo.h"
 #include "port_hd_font.h"
 #include "port_livesplit.h"
 #include "port_rando_gen.h"
@@ -577,6 +578,8 @@ void CmdHelp() {
   Out("mappan <dx> <dy> [hold s]   drag the open map screen by dx,dy dp (view height 400 dp); finger down for hold s (0.25)");
   Out("freecam [on|off|freeze on|off|player on|off|speed <n>|pos <x> <y> <z>|look <yaw> <pitch>]");
   Out("                           fly the view away from the player (HUD hidden; freeze holds the game still)");
+  Out("photo [on|off|capture [1|2|4]|fov <n>|roll <n>|samus on|off|panel on|off|super 1|2|4|speed <n>]");
+  Out("                           photo mode: frozen free camera with a roll and fov, saves a PNG");
   Out("aspect <4:3|16:9|window>   switch the rendering aspect, as the Options row does");
   Out("original [on|off]   Original experience (retail settings over the saved ones)");
   Out("keypreset classic|mouse   apply a keyboard preset (Controls > Remap), as its button");
@@ -1776,6 +1779,66 @@ void CmdFreeCam() {
   Finish();
 }
 
+void CmdPhoto(CStateManager& mgr) {
+  static const char* const usage =
+      "usage: photo [on|off|capture [1|2|4]|fov <20..120>|roll <-180..180>|samus on|off|panel on|off|"
+      "super 1|2|4|speed <n>]";
+  if (sCmd.args.size() > 1) {
+    const std::string arg = Lower(sCmd.args[1]);
+    const std::string value = sCmd.args.size() > 2 ? Lower(sCmd.args[2]) : std::string();
+    float number = 0.f;
+    std::string why;
+    if (arg == "on") {
+      if (!PortPhoto::Enter(mgr, why)) {
+        return Finish(("photo mode refused: " + why).c_str());
+      }
+    } else if (arg == "off") {
+      PortPhoto::Exit();
+    } else if (!PortPhoto::Active()) {
+      return Finish("photo mode is off");
+    } else if (arg == "capture") {
+      const int factor = value.empty() ? 0 : std::atoi(value.c_str());
+      if (!value.empty() && factor != 1 && factor != 2 && factor != 4) {
+        return Finish(usage);
+      }
+      if (!PortPhoto::RequestCapture(factor)) {
+        return Finish("a capture is already running");
+      }
+    } else if (arg == "fov" && ParseFloat(value, number)) {
+      PortPhoto::SetFov(number);
+    } else if (arg == "roll" && ParseFloat(value, number)) {
+      PortPhoto::SetRoll(number);
+    } else if (arg == "speed" && ParseFloat(value, number)) {
+      PortPhoto::SetSpeed(number);
+    } else if (arg == "samus" && (value == "on" || value == "off")) {
+      PortPhoto::SetShowSamus(value == "on");
+    } else if (arg == "panel" && (value == "on" || value == "off")) {
+      PortPhoto::SetPanelShown(value == "on");
+    } else if (arg == "super" && (value == "1" || value == "2" || value == "4")) {
+      PortPhoto::SetSupersample(std::atoi(value.c_str()));
+    } else {
+      return Finish(usage);
+    }
+  }
+  const PortPhoto::CaptureResult last = PortPhoto::LastCapture();
+  // The camera state is only live while photo mode is on; off, just the persisted settings.
+  char live[96] = "";
+  if (PortPhoto::Active()) {
+    std::snprintf(live, sizeof(live), "fov %.1f roll %.1f samus %s panel %s ", PortPhoto::Fov(),
+                  PortPhoto::Roll(), PortPhoto::ShowSamus() ? "on" : "off",
+                  PortPhoto::PanelShown() ? "on" : "off");
+  }
+  Out("photo %s %ssuper %d speed %.1f capture %s%s%s", PortPhoto::Active() ? "on" : "off", live,
+      PortPhoto::Supersample(), PortPhoto::Speed(),
+      PortPhoto::Capturing() ? "running" : last.state > 0 ? "saved" : last.state < 0 ? "failed" : "none",
+      last.state > 0 ? " " : "", last.state > 0 ? last.path.c_str() : "");
+  if (last.state > 0) {
+    Out("last capture %ux%u at render scale %.2f%s", last.width, last.height, last.scale,
+        last.clamped ? " (clamped)" : "");
+  }
+  Finish();
+}
+
 bool IsTickCommand(const std::string& name) {
   if (name == "fx" && sCmd.args.size() > 1) {
     static const char* const queries[] = {"list", "tree", "stats", "mute", "solo", "timescale"};
@@ -1787,7 +1850,7 @@ bool IsTickCommand(const std::string& name) {
   }
   static const char* const names[] = {"status", "areas", "objs", "obj", "send", "give",
                                       "take", "items", "heal", "kill", "hurt", "die", "god", "memo", "strg", "language", "tp", "room", "fx", "face", "look", "warp",
-                                      "tracker", "enter", "visor", "beam"};
+                                      "tracker", "enter", "visor", "beam", "photo"};
   for (const char* n : names) {
     if (name == n) {
       return true;
@@ -1801,6 +1864,8 @@ void RunTick(CStateManager& mgr) {
   if (name == "status") {
     CmdStatus(mgr);
     Finish();
+  } else if (name == "photo") {
+    CmdPhoto(mgr);
   } else if (name == "areas") {
     CmdAreas(mgr);
   } else if (name == "enter") {

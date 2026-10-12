@@ -187,6 +187,7 @@ set(MP_PORT_SOURCES
     platform/port_map_pickups.cpp
     platform/port_viewmodel.cpp
     platform/port_freecam.cpp
+    platform/port_photo.cpp
     platform/port_console.cpp
     platform/port_log_file.cpp
     platform/port_crash.cpp

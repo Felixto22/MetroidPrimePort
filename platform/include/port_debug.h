@@ -152,6 +152,10 @@ void SetFullscreen(bool enabled);
 // 0 = auto (native, driven by the display scale), otherwise a fixed multiplier.
 float RenderScale();
 void SetRenderScale(float scale);
+// Photo mode captures: the configured scale (1 when auto), and a temporary override
+// (0 = none) that also holds dynamic resolution still.
+float BaseRenderScale();
+void SetCaptureRenderScale(float scale);
 // Dynamic resolution: draws the EFB between DynamicResMin and RenderScale to
 // hold DynamicResTarget fps (0 = the frame cap). False when off.
 bool DynamicRes();

@@ -27,9 +27,15 @@ struct Pose {
   float x, y, z;
   float yaw;   // degrees about world up, 0 looking along +Y
   float pitch; // degrees, up positive
+  float roll = 0.f; // degrees about the view axis; movement ignores it
 };
 Pose GetPose();
 void SetPose(const Pose& pose);
+
+// A vertical field of view in degrees that replaces the game camera's while the camera is on
+// (photo mode); 0 leaves the game's. FovFor widens it to the game's aspect like the camera does.
+float FovOverride();
+void SetFovOverride(float degrees);
 
 // Once per tick with the pad's input: left stick moves, C stick turns, R is fast,
 // L and Z (or the d-pad's up and down) go down and up. Returns true when the input was

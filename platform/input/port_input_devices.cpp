@@ -5,6 +5,7 @@
 #include "port_input_remap_ui.h"
 #include "port_log.h"
 #include "port_paths.h"
+#include "port_photo.h"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerGun.hpp"
@@ -395,6 +396,7 @@ void BindPortControls(Profile& p) {
   Bind(p, Action::SaveState, Make(Device::Key, SDL_SCANCODE_F5));
   Bind(p, Action::LoadState, Make(Device::Key, SDL_SCANCODE_F9));
   Bind(p, Action::Screenshot, Make(Device::Key, SDL_SCANCODE_F12));
+  Bind(p, Action::PhotoMode, Make(Device::Key, SDL_SCANCODE_F8));
 
   // The wheel cycles beams, as in PrimeHack (issue #61); retail has no wheel.
   if (!PortDebug::OriginalExperience()) {
@@ -613,7 +615,7 @@ void RouteDirectActions(const PortInput::Output& out) {
 // ticks, so they work while the game is paused or the F1 overlay is open.
 bool IsPortAction(Action a) {
   return a == Action::PortMenu || a == Action::SaveState || a == Action::LoadState || a == Action::Screenshot ||
-         a == Action::ToggleOriginal;
+         a == Action::ToggleOriginal || a == Action::PhotoMode;
 }
 
 // Keys pressed since the last PollPortActions, added by an SDL event watch: a short
@@ -1137,6 +1139,7 @@ void PollPortActions() {
   if (out.Pressed(Action::SaveState)) PortDebug::RequestSaveStateHotkey(1);
   if (out.Pressed(Action::LoadState)) PortDebug::RequestSaveStateHotkey(2);
   if (out.Pressed(Action::Screenshot)) aurora::request_screenshot();
+  if (out.Pressed(Action::PhotoMode)) PortPhoto::RequestToggle();
   if (out.Pressed(Action::ToggleOriginal)) PortDebug::SetOriginalExperience(!PortDebug::OriginalExperience());
 }
 

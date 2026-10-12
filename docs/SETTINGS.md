@@ -760,3 +760,40 @@ Smooth particles draws particle effects, projectile effects included, between
 their last two 60 Hz positions when the frame limiter is off, using the game's
 own sub-frame particle path. Beam trails (swooshes), electric effects and
 the flamethrower still step at 60 Hz.
+
+## Photo mode
+
+A frozen free camera for screenshots, entered from the pause menu's "Photo
+mode" row (works with touch), the Port binding "Photo mode" (F8 by default,
+rebindable on the Controls page), F1 > Game > "Photo mode (keys)", or the
+console's `photo`. It is refused, with a toast, outside gameplay, while Samus
+is dead and during a cutscene. Entering freezes the simulation and starts the
+free camera at the game camera; the HUD, arm cannon, helmet and visor effects
+are hidden. Leaving restores all of them, and the free camera and freeze
+states the session had before.
+
+The panel (top right; H brings back a hidden one) has FOV (20-120), Roll
+(-180 to 180, a real roll of the view), Show Samus, Camera speed, the
+1x / 2x / 4x supersample choice, Capture, Hide panel and Exit. The camera
+moves as the free camera does. On a pad: A captures, B or Start exits, the
+d-pad rolls, X plus the d-pad changes the FOV, and the sticks fly. Y shows a
+hidden panel, and when it is shown gives it the pad: the d-pad moves between
+the widgets (a slider changes with left/right), A presses or toggles, and Y or B
+hands the pad back to the camera (Start still exits). The camera is still while
+the panel has the pad. None of this reaches the game. The sliders also take
+mouse or touch.
+
+Capture writes `metroid-prime-photo-<time>.png` to the screenshot folder with
+the panel, overlays and toasts hidden. 2x and 4x raise the render scale
+temporarily (the base is the window's pixel height / 480) and render the
+frame at that size. The result is at least N times the 1x size in both
+directions and exactly N times where the rounding allows: the frame buffer is
+the scaled height with the width rounded from the aspect, then fitted to the
+render mode's 854:480, so a 1280x720 window (1280x719 at 1x) gives 2562x1440 or
+5124x2880 rather than exactly 4x. A size over the GPU's texture limit or
+past 48 M pixels (96 M samples with MSAA) steps down to 2x, then 1x, and the
+Saved toast says so. Very large captures can stall a frame for a second or
+more.
+
+Saved: `photo_supersample` (1, 2 or 4) and `photo_speed` (camera speed).
+Filters, vignette and depth of field are not part of it.

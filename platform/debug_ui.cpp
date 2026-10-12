@@ -6,6 +6,7 @@
 #include "port_collision_view.h"
 #include "port_debug.h"
 #include "port_freecam.h"
+#include "port_photo.h"
 #include "port_hd_font.h"
 #include "port_room_env.h"
 #include "port_room_geo.h"
@@ -516,6 +517,13 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sRemasteredImagePath = value;
   } else if (key == "remastered_keys") {
     sRemasteredKeysPath = value;
+  } else if (key == "photo_supersample") {
+    PortPhoto::SetSupersample(std::atoi(value.c_str()));
+  } else if (key == "photo_speed") {
+    const float f = static_cast< float >(std::atof(value.c_str()));
+    if (std::isfinite(f)) {
+      PortPhoto::SetSpeed(f);
+    }
   } else if (key == "render_scale") {
     const float f = static_cast< float >(std::atof(value.c_str()));
     if (std::isfinite(f) && f >= 0.f && f <= 4.f) {
@@ -829,6 +837,8 @@ std::string SettingsText() {
   file << "ui_theme=" << (sUiTheme == 1 ? "prime" : sUiTheme == 2 ? "remastered" : sUiTheme == 3 ? "plain" : "auto")
        << '\n';
   file << "ui_sounds=" << (sUiSounds ? 1 : 0) << '\n';
+  file << "photo_supersample=" << PortPhoto::Supersample() << '\n';
+  file << "photo_speed=" << PortPhoto::Speed() << '\n';
   file << "render_scale=" << sRenderScale << '\n';
   file << "dynamic_res=" << (sDynamicRes ? 1 : 0) << '\n';
   file << "dynamic_res_target=" << sDynamicResTarget << '\n';
@@ -1193,7 +1203,11 @@ float TickFrames() { return sTickPeriod * 60.f; }
 
 // What the frame code uses: the settings, or retail's under Original experience.
 static bool EffectiveFrameLimit() { return sFrameLimitEnabled || sOriginalExperience; }
-static float EffectiveRenderScale() { return sOriginalExperience ? 1.f : sRenderScale; }
+// Photo mode's supersampled capture holds the EFB at this scale for a few frames; never saved.
+static float sCaptureScale = 0.f;
+static float EffectiveRenderScale() {
+  return sCaptureScale > 0.f ? sCaptureScale : sOriginalExperience ? 1.f : sRenderScale;
+}
 static int EffectiveMsaa() { return sOriginalExperience ? 1 : sMsaa; }
 static int EffectiveAnisotropy() { return sOriginalExperience ? 1 : sAnisotropy; }
 
@@ -1239,6 +1253,9 @@ static void ResetDynamicRes() {
 // GPU, so it steps rarely: down after two slow seconds, up after a steady stretch that
 // doubles each time a step up turns out too slow.
 static void UpdateDynamicRes(double fps, unsigned frames) {
+  if (sCaptureScale > 0.f) {
+    return;
+  }
   const float top = EffectiveRenderScale();
   const float bottom = std::min(sDynamicResMin, top);
   if (!sDynamicRes || sOriginalExperience || top <= bottom || sTurbo) {
@@ -1402,6 +1419,36 @@ void SetRenderScale(float scale) {
   VISetFrameBufferScale(EffectiveRenderScale());
 }
 
+SDL_Window* MainWindow();
+
+float BaseRenderScale() {
+  EnsureInitialized();
+  if (sOriginalExperience) {
+    return 1.f;
+  }
+  if (sRenderScale > 0.f) {
+    return sRenderScale;
+  }
+  // Auto draws at the window's pixel size; as a multiple of the 480-line base.
+  int width = 0, height = 0;
+  SDL_Window* window = MainWindow();
+  if (window != nullptr && SDL_GetWindowSizeInPixels(window, &width, &height) && height > 0) {
+    return static_cast< float >(height) / 480.f;
+  }
+  return 1.f;
+}
+
+void SetCaptureRenderScale(float scale) {
+  EnsureInitialized();
+  const float next = scale > 0.f ? scale : 0.f;
+  if (sCaptureScale == next) {
+    return;
+  }
+  sCaptureScale = next;
+  sDynScale = 0.f;
+  VISetFrameBufferScale(EffectiveRenderScale());
+}
+
 bool DynamicRes() {
   EnsureInitialized();
   return sDynamicRes && !sOriginalExperience;
@@ -1507,7 +1554,7 @@ bool CrosshairColor(float rgb[3]) {
 
 bool HideHelmet() {
   EnsureInitialized();
-  return sHideHelmet && !sOriginalExperience;
+  return (sHideHelmet || PortPhoto::Active()) && !sOriginalExperience;
 }
 
 void SetHideHelmet(bool enabled) {
@@ -1518,7 +1565,7 @@ void SetHideHelmet(bool enabled) {
 
 bool HideVisorEffects() {
   EnsureInitialized();
-  return sHideVisorEffects && !sOriginalExperience;
+  return (sHideVisorEffects || PortPhoto::Active()) && !sOriginalExperience;
 }
 
 void SetHideVisorEffects(bool enabled) {
@@ -5045,6 +5092,105 @@ void TopToastPlaced(const ImGuiViewport* viewport) {
   sTopToastNextY = ImGui::GetWindowPos().y - viewport->Pos.y + ImGui::GetWindowSize().y + 8.f;
 }
 
+// The photo mode panel (top right, compact) and its messages (a toast under the others).
+void DrawPhotoUI() {
+  PortPhoto::Frame();
+  static std::string sMessage;
+  static double sMessageAt = 0.0;
+  const double now = ImGui::GetTime();
+  if (std::string text = PortPhoto::TakeMessage(); !text.empty()) {
+    sMessage = std::move(text);
+    sMessageAt = now;
+  }
+  const ImGuiViewport* viewport = ImGui::GetMainViewport();
+  if (!sMessage.empty() && now - sMessageAt < 4.0 && !PortPhoto::Capturing()) {
+    PlaceTopToast(viewport);
+    ImGui::SetNextWindowSize(ImVec2(std::min(viewport->Size.x - 32.f, 560.f), 0.f));
+    ImGui::SetNextWindowBgAlpha(0.8f);
+    if (ImGui::Begin("##photo-toast", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav |
+                         ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoInputs)) {
+      ImGui::TextWrapped("%s", sMessage.c_str());
+      TopToastPlaced(viewport);
+    }
+    ImGui::End();
+  }
+  if (!PortPhoto::Active() || PortPhoto::Capturing()) {
+    return;
+  }
+  if (!PortPhoto::PanelShown()) {
+    // One key brings it back (Y on the pad).
+    if (ImGui::IsKeyPressed(ImGuiKey_H, false) && !ImGui::GetIO().WantTextInput) {
+      PortPhoto::SetPanelShown(true);
+    }
+    return;
+  }
+  ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - 12.f, viewport->Pos.y + 12.f),
+                          ImGuiCond_Always, ImVec2(1.f, 0.f));
+  ImGui::SetNextWindowSize(ImVec2(std::min(viewport->Size.x - 24.f, 320.f), 0.f));
+  ImGui::SetNextWindowBgAlpha(0.85f);
+  // The pad's d-pad and A also fly, roll and capture, so the panel only navigates while it has the
+  // pad (Y); the nav cursor starts on the first widget when it takes it.
+  const bool padFocus = PortPhoto::PanelFocused();
+  static bool sWasPadFocus = false;
+  if (padFocus && !sWasPadFocus) {
+    ImGui::SetNextWindowFocus();
+    ImGui::SetNavCursorVisible(true);
+  }
+  sWasPadFocus = padFocus;
+  if (ImGui::Begin("Photo mode##photo", nullptr,
+                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                       ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize |
+                       (padFocus ? 0 : ImGuiWindowFlags_NoNav))) {
+    float fov = PortPhoto::Fov();
+    if (ImGui::SliderFloat("FOV", &fov, 20.f, 120.f, "%.0f")) {
+      PortPhoto::SetFov(fov);
+    }
+    float roll = PortPhoto::Roll();
+    if (ImGui::SliderFloat("Roll", &roll, -180.f, 180.f, "%.0f")) {
+      PortPhoto::SetRoll(roll);
+    }
+    bool samus = PortPhoto::ShowSamus();
+    if (ImGui::Checkbox("Show Samus", &samus)) {
+      PortPhoto::SetShowSamus(samus);
+    }
+    float speed = PortPhoto::Speed();
+    if (ImGui::SliderFloat("Speed", &speed, 1.f, 100.f, "%.0f m/s", ImGuiSliderFlags_Logarithmic)) {
+      PortPhoto::SetSpeed(speed);
+      MarkDirty();
+    }
+    int factor = PortPhoto::Supersample();
+    ImGui::TextUnformatted("Size");
+    for (const int f : {1, 2, 4}) {
+      ImGui::SameLine();
+      char label[8];
+      std::snprintf(label, sizeof(label), "%dx##ss", f);
+      if (ImGui::RadioButton(label, factor == f)) {
+        PortPhoto::SetSupersample(f);
+        MarkDirty();
+      }
+    }
+    if (ImGui::Button("Capture")) {
+      PortPhoto::RequestCapture();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Hide panel")) {
+      PortPhoto::SetPanelShown(false);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Exit")) {
+      PortPhoto::RequestExit();
+    }
+    if (padFocus) {
+      ImGui::TextDisabled("Pad: d-pad move, A change, Y or B back to the camera");
+    } else {
+      ImGui::TextDisabled("Pad: A capture, B exit, Y panel, d-pad roll, X+d-pad FOV");
+    }
+  }
+  ImGui::End();
+}
+
 void DrawUpdateToast() {
   static double sShownAt = -1.0;
   SetUpdateToastShowing(false);
@@ -6968,6 +7114,15 @@ void DrawGameSection() {
       (shotKeys.empty() ? std::string("Screenshot") : "Screenshot (" + shotKeys + ")") + "###screenshot";
   if (ImGui::Button(shotLabel.c_str())) {
     aurora::request_screenshot();
+  }
+  ImGui::SameLine();
+  const std::string photoKeys = PortInputRemap::BindingsText(PortInput::Action::PhotoMode, " / ");
+  const std::string photoLabel =
+      (photoKeys.empty() ? std::string("Photo mode") : "Photo mode (" + photoKeys + ")") + "###photomode";
+  if (ImGui::Button(photoLabel.c_str())) {
+    PortPhoto::RequestEnter();
+    // The overlay would cover the picture; photo mode starts at the next game tick.
+    sVisible = false;
   }
   ImGui::SameLine();
   if (ImGui::Button("Exit game")) {
@@ -9089,6 +9244,7 @@ void DrawUI() {
   DrawDiscReadFailedAlert();
   DrawShaderCompilationToast();
   DrawUpdateToast();
+  DrawPhotoUI();
   if (sTouchLayoutSavePending.exchange(false, std::memory_order_acq_rel)) {
     MarkDirty();
     SaveSettings();

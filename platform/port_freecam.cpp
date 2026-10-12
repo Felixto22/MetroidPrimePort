@@ -22,11 +22,16 @@ bool sActive = false;
 bool sFrozen = false;
 float sSpeed = 10.f;
 bool sShowPlayer = true;
-Pose sPose{0.f, 0.f, 0.f, 0.f, 0.f};
+Pose sPose{0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+float sFov = 0.f;
 
 CTransform4f Rotation() {
   return CTransform4f::RotateZ(CRelAngle::FromDegrees(sPose.yaw)) *
          CTransform4f::RotateX(CRelAngle::FromDegrees(sPose.pitch));
+}
+
+CTransform4f ViewRotation() {
+  return Rotation() * CTransform4f::RotateY(CRelAngle::FromDegrees(sPose.roll));
 }
 
 } // namespace
@@ -43,6 +48,7 @@ void SetActive(bool on, const CStateManager* mgr) {
     sPose.z = pos.GetZ();
     sPose.yaw = std::atan2(-fwd.GetX(), fwd.GetY()) * kDegrees;
     sPose.pitch = std::asin(std::clamp(fwd.GetZ(), -1.f, 1.f)) * kDegrees;
+    sPose.roll = 0.f;
   }
   sActive = on;
 }
@@ -65,7 +71,11 @@ Pose GetPose() { return sPose; }
 void SetPose(const Pose& pose) {
   sPose = pose;
   sPose.pitch = std::clamp(sPose.pitch, -kPitchLimit, kPitchLimit);
+  sPose.roll = std::isfinite(sPose.roll) ? std::clamp(sPose.roll, -180.f, 180.f) : 0.f;
 }
+
+float FovOverride() { return sActive ? sFov : 0.f; }
+void SetFovOverride(float degrees) { sFov = std::isfinite(degrees) && degrees > 0.f ? std::clamp(degrees, 1.f, 170.f) : 0.f; }
 
 bool Input(const CFinalInput& input) {
   if (!sActive) {
@@ -102,7 +112,7 @@ CTransform4f View(const CTransform4f& game) {
   if (!sActive) {
     return game;
   }
-  CTransform4f xf = Rotation();
+  CTransform4f xf = ViewRotation();
   xf.SetTranslation(CVector3f(sPose.x, sPose.y, sPose.z));
   return xf;
 }

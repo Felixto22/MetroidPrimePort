@@ -920,7 +920,8 @@ const std::vector<SGroup>& Groups() {
           Action::MenuLAnalog, Action::MenuRAnalog, Action::MenuUp, Action::MenuDown, Action::MenuLeft,
           Action::MenuRight},
          true},
-        {"Port", {Action::PortMenu, Action::SaveState, Action::LoadState, Action::Screenshot, Action::ToggleOriginal}, true},
+        {"Port", {Action::PortMenu, Action::SaveState, Action::LoadState, Action::Screenshot, Action::ToggleOriginal,
+          Action::PhotoMode}, true},
         {"Layers (shift keys, advanced)", {Action::Layer1, Action::Layer2, Action::Layer3, Action::Layer4}, false},
     };
     // An action added to the engine but not sorted here still gets a row.

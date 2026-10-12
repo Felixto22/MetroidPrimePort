@@ -5,6 +5,7 @@
 #include "port_debug.h"
 #include "port_env.h"
 #include "port_freecam.h"
+#include "port_photo.h"
 #include "port_discord.h"
 #include "port_hold_toggle.h"
 #include "port_livesplit.h"
@@ -1765,7 +1766,7 @@ void CStateManager::ProcessInput(const CFinalInput& input) {
     }
 #ifdef TARGET_PC
     // The debug free camera flies on the pad; the player stands still meanwhile.
-    if (PortFreeCam::Input(input)) {
+    if (PortPhoto::Input(input)) {
       disableInput = true;
     }
 #endif
@@ -2639,7 +2640,14 @@ void CStateManager::PreRender() {
   const CGameCamera& curCam = x870_cameraManager->GetCurrentCamera(*this);
   const CTransform4f curCamXf =
       PortFreeCam::View(x870_cameraManager->GetCurrentCameraTransform(*this));
-  CFrustumPlanes frustum(curCamXf, 0.017453292f * curCam.GetRenderFov(), curCam.GetAspectRatio(),
+#ifdef TARGET_PC
+  const float curRenderFov = PortFreeCam::FovOverride() > 0.f
+                                 ? CGameCamera::VertPlusFov(PortFreeCam::FovOverride(), curCam.GetAspectRatio())
+                                 : curCam.GetRenderFov();
+#else
+  const float curRenderFov = curCam.GetRenderFov();
+#endif
+  CFrustumPlanes frustum(curCamXf, 0.017453292f * curRenderFov, curCam.GetAspectRatio(),
                          curCam.GetNearClipDistance(), false, 100.f);
 
   for (CGameArea::CChainIterator areaIt = x850_world->ChainHead(CWorld::kC_Alive);
@@ -2692,8 +2700,10 @@ CFrustumPlanes CStateManager::SetupViewForDraw(const CViewport& viewport) const 
   const int top = viewport.mTop + (viewport.mHeight - height) / 2;
 
 #ifdef TARGET_PC
-  const float tangent =
-      CMath::SlowTangentR(CMath::Deg2Rad(0.5f * cam.GetRenderFov())) / sPortViewZoom;
+  const float renderFov = PortFreeCam::FovOverride() > 0.f
+                              ? CGameCamera::VertPlusFov(PortFreeCam::FovOverride(), cam.GetAspectRatio())
+                              : cam.GetRenderFov();
+  const float tangent = CMath::SlowTangentR(CMath::Deg2Rad(0.5f * renderFov)) / sPortViewZoom;
 #else
   const float tangent = CMath::SlowTangentR(CMath::Deg2Rad(0.5f * cam.GetRenderFov()));
 #endif

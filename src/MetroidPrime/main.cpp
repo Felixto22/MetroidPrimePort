@@ -12,6 +12,7 @@
 #include <SDL3/SDL_timer.h>
 
 #include "port_debug.h"
+#include "port_photo.h"
 #include "port_log.h"
 #include "port_disc.h"
 #include "port_mods.h"
@@ -997,7 +998,8 @@ int CMain::RsMain(int argc, const char* const* argv) {
       // SDL/compositor relative capture owns cursor visibility and warp handling.
 #ifdef MP_ENABLE_SMOKE_DRIVER
       if (PortSmokeMouseEnabled()) {
-        PortDebug::SetMouseCaptured(PortDebug::MouseGameplayActive() && !PortDebug::Visible());
+        PortDebug::SetMouseCaptured(PortDebug::MouseGameplayActive() && !PortDebug::Visible() &&
+                                      !PortPhoto::PanelWantsCursor());
       } else
 #endif
       {
@@ -1019,11 +1021,11 @@ int CMain::RsMain(int argc, const char* const* argv) {
         if (sCaptureWindow != nullptr) {
           const bool focused = SDL_GetKeyboardFocus() == sCaptureWindow;
           const bool wantRelative = PortDebug::MouseAim() && PortDebug::MouseGameplayActive() &&
-                                    !PortDebug::Visible() && focused;
+                                    !PortDebug::Visible() && !PortPhoto::PanelWantsCursor() && focused;
 #ifdef __ANDROID__
           // A free (hidden) cursor flung to the screen edge brings up the nav bar
           // or taskbar, so keep the pointer captured unless the overlay is open.
-          const bool wantLock = !PortDebug::Visible() && focused;
+          const bool wantLock = !PortDebug::Visible() && !PortPhoto::PanelWantsCursor() && focused;
 #else
           const bool wantLock = wantRelative;
 #endif
@@ -1035,7 +1037,8 @@ int CMain::RsMain(int argc, const char* const* argv) {
           // which is navigated with the mouse (and the controller), and while the
           // clickable update toast is up and the mouse isn't captured.
           const bool wantCursor =
-              (PortDebug::Visible() || (PortDebug::UpdateToastShowing() && !wantLock)) &&
+              (PortDebug::Visible() || PortPhoto::PanelWantsCursor() ||
+               (PortDebug::UpdateToastShowing() && !wantLock)) &&
               SDL_GetKeyboardFocus() == sCaptureWindow;
           if (wantCursor) {
             SDL_ShowCursor();
