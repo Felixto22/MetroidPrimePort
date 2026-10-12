@@ -422,8 +422,14 @@ other `X:\Users\<name>`: `X:\Users\<user>`); the
   (`savestate_hotkeys`, on by default). A state holds the whole game save
   (items, ammo, doors, pickups, map, scans, world layers) plus Samus's room,
   position, facing and morph ball state; loading reloads that world and puts
-  her back. It does not keep enemies, projectiles, cutscene or boss-fight
-  progress, or velocity: the room comes back as if just entered. Every load
+  her back. With `savestate_room_state` (F1 > Save states, on by default) it
+  also keeps the live script objects of the loaded rooms by editor id: killed
+  enemies stay dead, enemies, platforms and moving objects keep position,
+  velocity and health, doors keep open or closed, timers and counters keep
+  their count (about 5 KB, 0.2 ms to capture). Enemy AI state is not kept
+  (they resume from their start behaviour), nor are projectiles, cutscene or
+  boss-fight progress. States without the section, or with the setting off,
+  bring the room back as if just entered. Every load
   first writes slot 0, so "Undo last load" goes back to where you were.
   Saving is refused while Samus is dead. A state saved on an elevator pad
   rides the elevator after loading, like stepping onto it. Console:
@@ -442,7 +448,7 @@ other `X:\Users\<name>`: `X:\Users\<user>`); the
   or Archipelago session. At the next launch the title screen asks "Resume
   where you left off?" with the room and time; Yes (A or Start, D-pad
   left/right to choose) starts the file it came from and loads the state like a
-  save state (the room starts over; enemies and boss progress are not kept),
+  save state (with `savestate_room_state` the room keeps its enemies and doors as saved; boss progress is not kept),
   No (B) deletes it. Yes deletes it once Samus is placed. Nothing is written
   (and a previous resume file stays) on the title screen or before the first
   safe point of a session.

@@ -251,7 +251,7 @@ mod. On Android `mods/` is in the data folder; move that to shared storage
 F1 > Mods > Reload mods (console: `mods reload`) reads the mods folder
 again while the game runs: added, removed, edited, enabled and disabled mods
 all take effect, PAK resources and native `.dds` textures alike. The game is
-rebuilt where Samus stands, exactly as a save state load does (enemies, doors
+rebuilt where Samus stands, exactly as a save state load does, room state included when `savestate_room_state` is on (otherwise enemies, doors
 and puzzles come back as after a memory card load), with every PAK reopened so
 that all it draws is loaded from the new files. It runs at the next game tick,
 so unpause first; pressed in the menus, it happens when a game starts. Change

@@ -104,6 +104,86 @@ int main() {
     CHECK(out.room.size() == 256);
   }
 
+  // Room state: round trip, skipping of unknown tags and versions, old files.
+  {
+    using namespace PortSaveState;
+    Header withRoom = in;
+    withRoom.roomState.areas = {2, 5};
+    withRoom.roomState.present = {0x00020001, 0x00050007};
+    RoomObject enemy;
+    enemy.editorId = 0x00020001;
+    enemy.active = true;
+    BlockWriter hp;
+    hp.F32(37.5f);
+    hp.F32(0.25f);
+    enemy.blocks.push_back({3, hp.bytes});
+    BlockWriter ai;
+    ai.U8(1);
+    ai.Str("Patrol");
+    ai.F32(4.5f);
+    enemy.blocks.push_back({4, ai.bytes});
+    enemy.blocks.push_back({0xBE, "future block"});
+    RoomObject door;
+    door.editorId = 0x00050007;
+    withRoom.roomState.objects = {enemy, door};
+
+    const std::string file = Encode(withRoom, blob);
+    Header out;
+    std::vector< uint8_t > outBlob;
+    CHECK(Decode(file, out, outBlob));
+    CHECK(outBlob == blob);
+    CHECK(out.roomState.areas == withRoom.roomState.areas);
+    CHECK(out.roomState.present == withRoom.roomState.present);
+    CHECK(out.roomState.objects.size() == 2);
+    const RoomObject& got = out.roomState.objects[0];
+    CHECK(got.editorId == 0x00020001 && got.active);
+    CHECK(out.roomState.objects[1].editorId == 0x00050007 && !out.roomState.objects[1].active);
+    const RoomBlock* b = FindBlock(got, 3);
+    CHECK(b != nullptr);
+    BlockReader hpIn(b->data);
+    CHECK(hpIn.F32() == 37.5f && hpIn.F32() == 0.25f && hpIn.ok);
+    b = FindBlock(got, 4);
+    CHECK(b != nullptr);
+    BlockReader aiIn(b->data);
+    CHECK(aiIn.U8() == 1 && aiIn.Str() == "Patrol" && aiIn.F32() == 4.5f && aiIn.ok);
+    CHECK(FindBlock(got, 0xBE) != nullptr && FindBlock(got, 9) == nullptr);
+    BlockReader shortIn(b->data);
+    shortIn.U32();
+    shortIn.U32();
+    shortIn.U32();
+    shortIn.U32();
+    CHECK(!shortIn.ok);
+
+    // A file without the section (an old state) loads with an empty room state.
+    CHECK(Decode(data, out, outBlob) && out.roomState.empty());
+
+    // A newer version of the section is skipped, the state still loads.
+    std::string newer = file;
+    const size_t trailer = data.size();
+    CHECK(newer.compare(trailer, 4, "RMST") == 0);
+    newer[trailer + 4] = 9;
+    CHECK(Decode(newer, out, outBlob) && out.roomState.empty() && outBlob == blob);
+
+    // A damaged section is dropped; the rest of the state is kept.
+    for (size_t len = trailer + 1; len < file.size(); ++len) {
+      Header cut;
+      CHECK(!Decode(file.substr(0, len), cut, outBlob) || cut.roomState.empty());
+    }
+    std::string bogus = file;
+    bogus[trailer + 12] = static_cast< char >(0xFF);  // area count absurd
+    bogus[trailer + 15] = static_cast< char >(0x7F);
+    CHECK(Decode(bogus, out, outBlob) && out.roomState.empty());
+    CHECK(!Decode(data + "RMS", out, outBlob));
+
+    // The resume wrapper carries it too.
+    ResumeMeta meta;
+    meta.fileIdx = 0;
+    std::string backState;
+    ResumeMeta backMeta;
+    CHECK(DecodeResume(EncodeResume(meta, file), backMeta, backState));
+    CHECK(Decode(backState, out, outBlob) && out.roomState.objects.size() == 2);
+  }
+
   // Quick resume wrapper.
   {
     PortSaveState::ResumeMeta meta;

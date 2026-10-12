@@ -78,6 +78,15 @@ bool sPlacePending = false;
 Header sPendingHeader;
 std::vector< uint8_t > sPendingBlob;
 
+// The room state of that load, applied area by area as the rebuilt areas come
+// up. Areas that load later than kRoomApplyFrames ticks after the place keep
+// the memory card load's fresh objects (the player may have left and come back).
+constexpr int kRoomApplyFrames = 600;
+bool sRoomPending = false;
+int sRoomFrames = 0;
+std::vector< int32_t > sRoomDone;
+RoomApplyStats sRoomStats;
+
 // Quick resume: a load that came from resume.mpss deletes the file once
 // Samus is placed. sResumeLoadRequest is the console's (or a hotkey's) load
 // from inside a game.
@@ -228,6 +237,8 @@ bool Capture(CStateManager& mgr, Header& header, std::vector< uint8_t >& blob) {
   header.savedAt = static_cast< int64_t >(std::time(nullptr));
   header.world = WorldName(world.IGetWorldAssetId());
   header.room = RoomName(mgr, area.Value());
+  if (PortDebug::SaveStateRoomState())
+    CaptureRoomState(mgr, header.roomState);
   return true;
 }
 
@@ -250,6 +261,7 @@ void DoSave(CStateManager& mgr, int slot) {
 void QuitToPending(CStateManager& mgr) {
   sInstallPending = true;
   sPlacePending = false;
+  sRoomPending = false;
 
   // As the debug world warp: stop the outgoing world's loads, retire its PAKs
   // and quit to CMainFlow, which starts the next game (InstallPending).
@@ -325,6 +337,22 @@ void Place(CStateManager& mgr) {
   }
   mgr.CameraManager()->ResetCameras(mgr);
   sPendingBlob.clear();
+  sRoomPending = PortDebug::SaveStateRoomState() && !h.roomState.empty();
+  sRoomFrames = 0;
+  sRoomDone.clear();
+  sRoomStats = {};
+}
+
+// Puts the saved room objects on the rebuilt areas as each one finishes loading.
+void TickRoomState(CStateManager& mgr) {
+  if (!sRoomPending || mgr.GetWantsToQuit())
+    return;
+  const int waiting = ApplyRoomState(mgr, sPendingHeader.roomState, sRoomDone, sRoomStats);
+  if (waiting > 0 && ++sRoomFrames < kRoomApplyFrames)
+    return;
+  sRoomPending = false;
+  std::fprintf(stderr, "[savestate] room state: %d applied, %d removed, %d unmatched\n",
+               sRoomStats.applied, sRoomStats.removed, sRoomStats.unmatched);
 }
 
 
@@ -526,6 +554,7 @@ bool Tick(CStateManager& mgr) {
     }
     PortStartStateLoadMusic(mgr);
   }
+  TickRoomState(mgr);
   if (sInstallPending) {
     // Still in the outgoing game, whose PAKs are retired: run nothing more
     // until CMainFlow replaces it.

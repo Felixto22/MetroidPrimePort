@@ -194,6 +194,7 @@ set(MP_PORT_SOURCES
     platform/port_watchdog.cpp
     platform/port_savestate.cpp
     platform/port_savestate_format.cpp
+    platform/port_savestate_room.cpp
     platform/port_skip_cutscenes.cpp
     platform/port_revision_scripts.cpp
     platform/port_skip_streams.cpp

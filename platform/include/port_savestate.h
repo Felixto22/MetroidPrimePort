@@ -12,8 +12,16 @@ class CInputStream;
 // items, health, ammo, map, scans, script layers and relays, in-game time)
 // plus where Samus stood, how she faced and whether she was in morph ball.
 // Loading rebuilds the world from that save, as the debug world warp does,
-// then puts Samus back. Enemies, doors and puzzles come back the way a
-// memory card load leaves them, not mid-fight.
+// then puts Samus back.
+//
+// The state also carries an optional "room state" section (setting
+// savestate_room_state): the live script objects of the areas that were
+// loaded when it was saved, keyed by editor id (enemies with their health,
+// position, velocity; platforms, doors, timers, counters, active flags;
+// which objects existed; not AI state). After the rebuild it is applied on top of the
+// freshly built objects, so killed enemies stay dead and the rest resume
+// where they were. States without the section, or with it switched off, come
+// back the way a memory card load leaves the room.
 namespace PortSaveState {
 
 constexpr int kSlotCount = 8;  // slots 1..8
@@ -28,6 +36,46 @@ struct Info {
   bool morphed = false;
 };
 
+// Room state: the script objects of the loaded areas. Pure data, for the unit
+// test; filled and applied by port_savestate_room.cpp. An object carries
+// length-prefixed blocks keyed by a tag, so a reader skips tags it does not
+// know and a newer writer can add more.
+struct RoomBlock {
+  uint32_t tag = 0;
+  std::string data;
+};
+struct RoomObject {
+  uint32_t editorId = 0;
+  bool active = false;
+  std::vector< RoomBlock > blocks;
+};
+struct RoomState {
+  std::vector< int32_t > areas;     // areas captured (loaded, scripts built)
+  std::vector< uint32_t > present;  // editor ids that existed in those areas
+  std::vector< RoomObject > objects;
+  bool empty() const { return areas.empty(); }
+};
+// Little-endian field writer and reader for the block payloads.
+struct BlockWriter {
+  std::string bytes;
+  void U8(uint8_t v) { bytes.push_back(static_cast< char >(v)); }
+  void U32(uint32_t v);
+  void F32(float v);
+  void Str(const std::string& s);
+};
+struct BlockReader {
+  const std::string& bytes;
+  size_t pos = 0;
+  bool ok = true;
+  explicit BlockReader(const std::string& b) : bytes(b) {}
+  uint8_t U8();
+  uint32_t U32();
+  float F32();
+  std::string Str();
+};
+// The block with `tag`, or nullptr.
+const RoomBlock* FindBlock(const RoomObject& object, uint32_t tag);
+
 // The fixed header ahead of the game-state blob. Pure, for the unit test.
 struct Header {
   uint32_t worldId = 0;
@@ -39,9 +87,24 @@ struct Header {
   int64_t savedAt = 0;
   std::string world;
   std::string room;
+  RoomState roomState;  // optional section after the blob; empty when absent
 };
 std::string Encode(const Header& header, const std::vector< uint8_t >& blob);
 bool Decode(const std::string& data, Header& header, std::vector< uint8_t >& blob);
+
+// Room state glue (port_savestate_room.cpp), game thread only. Capture reads
+// the loaded areas' script objects; Apply works through the saved areas that
+// are loaded and not in `done` yet, adds them to `done`, and returns how many
+// of the saved areas are still waiting. `applied`, `removed` and `unmatched`
+// accumulate over the calls.
+struct RoomApplyStats {
+  int applied = 0;
+  int removed = 0;
+  int unmatched = 0;
+};
+void CaptureRoomState(CStateManager& mgr, RoomState& out);
+int ApplyRoomState(CStateManager& mgr, const RoomState& room, std::vector< int32_t >& done,
+                   RoomApplyStats& stats);
 
 // Quick resume: one extra state (resume.mpss, outside the slots) written when
 // the app goes to the background or quits, with which memory card file it
