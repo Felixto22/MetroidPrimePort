@@ -425,7 +425,7 @@ other `X:\Users\<name>`: `X:\Users\<user>`); the
   her back. With `savestate_room_state` (F1 > Save states, on by default) it
   also keeps the live script objects of the loaded rooms by editor id: killed
   enemies stay dead, enemies, platforms and moving objects keep position,
-  velocity and health, doors keep open or closed, timers and counters keep
+  velocity and health, doors keep open or closed (set directly, without firing their connections), timers and counters keep
   their count (about 5 KB, 0.2 ms to capture). Enemy AI state is not kept
   (they resume from their start behaviour), nor are projectiles, cutscene or
   boss-fight progress. States without the section, or with the setting off,

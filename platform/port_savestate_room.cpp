@@ -259,10 +259,9 @@ void ApplyObject(CStateManager& mgr, CEntity& ent, const RoomObject& obj) {
     if (const RoomBlock* b = FindBlock(obj, kTagDoor)) {
       BlockReader r(b->data);
       const bool open = r.U8() != 0;
-      if (r.ok && open != door->IsOpen()) {
-        mgr.SendScriptMsgAlways(door->GetUniqueId(), kInvalidUniqueId,
-                                open ? kSM_Open : kSM_Close);
-      }
+      // No script message: Open and Close fire the door's connections again.
+      if (r.ok && open != door->IsOpen())
+        door->PortRestoreOpen(open);
     }
   }
   if (CScriptPlatform* platform = TCastToPtr< CScriptPlatform >(&ent)) {

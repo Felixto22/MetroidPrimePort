@@ -56,6 +56,7 @@
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerGun.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptDoor.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPlayerHint.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptSpecialFunction.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
@@ -828,6 +829,9 @@ void CmdObj(CStateManager& mgr) {
     const CVector3f vel = physics->GetVelocityWR();
     Out("velocity (%.2f, %.2f, %.2f)", vel.GetX(), vel.GetY(), vel.GetZ());
   }
+  if (const CScriptDoor* door = TCastToConstPtr< CScriptDoor >(ent)) {
+    Out("door %s", door->IsOpen() ? "open" : "closed");
+  }
   if (CPatterned* patterned = TCastToPtr< CPatterned >(ent)) {
     const CAiState* state = patterned->GetStateMachineState().GetActorState();
     Out("ai state %s for %.2fs", state != nullptr ? state->GetName() : "(none)",
@@ -1089,7 +1093,7 @@ void CmdLook(CStateManager& mgr) {
 // vulnerability, so it dies as from a last shot (bosses run their death scripts).
 void CmdKill(CStateManager& mgr) {
   if (sCmd.args.size() < 2) {
-    return Finish("usage: kill <id>");
+    return Finish("usage: kill <id> [damage]");
   }
   CActor* actor = TCastToPtr< CActor >(FindObject(mgr, sCmd.args[1]));
   if (actor == nullptr) {
@@ -1100,8 +1104,11 @@ void CmdKill(CStateManager& mgr) {
     return Finish("that actor has no health");
   }
   const CVector3f dir = actor->GetTransform().GetForward();
-  mgr.ApplyLocalDamage(actor->GetTranslation(), dir, *actor, health->GetHP() + 1.f,
-                       CWeaponMode::Power());
+  float damage = health->GetHP() + 1.f;
+  if (sCmd.args.size() > 2) {
+    damage = static_cast< float >(std::atof(sCmd.args[2].c_str()));
+  }
+  mgr.ApplyLocalDamage(actor->GetTranslation(), dir, *actor, damage, CWeaponMode::Power());
   Finish();
 }
 
