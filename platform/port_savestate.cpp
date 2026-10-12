@@ -842,12 +842,27 @@ bool ResumeOffer(ResumeInfo& info) {
   ResumeMeta meta;
   Header header;
   std::vector< uint8_t > blob;
-  if (!ReadResume(meta, header, blob))
+  // Polled while the title waits: say why once, not every poll.
+  static std::string sLastReason;
+  const auto note = [](const std::string& reason) {
+    if (reason != sLastReason) {
+      sLastReason = reason;
+      fprintf(stderr, "[resume] %s\n", reason.c_str());
+    }
+  };
+  if (!ReadResume(meta, header, blob)) {
+    std::error_code ec;
+    note(fs::exists(ResumePath(), ec) ? "no offer: " + ResumePath().string() + " is unreadable"
+                                      : "no offer: no resume state");
     return false;
+  }
   ResumeMeta current = meta;
   current.identity = CurrentIdentity();
-  if (!ResumeMatches(meta, current))
+  if (!ResumeMatches(meta, current)) {
+    note("no offer yet: saved for '" + meta.identity + "', running '" + current.identity + "'");
     return false;
+  }
+  note("offering " + header.world + " - " + header.room);
   info.exists = true;
   info.fileIdx = meta.fileIdx;
   info.cardSerial = meta.cardSerial;
