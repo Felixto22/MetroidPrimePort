@@ -291,6 +291,9 @@ private:
   bool GetHasAttractMovies() const { return xc0_attractCount > 0; }
   bool CanShowSaveUI() const;
   void StartStateTransition(EScreen screen);
+#ifdef TARGET_PC
+  void DrawResumePrompt() const;
+#endif
   void CompleteStateTransition();
   void StartAttractMovie();
   void StopAttractMovie();

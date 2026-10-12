@@ -13,6 +13,7 @@
 
 #include "port_debug.h"
 #include "port_photo.h"
+#include "port_savestate.h"
 #include "port_log.h"
 #include "port_disc.h"
 #include "port_mods.h"
@@ -681,6 +682,8 @@ void CGameGlobalObjects::AddPaksAndFactories() {
   rstl::single_ptr< IController > controller(IController::Create(osContext));
   gpController = controller.get();
 #endif
+  // Quick resume: SDL only calls watchers for the background events.
+  PortSaveState::ResumeInstallEventWatch();
   while (!factory.GetResLoader().AreAllPaksLoaded()) {
     const AuroraEvent* event = aurora_update();
     for (; event != nullptr && event->type != AURORA_NONE; ++event) {
@@ -947,9 +950,17 @@ int CMain::RsMain(int argc, const char* const* argv) {
 #endif
       // Port: pump Aurora's window/input events (it marks the watchdog's phase).
       {
+        // The pump may deliver a background event to the quick resume watch,
+        // which then takes a fresh snapshot: we are between ticks here.
+        PortSaveState::SetEventPumpSafe(true);
         const AuroraEvent* event = aurora_update();
+        PortSaveState::SetEventPumpSafe(false);
         while (event != nullptr && event->type != AURORA_NONE) {
           if (event->type == AURORA_EXIT) {
+            // Quick resume: written here, between ticks and before shutdown.
+            // (Android's background events never get here: SDL only calls
+            // watchers for them, see PortSaveState::ResumeInstallEventWatch.)
+            PortSaveState::ResumeSave();
             x160_24_finished = true;
           } else if (event->type == AURORA_SDL_EVENT && event->sdl.type == SDL_EVENT_KEY_DOWN &&
                      !event->sdl.key.repeat && event->sdl.key.scancode == SDL_SCANCODE_F10) {

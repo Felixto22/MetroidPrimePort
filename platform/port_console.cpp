@@ -1972,6 +1972,8 @@ void RunFrame() {
   } else if (name == "fx") {
     CmdFxQuery();
   } else if (name == "quit") {
+    // As closing the window: the quick resume is written first.
+    PortSaveState::ResumeSave();
     Finish();
     sQuit = true;
   } else if (name == "phazongun") {
@@ -2629,6 +2631,28 @@ void RunFrame() {
       return Finish();
     }
     return Finish("usage: state list|last|save [n]|load [n]|undo|slot <n>");
+  } else if (name == "resume") {
+    const std::string action = sCmd.args.size() > 1 ? sCmd.args[1] : "status";
+    if (action == "status") {
+      Out("%s", PortSaveState::ResumeStatus().c_str());
+      return Finish();
+    } else if (action == "save") {
+      // Whatever the quick_resume setting says; away from a safe point it
+      // writes the last snapshot.
+      const bool saved = PortSaveState::ResumeSave(true);
+      Out("%s", PortSaveState::LastMessage().c_str());
+      return Finish(saved ? nullptr : "not written");
+    } else if (action == "load") {
+      if (!PortSaveState::RequestResumeLoad()) {
+        return Finish(PortSaveState::LastMessage().c_str());
+      }
+      Out("queued; see 'state last'");
+      return Finish();
+    } else if (action == "clear") {
+      PortSaveState::ResumeClear();
+      return Finish();
+    }
+    return Finish("usage: resume [status|save|load|clear]");
   } else if (name == "timer") {
     const std::string value = sCmd.args.size() > 1 ? sCmd.args[1] : "";
     if (value != "0" && value != "1") {

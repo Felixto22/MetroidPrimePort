@@ -428,6 +428,26 @@ other `X:\Users\<name>`: `X:\Users\<user>`); the
   Saving is refused while Samus is dead. A state saved on an elevator pad
   rides the elevator after loading, like stepping onto it. Console:
   `state list | last | save [n] | load [n] | undo | slot <n>`.
+- Quick resume (F1 > Save states, `quick_resume`, on by default): when the app
+  goes to the background (Android) or you quit (desktop, window close, the
+  overlay's Exit game or the console `quit`) during play, one more state is
+  written to `savestates/resume.mpss`, outside the eight slots (slot 0's undo is
+  not touched). The game keeps the last safe point in memory (taken two seconds
+  after each room load and then every 30 s while Samus is alive, out of
+  cutscenes, elevators and transitions; about 0.3 ms and 4 KB each), so what is
+  written is the current moment when that is safe and otherwise that last safe
+  point, at most about 30 s old. On Android the write runs from the system's
+  pause notification itself, not from the game loop, which the system may block
+  before it runs. The file is written to a temp file and renamed. It also records the memory card, file slot and the randomizer seed
+  or Archipelago session. At the next launch the title screen asks "Resume
+  where you left off?" with the room and time; Yes (A or Start, D-pad
+  left/right to choose) starts the file it came from and loads the state like a
+  save state (the room starts over; enemies and boss progress are not kept),
+  No (B) deletes it. Yes deletes it once Samus is placed. Nothing is written
+  (and a previous resume file stays) on the title screen or before the first
+  safe point of a session.
+  A resume from another card, randomizer seed or Archipelago session is never
+  offered. Console: `resume [status|save|load|clear]`.
 - Memory card transfer (F1 > System > Memory card): moves saves between the
   port's card (a GCI folder, `user/USA/Card A` beside the executable, or the current
   Archipelago game's) and Dolphin's. Import takes a Dolphin `.gci`, a whole raw

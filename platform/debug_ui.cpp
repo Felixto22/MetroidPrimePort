@@ -229,6 +229,7 @@ bool sRevision100Compatibility = false;
 std::string sTextLanguage;
 int sElevatorRide = PortDebug::kElevatorRide_Original;
 bool sSaveStateHotkeys = true;
+bool sQuickResume = true;
 float sTwinStickRightY = 0.f;
 std::atomic<bool> sTouchBeamShift{false}; // the touch twin layout's held Beam button
 std::atomic<bool> sTouchTurboFire{false}; // the touch Turbo button, held
@@ -623,6 +624,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
                         : PortDebug::kElevatorRide_Original;
   } else if (key == "savestate_hotkeys") {
     sSaveStateHotkeys = ParseBool(value);
+  } else if (key == "quick_resume") {
+    sQuickResume = ParseBool(value);
   } else if (key == "unlock_hard_mode") {
     sUnlockHardMode = ParseBool(value);
   } else if (key == "unlock_fusion_suit") {
@@ -812,6 +815,7 @@ std::string SettingsText() {
   file << "text_language=" << sTextLanguage << '\n';
   file << "elevator_ride=" << sElevatorRide << '\n';
   file << "savestate_hotkeys=" << (sSaveStateHotkeys ? 1 : 0) << '\n';
+  file << "quick_resume=" << (sQuickResume ? 1 : 0) << '\n';
   file << "fov=" << sFirstPersonFov << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
@@ -3098,6 +3102,7 @@ void SetStateManager(CStateManager* mgr) {
   }
   sStateManager = mgr;
 }
+bool QuickResume() { return sQuickResume; }
 CStateManager* StateManager() { return sStateManager; }
 bool ViewRay(float origin[3], float forward[3]) {
   if (sStateManager == nullptr || sStateManager->GetCameraManager() == nullptr) {
@@ -8288,6 +8293,16 @@ void DrawSaveStatesTab() {
     sSaveStateHotkeys = hotkeys;
     MarkDirty();
   }
+  bool quickResume = sQuickResume;
+  if (ImGui::Checkbox("Quick resume###quick-resume", &quickResume)) {
+    sQuickResume = quickResume;
+    MarkDirty();
+  }
+  ItemHelp("When the app goes to the background (Android) or you quit (desktop) during play, a "
+           "resume state is written. The next launch asks \"Resume where you left off?\" at the "
+           "title screen. Yes loads the same save file and puts Samus back, like a save state "
+           "(the room starts over; enemies and boss progress are not kept). No deletes it. Nothing "
+           "is written in cutscenes, elevator rides, while Samus is dead or on the title screen.");
   const bool running = sStateManager != nullptr;
   if (!running) {
     ImGui::TextDisabled("Saving and loading need a running game.");

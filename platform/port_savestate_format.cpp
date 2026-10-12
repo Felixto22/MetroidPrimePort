@@ -124,4 +124,77 @@ bool Decode(const std::string& data, Header& header, std::vector< uint8_t >& blo
   return true;
 }
 
+constexpr char kResumeMagic[4] = {'M', 'P', 'R', 'S'};
+constexpr uint32_t kResumeVersion = 1;
+
+std::string EncodeResume(const ResumeMeta& meta, const std::string& stateFile) {
+  std::string out(kResumeMagic, 4);
+  AppendLE32(out, kResumeVersion);
+  AppendLE32(out, meta.fileIdx);
+  AppendLE64(out, meta.cardSerial);
+  PutString(out, meta.identity);
+  AppendLE32(out, static_cast< uint32_t >(stateFile.size()));
+  out += stateFile;
+  return out;
+}
+
+bool DecodeResume(const std::string& data, ResumeMeta& meta, std::string& stateFile) {
+  if (data.size() < 8 || std::memcmp(data.data(), kResumeMagic, 4) != 0)
+    return false;
+  Reader in{data, 4};
+  if (in.U32() != kResumeVersion)
+    return false;
+  ResumeMeta m;
+  m.fileIdx = in.U32();
+  m.cardSerial = in.U64();
+  m.identity = in.String();
+  const uint32_t size = in.U32();
+  if (!in.ok || m.fileIdx > 2 || size == 0 || size > kMaxBlob + 4096 || !in.Need(size) ||
+      in.pos + size != data.size())
+    return false;
+  meta = m;
+  stateFile = data.substr(in.pos);
+  return true;
+}
+
+bool ResumeMatches(const ResumeMeta& stored, const ResumeMeta& current) {
+  return stored.cardSerial == current.cardSerial && stored.identity == current.identity &&
+         stored.fileIdx <= 2;
+}
+
+const char* ResumeSkipReason(const ResumeContext& ctx) {
+  if (!ctx.inGame)
+    return "not in gameplay";
+  if (!ctx.initialized)
+    return "the world is still loading";
+  if (ctx.quitting)
+    return "the game is quitting";
+  if (ctx.dead)
+    return "Samus is dead";
+  if (ctx.cinematic)
+    return "a cutscene is playing";
+  if (ctx.transition)
+    return "a world transition is in progress";
+  if (ctx.saveUi)
+    return "the save screen is open";
+  return nullptr;
+}
+
+ResumeWriteChoice ChooseResumeWrite(bool safeNow, bool haveSnapshot) {
+  if (safeNow)
+    return ResumeWriteChoice::kRefreshThenWrite;
+  return haveSnapshot ? ResumeWriteChoice::kWriteSnapshot : ResumeWriteChoice::kNothing;
+}
+
+bool ResumeRefreshDue(bool safeNow, bool haveSnapshot, bool sameRoomAsSnapshot, double secondsInRoom,
+                      double secondsSinceSnapshot) {
+  if (!safeNow)
+    return false;
+  if (!haveSnapshot)
+    return secondsInRoom >= kResumeStableSeconds;
+  if (!sameRoomAsSnapshot)
+    return secondsInRoom >= kResumeStableSeconds;
+  return secondsSinceSnapshot >= kResumeRefreshSeconds;
+}
+
 } // namespace PortSaveState

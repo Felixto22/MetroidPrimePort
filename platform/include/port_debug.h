@@ -20,6 +20,8 @@ namespace PortDebug {
 // CStateManager::Update). Null before gameplay starts.
 void SetStateManager(CStateManager* mgr);
 CStateManager* StateManager();
+// The "quick_resume" setting: write a resume state on quit or background.
+bool QuickResume();
 // Where the world is drawn from and which way it looks (the free camera's while it is
 // on); false outside a world.
 bool ViewRay(float origin[3], float forward[3]);

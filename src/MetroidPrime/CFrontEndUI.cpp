@@ -18,6 +18,7 @@
 #include "Kyoto/Graphics/CTexture.hpp"
 #include "Kyoto/SObjectTag.hpp"
 #include "Kyoto/Text/CStringTable.hpp"
+#include "Kyoto/Text/CTextExecuteBuffer.hpp"
 
 #include "GuiSys/CGuiFrame.hpp"
 #include "GuiSys/CGuiCamera.hpp"
@@ -87,6 +88,8 @@ bool FusionLinked() {
 #include <dolphin/ar.h>
 #include <dolphin/os.h>
 
+#include <ctime>
+#include <string>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1607,6 +1610,28 @@ void CFrontEndUI::SFusionBonusFrame::DoOptionsCancel(CGuiTableGroup* caller) {
   }
 }
 
+#ifdef TARGET_PC
+// Port: quick resume. The title screen offers the state written when the app
+// last went to the background or quit (PortSaveState::ResumeSave). Yes walks
+// through file select to start the file it came from, as a press of A on that
+// slot would; the state is installed when the game starts. No deletes it.
+namespace {
+enum EResumeStage { kRS_Check, kRS_Prompt, kRS_Accepting, kRS_Done };
+EResumeStage sResumeStage = kRS_Check;
+bool sResumeYes = true;
+int sResumeFrames = 0;
+PortSaveState::ResumeInfo sResumeInfo;
+
+std::wstring ResumeWide(const std::string& text) {
+  std::wstring out;
+  for (const char c : text) {
+    out += static_cast< unsigned char >(c) < 0x80 ? static_cast< wchar_t >(c) : L'?';
+  }
+  return out;
+}
+} // namespace
+#endif
+
 CFrontEndUI::CFrontEndUI()
 : CIOWin(rstl::string_l("FrontEndUI"))
 , x14_phase(kP_LoadDepsGroup)
@@ -1643,6 +1668,11 @@ CFrontEndUI::CFrontEndUI()
 , xf4_curAudio(nullptr) {
   gpMain->ResetGameState();
   gpGameState->SetCurrentWorldId(skDefaultWorld.GetId());
+#ifdef TARGET_PC
+  sResumeStage = kRS_Check;
+  sResumeYes = true;
+  sResumeFrames = 0;
+#endif
 #ifndef TARGET_PC
   // Port: the options persist across launches and save files (issue #45).
   gpGameState->GameOptions().ResetToDefaults();
@@ -1733,6 +1763,55 @@ bool CFrontEndUI::PumpLoad() {
 }
 
 CIOWin::EMessageReturn CFrontEndUI::Update(float dt, CArchitectureQueue& queue) {
+#ifdef TARGET_PC
+  if (!PortDebug::FastBoot() && x14_phase == kP_DisplayFrontEnd) {
+    const bool onTitle = IsInScreenNotTransitioning(kS_Title);
+    if (sResumeStage == kRS_Check) {
+      // The Archipelago identity is known a moment after launch: look again
+      // while the title waits.
+      if (onTitle && (sResumeFrames++ % 15) == 0 && PortSaveState::ResumeOffer(sResumeInfo)) {
+        sResumeStage = kRS_Prompt;
+        sResumeYes = true;
+      } else if (!onTitle && x50_curScreen != kS_OpenCredits && x50_curScreen != kS_AttractMovie) {
+        sResumeStage = kRS_Done;
+      }
+    } else if (sResumeStage == kRS_Prompt && !onTitle) {
+      sResumeStage = kRS_Done;
+    } else if (sResumeStage == kRS_Accepting) {
+      // Passing through file select is not shown (Draw is black): finish the
+      // screen transitions at once, as fast boot does.
+      if (x50_curScreen != x54_nextScreen) {
+        CompleteStateTransition();
+      } else if (onTitle) {
+        StartStateTransition(kS_FileSelect);
+      } else if (IsInScreenNotTransitioning(kS_FileSelect)) {
+        const SNewFileSelectFrame* files = xe0_frontendCardFrme.get();
+        const CSaveGameScreen* saveUI = xdc_saveUI.get();
+        const bool ready = files != nullptr && saveUI != nullptr && xf0_optionsFrme.get() == nullptr &&
+                           saveUI->GetUIType() == CSaveGameScreen::kUIT_SaveReady &&
+                           files->x10c_saveReady;
+        const bool stuck = ++sResumeFrames > 1200 ||
+                           (saveUI != nullptr && CSaveGameScreen::IsHiddenFromFrontEnd(saveUI->GetUIType()));
+        uint32_t fileIdx = 0;
+        if (ready) {
+          // The file must still be there; the state is kept if it is not.
+          sResumeStage = kRS_Done;
+          if (sResumeInfo.fileIdx < 3 && saveUI->GetGameData(sResumeInfo.fileIdx) != nullptr &&
+              PortSaveState::ResumeAccept(saveUI->GetCardSerial(), fileIdx)) {
+            fprintf(stderr, "[resume] loading file %u\n", fileIdx);
+            xdc_saveUI->StartGame(static_cast< int >(fileIdx));
+          } else {
+            fprintf(stderr, "[resume] not accepted: file %u is %s or belongs to another game\n", sResumeInfo.fileIdx,
+                    sResumeInfo.fileIdx < 3 && saveUI->GetGameData(sResumeInfo.fileIdx) != nullptr ? "present" : "empty");
+          }
+        } else if (stuck) {
+          fprintf(stderr, "[resume] file select never became ready; state kept\n");
+          sResumeStage = kRS_Done;
+        }
+      }
+    }
+  }
+#endif
   // Port: MP_FAST_BOOT=1 drives the title screen through file select into a new
   // game without waiting for input, and completes each screen transition
   // immediately. Used to reach gameplay quickly when iterating on engine work.
@@ -2154,6 +2233,30 @@ void CFrontEndUI::ProcessUserInput(const CFinalInput& input, CArchitectureQueue&
   if (input.ControllerNumber() != 0)
     return;
 
+#ifdef TARGET_PC
+  if (sResumeStage == kRS_Accepting)
+    return;
+  if (sResumeStage == kRS_Prompt) {
+    if (IsInScreenNotTransitioning(kS_Title)) {
+      if (input.PDPLeft() || input.PDPRight() || input.PDPUp() || input.PDPDown()) {
+        sResumeYes = !sResumeYes;
+        PlayAdvanceSfx();
+      } else if (input.PA() || input.PStart() || input.PB()) {
+        const bool yes = !input.PB() && sResumeYes;
+        PlayAdvanceSfx();
+        if (yes) {
+          sResumeStage = kRS_Accepting;
+          sResumeFrames = 0;
+        } else {
+          sResumeStage = kRS_Done;
+          PortSaveState::ResumeDecline();
+        }
+      }
+    }
+    return;
+  }
+#endif
+
   if (x50_curScreen != x54_nextScreen) {
     if (x54_nextScreen == kS_AttractMovie) {
       if (input.PStart() || input.PA()) {
@@ -2245,9 +2348,59 @@ void CFrontEndUI::ProcessUserInput(const CFinalInput& input, CArchitectureQueue&
   }
 }
 
+#ifdef TARGET_PC
+void CFrontEndUI::DrawResumePrompt() const {
+  const CViewport viewport = CGraphics::GetViewport();
+  char when[32] = "";
+  const std::time_t at = static_cast< std::time_t >(sResumeInfo.savedAt);
+  if (const std::tm* tm = std::localtime(&at)) {
+    std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M", tm);
+  }
+  std::string where = sResumeInfo.world;
+  if (!where.empty() && !sResumeInfo.room.empty()) {
+    where += " - ";
+  }
+  where += sResumeInfo.room;
+  const std::wstring whereText = ResumeWide(where) + L"\n";
+  const std::wstring whenText = ResumeWide(when) + L"\n";
+
+  CTextExecuteBuffer text;
+  text.AddWordWrapping(true);
+  // The top strip is the only part of the title art the logo and the prompt do not fight over.
+  text.BeginBlock(0, 16, viewport.mWidth, viewport.mHeight - 16, false, kTD_Horizontal,
+                  kJustification_Center, kVerticalJustification_Top);
+  text.AddFont(TToken< CRasterFont >(*gpDefaultFont));
+  const CTextColor selected(255, 255, 255, 255);
+  const CTextColor unselected(96, 96, 96, 255);
+  text.AddColor(kCT_Foreground, selected);
+  text.AddString(rstl::wstring_l(L"Resume where you left off?\n"));
+  text.AddString(rstl::wstring_l(whereText.c_str()));
+  text.AddString(rstl::wstring_l(whenText.c_str()));
+  text.AddColor(kCT_Foreground, sResumeYes ? selected : unselected);
+  text.AddString(rstl::wstring_l(L"Yes     "));
+  text.AddColor(kCT_Foreground, sResumeYes ? unselected : selected);
+  text.AddString(rstl::wstring_l(L"No"));
+  text.EndBlock();
+
+  gpRender->SetViewportOrtho(false, -4096.f, 4096.f);
+  CGraphics::SetBlendMode(kBM_Blend, kBF_SrcAlpha, kBF_InvSrcAlpha, kLO_Clear);
+  CGraphics::SetCullMode(kCM_None);
+  const CTransform4f xf =
+      CTransform4f::FromColumns(CVector3f::Right(), CVector3f::Forward(), CVector3f::Down(),
+                                CVector3f(0.f, 0.f, float(viewport.mHeight)));
+  CGraphics::SetModelMatrix(xf);
+  text.BuildRenderBuffer().Render(CColor::White(), 0.f);
+  CGraphics::SetCullMode(kCM_Front);
+}
+#endif
+
 void CFrontEndUI::Draw() const {
   if (x14_phase < kP_DisplayFrontEnd)
     return;
+#ifdef TARGET_PC
+  if (sResumeStage == kRS_Accepting)
+    return; // black until the game starts
+#endif
 
   if (xec_emuFrme.get() != nullptr) {
     xec_emuFrme->Draw(xdc_saveUI.get());
@@ -2297,6 +2450,11 @@ void CFrontEndUI::Draw() const {
       xe4_fusionBonusFrme->Draw();
     }
   }
+#ifdef TARGET_PC
+  if (sResumeStage == kRS_Prompt && IsInScreenNotTransitioning(kS_Title)) {
+    DrawResumePrompt();
+  }
+#endif
   if (x64_pressStartAlpha > 0.f && x38_pressStart.GetObject() != nullptr) {
     CTexture* tex = x38_pressStart.GetObject();
     short width = tex->GetWidth();
