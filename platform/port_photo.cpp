@@ -353,6 +353,12 @@ void Frame() {
                              std::chrono::system_clock::now().time_since_epoch())
                              .count();
       sLast.path = "screenshots/metroid-prime-photo-" + std::to_string(stamp) + ".png";
+#if defined(__ANDROID__)
+      // SDL opens a relative path as an APK asset there, which can't be written.
+      if (const char* root = SDL_GetAndroidInternalStoragePath()) {
+        sLast.path = std::string(root) + "/" + sLast.path;
+      }
+#endif
       aurora::request_screenshot_png(sLast.path.c_str());
       sPhase = Phase::Saving;
       sPhaseAt = now;
