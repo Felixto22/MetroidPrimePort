@@ -1036,7 +1036,9 @@ int CMain::RsMain(int argc, const char* const* argv) {
 #ifdef __ANDROID__
           // A free (hidden) cursor flung to the screen edge brings up the nav bar
           // or taskbar, so keep the pointer captured unless the overlay is open.
-          const bool wantLock = !PortDebug::Visible() && !PortPhoto::PanelWantsCursor() && focused;
+          // Photo mode keeps it free even with the panel hidden: taps arrive as
+          // mouse events, and a captured pointer has no position for its touch bar.
+          const bool wantLock = !PortDebug::Visible() && !PortPhoto::Active() && focused;
 #else
           const bool wantLock = wantRelative;
 #endif
