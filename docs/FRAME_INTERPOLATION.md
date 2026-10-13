@@ -67,8 +67,12 @@ Implemented as a view shift rather than by swapping the transform in every
   morphing player. Nested scopes keep the outer view. The player's
   `AddToRenderer` is not wrapped (it also queues the gun); its body and ball
   draw through the callback, which is.
-- Snaps like the camera: more than 4 units or more than 45° in a tick, and
-  any actor whose transform didn't change.
+- Snaps like the camera: a teleport or more than 45° in a tick, and
+  any actor whose transform didn't change. A teleport is a step over 4 units
+  that is also over three times the previous tick's step
+  (`PortIsTeleport`, `xPortLastStep2`): with the bare 4-unit limit, Meta
+  Ridley's fly-in and its chase camera flipped between blended and snapped
+  as their speed crossed it, and the view jittered (issue #99).
 - Morph ball: the ball is drawn at `GetBallToWorld()` = player origin +
   (0,0,radius) in world Z. `CActor::PortPresentedView` selects that pivot
   for the fully morphed player, covering both renderer callbacks and recursive
