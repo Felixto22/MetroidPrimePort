@@ -55,6 +55,12 @@
        android/app/build.gradle; tools/make_flatpak.sh refuses to build when the
        two differ, since Flatpak reports the newest entry as the app's version. -->
   <releases>
+    <release version="0.25.0" date="2026-10-13">
+      <description>
+        <p>Steadier X-ray and thermal reticles while walking, a scan lock that no longer drops when a scan finishes, and better crash logging on Android.</p>
+      </description>
+      <url type="details">https://github.com/Odrannnn/MetroidPrimePort/releases/tag/v0.25.0</url>
+    </release>
     <release version="0.24.0" date="2026-10-13">
       <description>
         <p>A searchable settings window, a separate vertical stick aim speed, mouse fixes in morph ball, smoother scan icons and visor reticles at high frame rates, animated visor static, and a fix for the thermal visor running out of memory.</p>
