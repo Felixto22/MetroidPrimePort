@@ -51,8 +51,11 @@ void SetSupersample(int factor);
 
 bool PanelShown();
 void SetPanelShown(bool shown);
-// The panel is up and wants the cursor.
+// The panel is up and wants the cursor (not while the right mouse button is held).
 bool PanelWantsCursor();
+// Desktop: the mouse turns the camera, whatever the mouse aim setting: with the panel hidden, or
+// while the right button is held.
+bool MouseLook();
 // The pad drives the panel (Y toggles it): the d-pad and A work its widgets and the camera is
 // still. Off, the pad flies the camera and rolls it.
 bool PanelFocused();

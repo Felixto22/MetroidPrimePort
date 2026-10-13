@@ -845,7 +845,14 @@ the panel has the pad. None of this reaches the game. The sliders also take
 mouse or touch. On a touchscreen the touch controls hide for all of photo
 mode: a finger on the left half is an invisible stick centred where it lands,
 one on the right half drags the view, and a hidden panel leaves a small bar
-(Panel, Capture, Exit) in its place.
+(Panel, Capture, Exit) in its place. With twin-stick aim the right stick turns
+the camera.
+
+On a keyboard and mouse (whatever the mouse aim setting): the mouse looks
+around while the panel is hidden, or while the right button is held with it
+shown; a left click then captures. The wheel changes the FOV, P captures, H
+shows or hides the panel, and Esc exits. The keys bound to the pad buttons
+above still work as those buttons.
 
 Capture writes `metroid-prime-photo-<time>.png` to the screenshot folder with
 the panel, overlays and toasts hidden. On Android it is then moved to the

@@ -1051,8 +1051,12 @@ int CMain::RsMain(int argc, const char* const* argv) {
           PortSaveState::ResumeInfo promptInfo;
           bool promptYes = true;
           const bool resumePrompt = PortSaveState::ResumePromptShown(promptInfo, promptYes);
-          const bool wantRelative = PortDebug::MouseAim() && PortDebug::MouseGameplayActive() &&
-                                    !PortDebug::Visible() && !PortPhoto::PanelWantsCursor() && !resumePrompt && focused;
+          // Photo mode's free camera looks with the mouse even without mouse aim.
+          const bool wantRelative =
+              (PortPhoto::Active() ? PortPhoto::MouseLook()
+                                   : PortDebug::MouseAim() && PortDebug::MouseGameplayActive() &&
+                                         !PortPhoto::PanelWantsCursor()) &&
+              !PortDebug::Visible() && !resumePrompt && focused;
 #ifdef __ANDROID__
           // A free (hidden) cursor flung to the screen edge brings up the nav bar
           // or taskbar, so keep the pointer captured unless the overlay is open.

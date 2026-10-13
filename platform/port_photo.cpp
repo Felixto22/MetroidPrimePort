@@ -11,6 +11,7 @@
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include <dolphin/gx/GXAurora.h>
+#include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_timer.h>
 #include <algorithm>
 #include <chrono>
@@ -476,7 +477,22 @@ void SetPanelShown(bool shown) {
     sPanelFocus = false;
   }
 }
-bool PanelWantsCursor() { return sActive && sPanelShown; }
+// Held right mouse button: the mouse looks around even with the panel up.
+static bool RightMouseHeld() {
+#ifdef __ANDROID__
+  return false;
+#else
+  return (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_RMASK) != 0;
+#endif
+}
+bool MouseLook() {
+#ifdef __ANDROID__
+  return false;
+#else
+  return sActive && sPhase == Phase::Idle && (!sPanelShown || RightMouseHeld());
+#endif
+}
+bool PanelWantsCursor() { return sActive && sPanelShown && !RightMouseHeld(); }
 bool PanelFocused() { return sActive && sPanelShown && sPanelFocus; }
 
 bool RequestCapture(int factor) {

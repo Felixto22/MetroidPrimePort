@@ -2594,7 +2594,8 @@ void SetMouseSensitivity(float radiansPerPixel) {
 }
 
 void AddMouseDelta(float dx, float dy) {
-  if (!sMouseCaptured || !MouseAim() || Visible() || !std::isfinite(dx) || !std::isfinite(dy)) {
+  if (!sMouseCaptured || !(MouseAim() || PortPhoto::Active()) || Visible() || !std::isfinite(dx) ||
+      !std::isfinite(dy)) {
     return;
   }
   sMousePendingX += dx;
@@ -5286,11 +5287,28 @@ void DrawPhotoUI() {
   if (!PortPhoto::Active() || PortPhoto::Capturing()) {
     return;
   }
-  if (!PortPhoto::PanelShown()) {
-    // One key brings it back (Y on the pad).
-    if (ImGui::IsKeyPressed(ImGuiKey_H, false) && !ImGui::GetIO().WantTextInput) {
-      PortPhoto::SetPanelShown(true);
+  // Keyboard and mouse: H panel, P or a left click while looking captures, Esc exits, the wheel
+  // zooms. A captured mouse is the camera's, so the click can't be meant for a widget.
+  static bool sWasLeftDown = false;
+  const bool leftDown = (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK) != 0;
+  const bool leftClicked = leftDown && !sWasLeftDown;
+  sWasLeftDown = leftDown;
+  if (!TouchActive() && !OverlayVisible() && !ImGui::GetIO().WantTextInput) {
+    if (ImGui::IsKeyPressed(ImGuiKey_H, false)) {
+      PortPhoto::SetPanelShown(!PortPhoto::PanelShown());
     }
+    if (ImGui::IsKeyPressed(ImGuiKey_P, false) || (leftClicked && MouseCaptured())) {
+      PortPhoto::RequestCapture();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+      PortPhoto::RequestExit();
+    }
+    const float wheel = ImGui::GetIO().MouseWheel;
+    if (wheel != 0.f && (MouseCaptured() || !ImGui::GetIO().WantCaptureMouse)) {
+      PortPhoto::SetFov(PortPhoto::Fov() - wheel * 5.f);
+    }
+  }
+  if (!PortPhoto::PanelShown()) {
     // The touch controls are gone in photo mode, so a touchscreen gets a small bar for it.
     if (TouchActive()) {
       const float margin = 12.f * sUiAppliedScale;
@@ -5383,6 +5401,8 @@ void DrawPhotoUI() {
       ImGui::TextWrapped("Pad: d-pad move, A change, Y or B back to the camera");
     } else {
       ImGui::TextWrapped("Pad: A capture, B exit, Y panel, d-pad roll, X+d-pad FOV");
+      ImGui::TextWrapped("Mouse: hold right button to look, click captures, wheel FOV; P capture, H panel, "
+                         "Esc exit");
     }
     ImGui::PopStyleColor();
     touchWindows.push_back(PhotoWindowRect(viewport));
