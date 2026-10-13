@@ -109,6 +109,7 @@
 {"Video", "Display", "HUD and view", "Hide helmet", "helmet visor frame hide first person"},
 {"Video", "Display", "HUD and view", "Hide visor effects", "visor effects static scanlines hide"},
 {"Video", "Display", "HUD and view", "Field of view", "fov field of view zoom camera"},
+{"Video", "Display", "HUD and view", "Bump mapping", "bump mapping normal maps relief texture depth"},
 {"Video", "Display", "HUD and view", "Glass reflections", "glass window reflections fresnel transparent"},
 {"Video", "Display", "HUD and view", "Enhanced water", "water poison waves reflections foam liquid"},
 {"Video", "Display", "HUD and view", "Sun shadows", "sun shadows dynamic real time lighting shade"},

@@ -43,6 +43,8 @@ struct TextureRef {
   u32 gxFormat;
   bool hasArbitraryMips = false;
   bool isReplacement = false;
+  // Port: a replacement's normal map (<pack>/normals/<same name>), for GX_AURORA_PORT_BUMP.
+  wgpu::TextureView normalView;
 
   TextureRef(wgpu::Texture texture, wgpu::TextureView sampleTextureView, wgpu::TextureView attachmentTextureView,
              wgpu::Extent3D size, wgpu::TextureFormat format, uint32_t mipCount, u32 gxFormat)

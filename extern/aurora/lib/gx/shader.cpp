@@ -3921,6 +3921,53 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   if (info.usesPTTexMtx.any()) {
     uniBufAttrs += fmt::format("\n    postmtx: array<mat3x4f, {}>,", MaxPTTexMtx);
   }
+  if (config.pbr == 0 && info.bumpSlot != 0 && config.lineMode == 0) {
+    // Port extension: bump mapping of retail (TEV) surfaces from a replacement's normal map, bound in
+    // the free texmap slot bumpSlot - 1 and read with texcoord bump.y (build_bind_groups picks both).
+    // The light is baked, so the map only reshades it: the sun's direction when there is one, else a
+    // light from above the camera, lights the normal against the surface's own (its tangent frame from
+    // screen derivatives), and the ratio, clamped, scales the colour by bump.x.
+    const u32 slot = info.bumpSlot - 1u;
+    vtxOutAttrs += fmt::format("\n    @location({}) bmp_pos: vec3f,", vtxOutIdx++);
+    vtxXfrAttrs += "\n    out.bmp_pos = mv_pos;";
+    std::string pick = "\n        var buv = vec2f(0.0);";
+    for (u32 i = 0; i < info.sampledTexCoords.size(); ++i) {
+      if (info.sampledTexCoords.test(i)) {
+        pick += fmt::format("\n        if (ubuf.bump.y == {0}.0) {{ buv = tex{0}_uv; }}", i);
+      }
+    }
+    const std::string light = info.usesShadow
+                                  ? "select(normalize(vec3f(0.25, 0.9, 0.35)), ubuf.shadow_dir.xyz, "
+                                    "dot(ubuf.shadow_dir.xyz, ubuf.shadow_dir.xyz) > 0.5)"
+                                  : "normalize(vec3f(0.25, 0.9, 0.35))";
+    fragmentFn += fmt::format(R"""(
+    if (ubuf.bump.x > 0.0) {{{0}
+        let bp = in.bmp_pos;
+        let bdp1 = dpdx(bp);
+        let bdp2 = -dpdy(bp);
+        let bduv1 = dpdx(buv);
+        let bduv2 = -dpdy(buv);
+        var bng = normalize(cross(bdp1, bdp2));
+        bng = select(bng, -bng, dot(bng, -bp) < 0.0);
+        let bp2p = cross(bdp2, bng);
+        let bp1p = cross(bng, bdp1);
+        let bt = bp2p * bduv1.x + bp1p * bduv2.x;
+        let bb = bp2p * bduv1.y + bp1p * bduv2.y;
+        let binv = inverseSqrt(max(max(dot(bt, bt), dot(bb, bb)), 1e-20));
+        let bs = textureSample(tex{1}, tex{1}_samp, buv).xyz * 2.0 - 1.0;
+        let bn = normalize(bt * (bs.x * binv) - bb * (bs.y * binv) + bng * max(bs.z, 0.05));
+        let bl = {2};
+        let bk = clamp((dot(bn, bl) * 0.6 + 0.4) / max(dot(bng, bl) * 0.6 + 0.4, 0.2), 0.55, 1.45);
+        prev = vec4f(prev.rgb * mix(1.0, bk, ubuf.bump.x), prev.a);
+    }})""", pick, slot, light);
+    if (!info.sampledTextures.test(slot)) {
+      texBindings += fmt::format("\n@group(2) @binding({1})\n"
+                                 "var tex{0}: texture_2d<f32>;\n"
+                                 "@group(2) @binding({2})\n"
+                                 "var tex{0}_samp: sampler;",
+                                 slot, slot * 2, slot * 2 + 1);
+    }
+  }
   if (config.pbr == 0 && info.shadowReceive) {
     // Port extension: the sun's shadow on retail (TEV) surfaces. They have their light baked in
     // (lightmaps, vertex colours), so there is no sun term to take out: the cascaded map, read as
@@ -4045,6 +4092,9 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   }
   if (info.usesGlass) {
     uniBufAttrs += "\n    glass: vec4f,";
+  }
+  if (info.bumpSlot != 0) {
+    uniBufAttrs += "\n    bump: vec4f,";
   }
   if (!prevColorNormalized && !prevAlphaNormalized) {
     fragmentFn += "\n    prev = tev_overflow_vec4f(prev);";

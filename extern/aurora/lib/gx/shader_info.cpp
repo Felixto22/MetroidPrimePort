@@ -376,6 +376,17 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     info.uniformSize += MaxIndTexMtxs * sizeof(Mat2x4<float>);
   }
   info.uniformSize += info.sampledTextures.count() * sizeof(Vec4<float>);
+  for (u32 i = 0; i < config.tevStageCount; ++i) {
+    const auto& stage = config.tevStages[i];
+    if (stage.texMapId != GX_TEXMAP_NULL && stage.texCoordId != GX_TEXCOORD_NULL && stage.texMapId < MaxTextures &&
+        info.mapCoord[stage.texMapId] < 0 && info.sampledTexCoords.test(stage.texCoordId)) {
+      info.mapCoord[stage.texMapId] = static_cast<s8>(stage.texCoordId);
+    }
+  }
+  if (config.bumpSlot != 0) {
+    info.bumpSlot = config.bumpSlot;
+    info.uniformSize += sizeof(Vec4<float>); // GXState::bumpParams
+  }
   if (config.glass) {
     info.usesGlass = true;
     info.uniformSize += sizeof(Vec4<float>); // GXState::glassParams
@@ -589,6 +600,11 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
   }
   if (info.usesGlass) {
     buf.append(g_gxState.glassParams);
+  }
+  if (info.bumpSlot != 0) {
+    const int pick = bump_pick(info);
+    buf.append(pick >= 0 ? Vec4<float>{g_gxState.bumpStrength, static_cast<f32>(info.mapCoord[pick]), 0.f, 0.f}
+                         : Vec4<float>{0.f, -1.f, 0.f, 0.f});
   }
 }
 

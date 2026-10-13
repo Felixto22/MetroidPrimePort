@@ -340,6 +340,8 @@ extern "C" {
 #define GX_AURORA_PORT_GLASS 0x006F
 // Port extension: copy the opaque frame for glass (GXPortSceneCapture). Payload: 4 u32 words.
 #define GX_AURORA_PORT_SCENE_CAPTURE 0x0070
+// Port extension: how strongly replacement normal maps shade opaque TEV draws (GXPortSetBump). Payload: f32.
+#define GX_AURORA_PORT_BUMP 0x0071
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

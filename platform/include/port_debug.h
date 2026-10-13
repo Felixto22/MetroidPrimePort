@@ -320,6 +320,13 @@ const int kGlassReflectionsMin = 0;
 const int kGlassReflectionsMax = 100;
 int GlassReflections();
 void SetGlassReflections(int percent);
+// Bump mapping: how strongly the normal maps of an HD texture pack (<pack>/normals) reshade the
+// world, as a percentage (0: off). Off in the original experience.
+const int kBumpMappingDefault = 60;
+const int kBumpMappingMin = 0;
+const int kBumpMappingMax = 100;
+int BumpMapping();
+void SetBumpMapping(int percent);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

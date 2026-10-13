@@ -212,6 +212,13 @@ void GXPortSetGlass(GXBool on, f32 strength) {
   GX_WRITE_U32(word);
 }
 
+void GXPortSetBump(f32 strength) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_BUMP);
+  u32 word;
+  std::memcpy(&word, &strength, sizeof(word));
+  GX_WRITE_U32(word);
+}
+
 void GXPortVolumetricFogEnd() { GX_WRITE_AURORA(GX_AURORA_PORT_VOLUMETRIC_FOG_END); }
 
 void GXPortSetParticleFog(GXBool on) {

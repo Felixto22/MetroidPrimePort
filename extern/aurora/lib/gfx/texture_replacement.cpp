@@ -1056,6 +1056,31 @@ gfx::TextureHandle create_converted_texture_handle(const EntryLoadSnapshot& entr
                                                   replacement.format, replacement.mips, gfx::InvalidTextureFormat);
   handle->isReplacement = true;
   aurora::gfx::write_texture(*handle, replacement.data);
+  // Port: its normal map, <dir>/normals/<same file name>, for GX_AURORA_PORT_BUMP.
+  if (entry.kind == EntryKind::File && !entry.path.empty()) {
+    const auto normalPath = entry.path.parent_path() / "normals" / entry.path.filename();
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(normalPath, ec)) {
+      if (auto normal = load_texture_file(normalPath);
+          normal.has_value() && !is_unsupported_texture_format(normal->format) &&
+          validate_texture_size(normal->format, normal->width, normal->height, io::fs_path_to_string(normalPath))) {
+        const wgpu::TextureDescriptor normalDescriptor{
+            .label = "TextureReplacement normal map",
+            .usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst,
+            .dimension = wgpu::TextureDimension::e2D,
+            .size = {normal->width, normal->height, 1},
+            .format = normal->format,
+            .mipLevelCount = normal->mips,
+            .sampleCount = 1,
+        };
+        auto normalTexture = webgpu::g_device.CreateTexture(&normalDescriptor);
+        gfx::TextureRef normalRef(normalTexture, normalTexture.CreateView(), wgpu::TextureView{},
+                                  normalDescriptor.size, normal->format, normal->mips, gfx::InvalidTextureFormat);
+        aurora::gfx::write_texture(normalRef, normal->data);
+        handle->normalView = normalRef.sampleTextureView;
+      }
+    }
+  }
   return handle;
 }
 
@@ -1747,6 +1772,10 @@ ReplacementGroup load_replacement_directory(const std::filesystem::path& root, R
     }
 
     if (is_sidecar_mip(io::fs_path_to_string(path.stem()))) {
+      continue;
+    }
+    // Port: <pack>/normals holds normal maps for the textures beside it, not replacements.
+    if (iequals_ascii(io::fs_path_to_string(path.parent_path().filename()), "normals")) {
       continue;
     }
 

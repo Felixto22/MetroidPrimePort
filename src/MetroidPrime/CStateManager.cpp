@@ -2925,6 +2925,13 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
   const float frustum[6] = {proj.GetLeft(), proj.GetRight(), proj.GetTop(),
                             proj.GetBottom(), proj.GetNear(), proj.GetFar()};
   GXPortSetShadowStrength(static_cast< float >(PortDebug::SunShadows()) / 100.f);
+  {
+    static int sBump = -1;
+    if (sBump != PortDebug::BumpMapping()) {
+      sBump = PortDebug::BumpMapping();
+      GXPortSetBump(static_cast< float >(sBump) / 100.f);
+    }
+  }
   GXPortSetShadowFrame(worldToView, frustum, dir, distance, color);
   // Remastered's point and spot lights, in the same view space.
   static std::vector< float > sRoomLights;

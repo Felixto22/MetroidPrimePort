@@ -296,6 +296,9 @@ GXBool GXPortSceneCapture(const f32 depth[4]);
 // Port extension: the following alpha-blended (src alpha, inverse src alpha) draws are glass, with
 // Fresnel reflections of the last scene capture at `strength` (0..1). Stays until changed.
 void GXPortSetGlass(GXBool on, f32 strength);
+// Port extension: opaque TEV draws whose texture has a replacement normal map (<pack>/normals/<the
+// replacement's name>) are reshaded by it at `strength` (0..1; 0: off). Stays until changed.
+void GXPortSetBump(f32 strength);
 // The draws after GXPortVolumetricFog fog themselves as Remastered's transparents do, until this:
 // opaque ones per pixel as the full-screen pass, blended and additive ones per vertex (blended:
 // colour T + in-scatter, additive: colour T). Harmless when no fog was drawn.

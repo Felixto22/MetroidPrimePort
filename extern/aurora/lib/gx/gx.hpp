@@ -460,6 +460,9 @@ struct GXState {
   // reflection's strength in x.
   bool portGlass = false;
   Vec4<float> glassParams{};
+  // GX_AURORA_PORT_BUMP: how strongly replacement normal maps shade opaque TEV draws (0: off), and
+  // per draw (build_bind_groups) the texcoord the chosen map is read with (ShaderConfig::bumpSlot).
+  float bumpStrength = 0.f;
   bool shadowCaster = false;
   bool shadowCasterOnly = false; // they cast but aren't drawn (GXPortSetShadowCasterOnly)
   bool shadowActive = false;
@@ -618,7 +621,10 @@ struct ShaderConfig {
   // With pbr, the vertex attribute holding the baked lightmap's UV (GX_VA_TEX0..7), or GX_VA_NULL: a varying in the shader.
   u8 pbrLightmapAttr = GX_VA_NULL;
   u8 hudSample = 0; // GX_AURORA_SET_HUD_SAMPLE
-  u8 pad2[2]{}; // keeps the struct free of padding (memcmp and hash)
+  // GX_AURORA_PORT_BUMP on an opaque TEV draw: 1 + the free texmap slot a replacement's normal map
+  // is bound to (gfx::TextureRef::normalView; ShaderInfo::bumpSlot), 0 for none.
+  u8 bumpSlot = 0;
+  u8 pad2{}; // keeps the struct free of padding (memcmp and hash)
   std::array<AttrConfig, MaxVtxAttr> attrs;
   std::array<TevSwap, MaxTevSwap> tevSwapTable;
   std::array<TevStage, MaxTevStages> tevStages;
@@ -665,6 +671,8 @@ struct ShaderInfo {
   bool usesLightmap : 1 = false; // ShaderConfig::pbrLightmapAttr is set
   bool usesVolFog : 1 = false;
   bool usesGlass : 1 = false;     // ShaderConfig::glass: the glass uniform and the scene copy
+  u8 bumpSlot = 0;                // ShaderConfig::bumpSlot: 1 + the normal map's texmap slot, 0 for none
+  std::array<s8, MaxTextures> mapCoord{-1, -1, -1, -1, -1, -1, -1, -1}; // texcoord each texmap is read with
   bool usesShadow : 1 = false;    // ShaderConfig::shadow: the shadow uniforms and vs_shadow
   bool shadowReceive : 1 = false; // shadow_receives: group 2 uses the shadow layout
 };
@@ -687,6 +695,8 @@ void set_draw_shader_log(bool on) noexcept;
 void note_draw_shader(u32 serial, const ShaderConfig& config) noexcept;
 u64 draw_shader_hash(u32 serial) noexcept;
 bool shader_overridden(u64 hash) noexcept;
+// The sampled texmap whose replacement normal map a bump draw reads (ShaderInfo::bumpSlot), or -1.
+int bump_pick(const ShaderInfo& info) noexcept;
 GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept;
 
 u8 comp_type_size(GXAttr attr, GXCompType type) noexcept;

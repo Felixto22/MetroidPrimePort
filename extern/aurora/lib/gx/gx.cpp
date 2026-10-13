@@ -571,6 +571,34 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
                               config.shaderConfig.volFog == VolFogNone && !shadow_receives(config.shaderConfig) &&
                               g_gxState.blendMode == GX_BM_BLEND && g_gxState.blendFacSrc == GX_BL_SRCALPHA &&
                               g_gxState.blendFacDst == GX_BL_INVSRCALPHA;
+  // Bump: an opaque retail draw that samples a texture, with a texmap slot no stage uses for the
+  // normal map (build_bind_groups binds one when a sampled replacement has it).
+  config.shaderConfig.bumpSlot = 0;
+  if (g_gxState.bumpStrength > 0.f && !drawId && !depthOnly && g_gxState.pbr == 0 &&
+      config.shaderConfig.lineMode == 0 &&
+      (g_gxState.blendMode == GX_BM_NONE ||
+       (g_gxState.blendMode == GX_BM_BLEND && g_gxState.blendFacSrc == GX_BL_ONE &&
+        g_gxState.blendFacDst == GX_BL_ZERO))) {
+    u32 used = 0;
+    for (u8 i = 0; i < g_gxState.numTevStages; ++i) {
+      if (g_gxState.tevStages[i].texMapId < MaxTextures) {
+        used |= 1u << g_gxState.tevStages[i].texMapId;
+      }
+    }
+    for (u8 i = 0; i < g_gxState.numIndStages; ++i) {
+      if (g_gxState.indStages[i].texMapId < MaxTextures) {
+        used |= 1u << g_gxState.indStages[i].texMapId;
+      }
+    }
+    if (used != 0) {
+      for (int slot = MaxTextures - 1; slot >= 0; --slot) {
+        if ((used & (1u << slot)) == 0) {
+          config.shaderConfig.bumpSlot = static_cast<u8>(slot + 1);
+          break;
+        }
+      }
+    }
+  }
   // Field by field: an aggregate assignment would copy the 2.7 KB shader config twice more on
   // every pipeline switch. Every field outside shaderConfig is written here.
   config.version = GXPipelineConfigVersion;
@@ -597,11 +625,31 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
 // The lightmap's slot is the last binding, left out of group 2 when the device has no room for it.
 static size_t texture_binding_count() noexcept { return kTextureBindings - (webgpu::g_lightmapBinding ? 0 : 1); }
 
+int bump_pick(const ShaderInfo& info) noexcept {
+  if (info.bumpSlot == 0) {
+    return -1;
+  }
+  const u32 slot = info.bumpSlot - 1u;
+  int pick = -1;
+  u32 pickArea = 0;
+  for (u32 i = 0; i < MaxTextures; ++i) {
+    const auto& tex = g_gxState.textures[i];
+    if (i != slot && info.sampledTextures[i] && info.mapCoord[i] >= 0 && tex && tex.ref->normalView) {
+      const u32 area = tex.ref->size.width * tex.ref->size.height;
+      if (area > pickArea) {
+        pick = static_cast<int>(i);
+        pickArea = area;
+      }
+    }
+  }
+  return pick;
+}
+
 GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept {
   ZoneScoped;
 
   if (!info.sampledTextures.any() && !info.sampledIndTextures.any() && !info.usesVolFog && !info.shadowReceive &&
-      !info.usesLightmap && !info.usesGlass) {
+      !info.usesLightmap && !info.usesGlass && info.bumpSlot == 0) {
     // Don't bother re-binding anything
     return {};
   }
@@ -666,6 +714,19 @@ GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept {
     } else {
       textureEntry.textureView = sEmptyTextureView.Get();
       samplerEntry.sampler = sEmptySampler.Get();
+    }
+  }
+  if (info.bumpSlot != 0) {
+    // The normal map of the largest sampled replacement that has one, read with that texture's
+    // sampler and texcoord (GXState::bumpParams.y); none leaves the shading off (x = 0).
+    const u32 slot = info.bumpSlot - 1u;
+    const int pick = bump_pick(info);
+    if (pick >= 0) {
+      textureEntries[slot * 2].textureView = g_gxState.textures[pick].ref->normalView.Get();
+      textureEntries[slot * 2 + 1].sampler = sSlotSamplers[pick].Get();
+    } else {
+      textureEntries[slot * 2].textureView = sEmptyTextureView.Get();
+      textureEntries[slot * 2 + 1].sampler = sEmptySampler.Get();
     }
   }
   const WGPUBindGroupDescriptor textureBindGroupDescriptor{
