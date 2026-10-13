@@ -456,6 +456,10 @@ struct GXState {
   // shadow), and this frame's sun (shadowActive) with its uniform (gfx/shadow.hpp's Uniform).
   // GX_AURORA_PORT_PARTICLE_FOG: the draws are particles (vol_fog_mode)
   bool particleFog = false;
+  // GX_AURORA_PORT_GLASS: the following blended draws are glass (ShaderConfig::glass), with their
+  // reflection's strength in x.
+  bool portGlass = false;
+  Vec4<float> glassParams{};
   bool shadowCaster = false;
   bool shadowCasterOnly = false; // they cast but aren't drawn (GXPortSetShadowCasterOnly)
   bool shadowActive = false;
@@ -602,7 +606,9 @@ struct ShaderConfig {
   // endianness.
   u8 pbrBindPos : 1 = false;
   u8 pbrBindLe : 1 = false;
-  u8 pad1 : 1 = 0;
+  // GX_AURORA_PORT_GLASS on an alpha-blended draw: Fresnel reflections from the scene copy
+  // (gfx/scenecap.hpp, read in the froxel slot; ShaderInfo::usesGlass).
+  u8 glass : 1 = 0;
   u8 pbr = 0; // GX_AURORA_SET_PBR
   u8 sdf = 0; // GX_AURORA_SET_SDF
   u8 depthOnly = 0; // pass 1 of GX_AURORA_PORT_DEPTH_PREPASS: the colour is not written
@@ -658,6 +664,7 @@ struct ShaderInfo {
   bool usesHudDyin : 1 = false; // ShaderConfig::hudSample >= 2: the hud_dyin uniform
   bool usesLightmap : 1 = false; // ShaderConfig::pbrLightmapAttr is set
   bool usesVolFog : 1 = false;
+  bool usesGlass : 1 = false;     // ShaderConfig::glass: the glass uniform and the scene copy
   bool usesShadow : 1 = false;    // ShaderConfig::shadow: the shadow uniforms and vs_shadow
   bool shadowReceive : 1 = false; // shadow_receives: group 2 uses the shadow layout
 };

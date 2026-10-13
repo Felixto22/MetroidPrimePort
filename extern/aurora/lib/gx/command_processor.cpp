@@ -3,6 +3,7 @@
 #include "../gfx/bloom.hpp"
 #include "../gfx/volfog.hpp"
 #include "../gfx/ssao.hpp"
+#include "../gfx/scenecap.hpp"
 #include "../gfx/thermal.hpp"
 #include "../gfx/xray.hpp"
 #include "../gfx/depth_peek.hpp"
@@ -1325,6 +1326,23 @@ void handle_aurora(ByteReader& reader) noexcept {
     }
     std::memcpy(&params, words, sizeof(params));
     gfx::ssao::record(params);
+  } else if (subCmd == GX_AURORA_PORT_SCENE_CAPTURE) {
+    gfx::scenecap::Params params;
+    for (float& f : params.depth) {
+      const u32 word = reader.read<u32>();
+      std::memcpy(&f, &word, sizeof(f));
+    }
+    gfx::scenecap::record(params);
+  } else if (subCmd == GX_AURORA_PORT_GLASS) {
+    const bool on = reader.read<u8>() != 0;
+    const u32 word = reader.read<u32>();
+    float strength;
+    std::memcpy(&strength, &word, sizeof(strength));
+    if (g_gxState.portGlass != on) {
+      g_gxState.portGlass = on;
+      g_gxState.dirty |= DirtyPipeline;
+    }
+    g_gxState.glassParams = Vec4<float>{strength, 0.f, 0.f, 0.f};
   } else if (subCmd == GX_AURORA_PORT_PARTICLE_FOG) {
     const bool on = reader.read<u8>() != 0;
     if (g_gxState.particleFog != on) {

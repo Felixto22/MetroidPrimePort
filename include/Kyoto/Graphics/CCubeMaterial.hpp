@@ -43,6 +43,10 @@ class CCubeSurface;
 class CCubeModel;
 class CCubeMaterial {
 public:
+#ifdef TARGET_PC
+  // Ends the glass shading a glass material started (GXPortSetGlass), if any.
+  static void PortEndGlass();
+#endif
   explicit CCubeMaterial(const void* data) : x0_data(data) {}
   static void ResetCachedMaterials();
   static void EnsureViewDepStateCached(const CCubeSurface* surface);

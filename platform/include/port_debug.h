@@ -313,6 +313,13 @@ void SetSunShadows(int percent);
 // reflections, depth tint and foam. Off in the original experience.
 bool EnhancedWater();
 void SetEnhancedWater(bool enabled);
+// Glass (depth-sorted materials with a reflection map) gets Fresnel reflections of the scene, at
+// this percentage of full strength (0: off). Off in the original experience.
+const int kGlassReflectionsDefault = 80;
+const int kGlassReflectionsMin = 0;
+const int kGlassReflectionsMax = 100;
+int GlassReflections();
+void SetGlassReflections(int percent);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

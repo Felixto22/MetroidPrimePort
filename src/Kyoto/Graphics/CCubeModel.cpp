@@ -615,6 +615,12 @@ CCubeModel::PortInventoryScope::~PortInventoryScope() {
 #endif
 
 void CCubeModel::DrawSurface(const CCubeSurface& surface, const CModelFlags& modelFlags) const {
+#ifdef TARGET_PC
+  // Glass shading lasts for this surface only (CCubeMaterial::SetCurrent starts it).
+  struct PortGlassEnd {
+    ~PortGlassEnd() { CCubeMaterial::PortEndGlass(); }
+  } portGlassEnd;
+#endif
   const CCubeMaterial material = GetMaterialByIndex(surface.GetMaterialIndex());
   if (material.IsFlagSet(kStateFlag_ShadowOccluderMesh) && !sDrawingOccluders) {
     return;

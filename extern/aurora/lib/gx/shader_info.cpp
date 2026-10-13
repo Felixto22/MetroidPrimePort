@@ -376,6 +376,10 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     info.uniformSize += MaxIndTexMtxs * sizeof(Mat2x4<float>);
   }
   info.uniformSize += info.sampledTextures.count() * sizeof(Vec4<float>);
+  if (config.glass) {
+    info.usesGlass = true;
+    info.uniformSize += sizeof(Vec4<float>); // GXState::glassParams
+  }
   if (config.shadow) {
     info.usesShadow = true;
     info.shadowReceive = shadow_receives(config);
@@ -582,6 +586,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     for (const auto& v : g_gxState.shadowUniform) {
       buf.append(v);
     }
+  }
+  if (info.usesGlass) {
+    buf.append(g_gxState.glassParams);
   }
 }
 

@@ -6,6 +6,7 @@
 #include "shadow.hpp"
 #include "volfog.hpp"
 #include "ssao.hpp"
+#include "scenecap.hpp"
 #include "thermal.hpp"
 #include "xray.hpp"
 #include <aurora/vfx.hpp>
@@ -605,6 +606,7 @@ void shutdown() {
   bloom::shutdown();
   volfog::shutdown();
   ssao::shutdown();
+  scenecap::shutdown();
   xray::shutdown();
   thermal::shutdown();
   shadow::shutdown();

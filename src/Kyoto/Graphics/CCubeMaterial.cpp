@@ -1,5 +1,10 @@
 #include "Kyoto/Graphics/CCubeMaterial.hpp"
 
+#ifdef TARGET_PC
+#include "port_debug.h"
+#include <dolphin/gx/GXExtra.h>
+#endif
+
 #include "Kyoto/Basics/CBasics.hpp"
 
 #include "Kyoto/Basics/CStopwatch.hpp"
@@ -671,8 +676,37 @@ bool CCubeMaterial::PortNeedsModelMatrix() const {
 }
 #endif
 
+#ifdef TARGET_PC
+// Glass (port_debug.h GlassReflections): the strength GXPortSetGlass last set, -1 before any.
+static int sPortGlass = -1;
+
+void CCubeMaterial::PortEndGlass() {
+  if (sPortGlass > 0) {
+    sPortGlass = 0;
+    GXPortSetGlass(GX_FALSE, 0.f);
+  }
+}
+#endif
+
 void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& surface,
                                const CCubeModel& model) const {
+#ifdef TARGET_PC
+  {
+    // A depth-sorted surface with a reflection map is glass: Fresnel reflections of the scene
+    // (GXPortSetGlass) on its alpha-blended draws. Before the material cache, which may return
+    // early; CCubeModel::DrawSurface ends it (PortEndGlass) so nothing drawn after takes it.
+    const uint glassFlags = SBig(*reinterpret_cast< const uint* >(GetData()));
+    const int strength = PortDebug::GlassReflections();
+    const bool glass = strength > 0 &&
+                       (glassFlags & (kStateFlag_Reflection | kStateFlag_ReflectionSurfaceEye)) != 0 &&
+                       (glassFlags & kStateFlag_DepthSorting) != 0 && (glassFlags & kStateFlag_PortPBR) == 0;
+    const int want = glass ? strength : 0;
+    if (want != sPortGlass) {
+      sPortGlass = want;
+      GXPortSetGlass(glass ? GX_TRUE : GX_FALSE, static_cast< float >(strength) / 100.f);
+    }
+  }
+#endif
   if (x0_data == sLastMaterialCached) {
     switch (sMaterialCachedState) {
     case 1:

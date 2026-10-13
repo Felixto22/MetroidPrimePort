@@ -3406,6 +3406,12 @@ void CStateManager::DrawWorld() const {
   // Remastered fogs the opaque world and sky full-screen, then the actors and transparents as
   // they draw (up to GXPortVolumetricFogEnd).
   PortDrawAmbientOcclusion(*this);
+  // The opaque frame for glass to reflect (GXPortSetGlass).
+  if (PortDebug::GlassReflections() > 0) {
+    const CGraphics::CProjectionState& portProj = CGraphics::GetProjectionState();
+    const float portDepth[4] = {portProj.GetNear(), portProj.GetFar(), 0.125f, 1.f};
+    GXPortSceneCapture(portDepth);
+  }
   PortDrawVolumetricFog(*this, backupViewMatrix, frustum);
   // Remastered's X-ray distortion of the opaque world (pass A of its visor post).
   if (GetPlayerState()->GetActiveVisor(*this) == CPlayerState::kPV_XRay) {

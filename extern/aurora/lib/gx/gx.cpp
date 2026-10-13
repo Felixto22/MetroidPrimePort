@@ -13,6 +13,7 @@
 #include "../gfx/resource_cache.hpp"
 #include "../gfx/shadow.hpp"
 #include "../gfx/volfog.hpp"
+#include "../gfx/scenecap.hpp"
 #include "../gfx/texture.hpp"
 #include "gx_fmt.hpp"
 
@@ -565,6 +566,11 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   }
   config.shaderConfig.volFog = drawId ? VolFogNone : vol_fog_mode(depthOnly);
   config.shaderConfig.shadow = g_gxState.shadowCaster && g_gxState.shadowActive && config.shaderConfig.lineMode == 0;
+  // Glass: an alpha-blended surface drawn in colour, with nothing else in the froxel slot.
+  config.shaderConfig.glass = g_gxState.portGlass && !drawId && !depthOnly && config.shaderConfig.lineMode == 0 &&
+                              config.shaderConfig.volFog == VolFogNone && !shadow_receives(config.shaderConfig) &&
+                              g_gxState.blendMode == GX_BM_BLEND && g_gxState.blendFacSrc == GX_BL_SRCALPHA &&
+                              g_gxState.blendFacDst == GX_BL_INVSRCALPHA;
   // Field by field: an aggregate assignment would copy the 2.7 KB shader config twice more on
   // every pipeline switch. Every field outside shaderConfig is written here.
   config.version = GXPipelineConfigVersion;
@@ -595,7 +601,7 @@ GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept {
   ZoneScoped;
 
   if (!info.sampledTextures.any() && !info.sampledIndTextures.any() && !info.usesVolFog && !info.shadowReceive &&
-      !info.usesLightmap) {
+      !info.usesLightmap && !info.usesGlass) {
     // Don't bother re-binding anything
     return {};
   }
@@ -615,7 +621,8 @@ GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept {
   textureEntries[kBrdfLutBinding].binding = kBrdfLutBinding;
   textureEntries[kBrdfLutBinding].textureView = gfx::probe::brdf_lut_view().Get();
   textureEntries[kVolFogFroxelBinding].binding = kVolFogFroxelBinding;
-  textureEntries[kVolFogFroxelBinding].textureView = gfx::volfog::froxel_view().Get();
+  textureEntries[kVolFogFroxelBinding].textureView =
+      info.usesGlass ? gfx::scenecap::view().Get() : gfx::volfog::froxel_view().Get();
   textureEntries[kVolFogSamplerBinding].binding = kVolFogSamplerBinding;
   textureEntries[kVolFogSamplerBinding].sampler = gfx::volfog::sampler().Get();
   if (info.shadowReceive) {

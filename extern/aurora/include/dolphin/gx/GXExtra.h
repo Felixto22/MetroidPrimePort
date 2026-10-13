@@ -290,6 +290,12 @@ typedef struct {
   u32 misc[4];    // sample count (4..32), frame counter, 0, 0
 } GXPortSsaoParams;
 GXBool GXPortSSAO(const GXPortSsaoParams* params);
+// Port extension: a copy of the opaque frame as drawn so far, with the world's linear depth, that
+// glass draws reflect (aurora::gfx::scenecap). depth: near, far, and the GX z range the world draws in.
+GXBool GXPortSceneCapture(const f32 depth[4]);
+// Port extension: the following alpha-blended (src alpha, inverse src alpha) draws are glass, with
+// Fresnel reflections of the last scene capture at `strength` (0..1). Stays until changed.
+void GXPortSetGlass(GXBool on, f32 strength);
 // The draws after GXPortVolumetricFog fog themselves as Remastered's transparents do, until this:
 // opaque ones per pixel as the full-screen pass, blended and additive ones per vertex (blended:
 // colour T + in-scatter, additive: colour T). Harmless when no fog was drawn.

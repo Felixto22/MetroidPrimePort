@@ -4043,12 +4043,64 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    shadow_splits: vec4f,";
     uniBufAttrs += "\n    shadow_fade: vec4f,";
   }
+  if (info.usesGlass) {
+    uniBufAttrs += "\n    glass: vec4f,";
+  }
   if (!prevColorNormalized && !prevAlphaNormalized) {
     fragmentFn += "\n    prev = tev_overflow_vec4f(prev);";
   } else if (!prevColorNormalized) {
     fragmentFn += "\n    prev = vec4f(tev_overflow_vec3f(prev.rgb), prev.a);";
   } else if (!prevAlphaNormalized) {
     fragmentFn += "\n    prev.a = tev_overflow_f32(prev.a);";
+  }
+  if (info.usesGlass) {
+    // Port extension: glass. A Fresnel reflection (Schlick, F0 0.04, times glass.x) of the opaque
+    // scene's copy (gfx/scenecap.hpp: colour, linear depth in alpha), marched in view space and
+    // projected through ubuf.proj; where the ray leaves the screen the last on-screen colour stands
+    // in, dimmed. Blended over the surface's own colour as src alpha / inverse src alpha composes.
+    vtxOutAttrs += fmt::format("\n    @location({}) gls_pos: vec3f,", vtxOutIdx++);
+    vtxXfrAttrs += "\n    out.gls_pos = mv_pos;";
+    fragmentFn += R"""(
+    {
+        let gv = in.gls_pos;
+        var gn = normalize(cross(dpdx(gv), -dpdy(gv)));
+        gn = select(gn, -gn, dot(gn, -gv) < 0.0);
+        let gV = normalize(gv);
+        let ndv = clamp(dot(-gV, gn), 0.0, 1.0);
+        let gF = clamp((0.04 + 0.96 * pow(1.0 - ndv, 5.0)) * ubuf.glass.x, 0.0, 1.0);
+        let gR = reflect(gV, gn);
+        var gp = gv;
+        var gstep = max(0.05, -gv.z * 0.02);
+        var grefl = vec3f(0.0);
+        var gfound = false;
+        var glast = vec2f(-1.0);
+        for (var gi = 0; gi < 32; gi++) {
+            gp = gp + gR * gstep;
+            gstep = gstep * 1.1;
+            let gc = vec4f(gp, 1.0) * ubuf.proj;
+            if (gc.w <= 1e-4) { break; }
+            let guv = vec2f(gc.x / gc.w * 0.5 + 0.5, 0.5 - gc.y / gc.w * 0.5);
+            if (any(guv < vec2f(0.0)) || any(guv > vec2f(1.0))) { break; }
+            glast = guv;
+            let gs = textureSampleLevel(glass_scene, glass_samp, vec3f(guv, 0.5), 0.0);
+            if (-gp.z > gs.a + 0.03 && -gp.z < gs.a + max(gstep * 2.0, 0.5)) {
+                grefl = gs.rgb;
+                gfound = true;
+                break;
+            }
+        }
+        if (!gfound && glast.x >= 0.0) {
+            grefl = textureSampleLevel(glass_scene, glass_samp, vec3f(glast, 0.5), 0.0).rgb * 0.7;
+        }
+        let ga = clamp(prev.a, 0.0, 1.0);
+        let gna = ga * (1.0 - gF) + gF;
+        prev = vec4f((prev.rgb * ga * (1.0 - gF) + grefl * gF) / max(gna, 1e-4), gna);
+    })""";
+    texBindings += fmt::format("\n@group(2) @binding({})\n"
+                               "var glass_scene: texture_3d<f32>;\n"
+                               "@group(2) @binding({})\n"
+                               "var glass_samp: sampler;",
+                               kVolFogFroxelBinding, kVolFogSamplerBinding);
   }
   if (info.usesVolFog && !pbrVolFog) {
     fragmentFn += fmt::format("\n    // Volumetric fog\n    prev = vf_apply(prev, {}, {});", volFogSample,

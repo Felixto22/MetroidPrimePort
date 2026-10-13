@@ -7,6 +7,7 @@
 #include "../../gfx/shadow.hpp"
 #include "../../gfx/volfog.hpp"
 #include "../../gfx/ssao.hpp"
+#include "../../gfx/scenecap.hpp"
 #include "../../gfx/thermal.hpp"
 #include "../../gfx/xray.hpp"
 #include "../../webgpu/gpu_prof.hpp"
@@ -185,6 +186,30 @@ GXBool GXPortSSAO(const GXPortSsaoParams* ssao) {
     GX_WRITE_U32(word);
   }
   return true;
+}
+
+GXBool GXPortSceneCapture(const f32 depth[4]) {
+  if (depth == nullptr || sDrawIdMode) {
+    return true;
+  }
+  if (!aurora::gfx::scenecap::ensure_task()) {
+    return false;
+  }
+  GX_WRITE_AURORA(GX_AURORA_PORT_SCENE_CAPTURE);
+  for (int i = 0; i < 4; ++i) {
+    u32 word;
+    std::memcpy(&word, &depth[i], sizeof(word));
+    GX_WRITE_U32(word);
+  }
+  return true;
+}
+
+void GXPortSetGlass(GXBool on, f32 strength) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_GLASS);
+  GX_WRITE_U8(on ? 1 : 0);
+  u32 word;
+  std::memcpy(&word, &strength, sizeof(word));
+  GX_WRITE_U32(word);
 }
 
 void GXPortVolumetricFogEnd() { GX_WRITE_AURORA(GX_AURORA_PORT_VOLUMETRIC_FOG_END); }

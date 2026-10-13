@@ -256,6 +256,7 @@ int sCameraBob = PortDebug::kCameraBobRetail;
 int sAmbientOcclusion = PortDebug::kAmbientOcclusionDefault;
 int sSunShadows = PortDebug::kSunShadowsDefault;
 bool sEnhancedWater = true;
+int sGlassReflections = PortDebug::kGlassReflectionsDefault;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
@@ -674,6 +675,9 @@ void ApplySetting(const std::string& key, const std::string& value) {
     if (std::isfinite(f) && f >= PortDebug::kFovMin && f <= PortDebug::kFovMax) {
       sFirstPersonFov = f;
     }
+  } else if (key == "glass_reflections") {
+    sGlassReflections = std::clamp(std::atoi(value.c_str()), PortDebug::kGlassReflectionsMin,
+                                   PortDebug::kGlassReflectionsMax);
   } else if (key == "enhanced_water") {
     sEnhancedWater = ParseBool(value);
   } else if (key == "sun_shadows") {
@@ -853,6 +857,7 @@ std::string SettingsText() {
   file << "ambient_occlusion=" << sAmbientOcclusion << '\n';
   file << "sun_shadows=" << sSunShadows << '\n';
   file << "enhanced_water=" << (sEnhancedWater ? 1 : 0) << '\n';
+  file << "glass_reflections=" << sGlassReflections << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
@@ -1802,6 +1807,17 @@ void SetFirstPersonFov(float degrees) {
     sFirstPersonFov = std::clamp(degrees, kFovMin, kFovMax);
     MarkDirty();
   }
+}
+
+int GlassReflections() {
+  EnsureInitialized();
+  return sOriginalExperience ? 0 : sGlassReflections;
+}
+
+void SetGlassReflections(int percent) {
+  EnsureInitialized();
+  sGlassReflections = std::clamp(percent, kGlassReflectionsMin, kGlassReflectionsMax);
+  MarkDirty();
 }
 
 bool EnhancedWater() {
@@ -6535,6 +6551,12 @@ void DrawVideoDisplay() {
     SetEnhancedWater(enhancedWater);
   }
   ImGui::SetItemTooltip("Water and poison with waves, ripples, reflections, depth colour and foam.");
+  int glassReflections = sGlassReflections;
+  if (ImGui::SliderInt("Glass reflections", &glassReflections, kGlassReflectionsMin, kGlassReflectionsMax,
+                       glassReflections == 0 ? "Off" : "%d%%")) {
+    SetGlassReflections(glassReflections);
+  }
+  ImGui::SetItemTooltip("Glass reflects the room around it, more at grazing angles. 0 turns it off.");
   {
     // Issue #72: PrimeHack-style arm cannon placement.
     float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};

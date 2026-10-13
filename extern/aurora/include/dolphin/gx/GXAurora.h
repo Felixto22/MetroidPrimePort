@@ -336,6 +336,10 @@ extern "C" {
 #define GX_AURORA_PORT_THERMAL 0x006C
 // Port extension: screen-space ambient occlusion over the opaque world (GXPortSSAO). Payload: 16 u32 words.
 #define GX_AURORA_PORT_SSAO 0x006E
+// Port extension: the following alpha-blended draws are glass (GXPortSetGlass). Payload: u8 on, f32 strength.
+#define GX_AURORA_PORT_GLASS 0x006F
+// Port extension: copy the opaque frame for glass (GXPortSceneCapture). Payload: 4 u32 words.
+#define GX_AURORA_PORT_SCENE_CAPTURE 0x0070
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 
