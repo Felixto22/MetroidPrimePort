@@ -405,7 +405,8 @@ void BindPortControls(Profile& p) {
   }
 
   // Mouse buttons: under mouse aim each does its action (or the beam shift);
-  // out of it the ones on A and B still press them (bombs, boosts, text boxes).
+  // out of it the ones on A and B still press them (bombs, boosts, text boxes),
+  // and in morph ball the ones on Y and R too (power bombs, spider ball).
   for (int i = 0; i < PortInputMap::kMouseButtonCount; ++i) {
     const int action = PortDebug::MouseAction(i);
     if (action == PortInputMap::kMA_Shift) continue; // a beam chord's shift, bound above
@@ -414,6 +415,8 @@ void BindPortControls(Profile& p) {
     Bind(p, a, Make(Device::MouseButton, kMouseGameplay + i));
     if (pad == PAD_BUTTON_A || pad == PAD_BUTTON_B) {
       Bind(p, a, Make(Device::MouseButton, kMouseMenu + i));
+    } else if (pad == PAD_BUTTON_Y || pad == PAD_TRIGGER_R) {
+      BindIn(p, a, Make(Device::MouseButton, kMouseMenu + i), PortInput::kCtxMorphBall);
     }
   }
 }
@@ -422,6 +425,8 @@ float StickValue(s16 raw, u16 deadZone, bool useDeadZones) {
   if (useDeadZones && std::abs(static_cast< int >(raw)) <= deadZone) return 0.f;
   return std::clamp(static_cast< float >(raw) / 32767.f, -1.f, 1.f);
 }
+
+uint16_t GameContexts();
 
 void FillRawState(PortInput::RawState& raw, unsigned mouseHeld, bool focused) {
   int numKeys = 0;
@@ -456,9 +461,11 @@ void FillRawState(PortInput::RawState& raw, unsigned mouseHeld, bool focused) {
     actions[i] = PortDebug::MouseAction(i);
   }
   // Its gate also waits for a release, so a held charge carried into morph ball
-  // doesn't drop a bomb; only the A/B buttons feed it, so a held side button
-  // with nothing to do there doesn't hold it shut.
-  const unsigned menuMask = PortInputMap::MouseButtonsFor(actions, PAD_BUTTON_A | PAD_BUTTON_B);
+  // doesn't drop a bomb; only the buttons with something to do there feed it
+  // (A/B, plus Y/R in morph ball), so a held side button doesn't hold it shut.
+  unsigned menuPad = PAD_BUTTON_A | PAD_BUTTON_B;
+  if ((GameContexts() & PortInput::kCtxMorphBall) != 0) menuPad |= PAD_BUTTON_Y | PAD_TRIGGER_R;
+  const unsigned menuMask = PortInputMap::MouseButtonsFor(actions, menuPad);
   mouse |= (PortDebug::MouseMenuButtons(mouseHeld & menuMask, focused) & PortInputMap::kMouseButtonMask)
            << kMouseMenu;
   if (PortDebug::MouseGameplayActive() && PortDebug::MouseCaptured() && PortDebug::MouseButtons()) {
