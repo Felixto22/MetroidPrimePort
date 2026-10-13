@@ -1,7 +1,9 @@
 package org.metroidprime.port;
 
 import android.Manifest;
+import android.app.ActivityManager;
 import android.app.AlertDialog;
+import android.app.ApplicationExitInfo;
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -55,6 +57,117 @@ public final class MetroidPrimeActivity extends SDLActivity {
     private static native void nativeRemasteredPicked(int which, String uri);
     // Implemented in src/Kyoto/Graphics/DolphinCGraphics.cpp.
     private static native boolean nativeFramePresented();
+    // Implemented in platform/port_memory_log.cpp; level -1 is onLowMemory.
+    private static native void nativeMemoryWarning(int level, long availableKb, long thresholdKb, boolean low);
+
+    // How the previous run ended, for the log (issue #102): a low-memory kill leaves
+    // no crash report, so the system's exit record is the only trace. Read by
+    // port_memory_log.cpp once the log runs.
+    private static volatile String exitReport = "";
+
+    static String exitReport() {
+        return exitReport;
+    }
+
+    private String buildExitReport() {
+        StringBuilder report = new StringBuilder();
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        if (manager == null) {
+            return "";
+        }
+        ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
+        manager.getMemoryInfo(memory);
+        report.append(String.format(Locale.ROOT,
+            "port: device memory: %d MiB, %d MiB available, low-memory threshold %d MiB, app heap class %d MiB",
+            memory.totalMem >> 20, memory.availMem >> 20, memory.threshold >> 20, manager.getMemoryClass()));
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            report.append("\nport: previous run: exit reasons need Android 11");
+            return report.toString();
+        }
+        ApplicationExitInfo last = null;
+        for (ApplicationExitInfo info : manager.getHistoricalProcessExitReasons(getPackageName(), 0, 8)) {
+            if (getPackageName().equals(info.getProcessName())) {
+                last = info;
+                break;
+            }
+        }
+        if (last == null) {
+            report.append("\nport: previous run: no exit record");
+            return report.toString();
+        }
+        report.append(String.format(Locale.ROOT,
+            "\nport: previous run: ended %s, %s (status %d, importance %d), memory pss %d MiB rss %d MiB",
+            new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(new java.util.Date(last.getTimestamp())),
+            exitReasonName(last.getReason()), last.getStatus(), last.getImportance(),
+            last.getPss() >> 10, last.getRss() >> 10));
+        if (last.getDescription() != null) {
+            report.append("\nport: previous run: ").append(last.getDescription());
+        }
+        // An ANR's trace is text (a native crash's is a protobuf tombstone): its head
+        // says where the main thread was stuck.
+        if (last.getReason() == ApplicationExitInfo.REASON_ANR) {
+            try (InputStream trace = last.getTraceInputStream()) {
+                if (trace != null) {
+                    BufferedReader reader = new BufferedReader(new java.io.InputStreamReader(trace));
+                    String line;
+                    for (int i = 0; i < 60 && (line = reader.readLine()) != null; ++i) {
+                        report.append("\n  ").append(line);
+                    }
+                }
+            } catch (IOException e) {
+                Log.w(TAG, "Could not read the ANR trace", e);
+            }
+        }
+        return report.toString();
+    }
+
+    @android.annotation.TargetApi(Build.VERSION_CODES.R)
+    private static String exitReasonName(int reason) {
+        switch (reason) {
+            case ApplicationExitInfo.REASON_EXIT_SELF: return "exited by itself";
+            case ApplicationExitInfo.REASON_SIGNALED: return "killed by a signal";
+            case ApplicationExitInfo.REASON_LOW_MEMORY: return "killed for low memory";
+            case ApplicationExitInfo.REASON_CRASH: return "Java crash";
+            case ApplicationExitInfo.REASON_CRASH_NATIVE: return "native crash";
+            case ApplicationExitInfo.REASON_ANR: return "not responding (ANR)";
+            case ApplicationExitInfo.REASON_INITIALIZATION_FAILURE: return "initialization failure";
+            case ApplicationExitInfo.REASON_PERMISSION_CHANGE: return "permission change";
+            case ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE: return "excessive resource usage";
+            case ApplicationExitInfo.REASON_USER_REQUESTED: return "user requested (force stop)";
+            case ApplicationExitInfo.REASON_USER_STOPPED: return "user stopped";
+            case ApplicationExitInfo.REASON_DEPENDENCY_DIED: return "dependency died";
+            case ApplicationExitInfo.REASON_OTHER: return "other (system)";
+            case 14: return "freezer"; // REASON_FREEZER, API 33
+            case 15: return "package state change"; // API 34
+            case 16: return "package updated"; // API 34
+            default: return "unknown reason " + reason;
+        }
+    }
+
+    private void reportMemoryWarning(int level) {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
+        if (manager != null) {
+            manager.getMemoryInfo(memory);
+        }
+        try {
+            nativeMemoryWarning(level, memory.availMem >> 10, memory.threshold >> 10, memory.lowMemory);
+        } catch (UnsatisfiedLinkError e) {
+            // The library failed to load: no log to write to.
+        }
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        reportMemoryWarning(level);
+    }
+
+    @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        reportMemoryWarning(-1);
+    }
 
     // The surface stays black until the game presents its first frame, about
     // 2 s after the system splash on a phone (GPU setup, mod scan, pipeline
@@ -106,6 +219,11 @@ public final class MetroidPrimeActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        try {
+            exitReport = buildExitReport();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Could not read the previous exit", e);
+        }
         try {
             // Cleared first: copying only adds, so an icon a newer APK no longer
             // ships would keep replacing a texture it no longer claims.

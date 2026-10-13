@@ -191,6 +191,7 @@ set(MP_PORT_SOURCES
     platform/port_console.cpp
     platform/port_log_file.cpp
     platform/port_crash.cpp
+    platform/port_memory_log.cpp
     platform/port_watchdog.cpp
     platform/port_savestate.cpp
     platform/port_savestate_format.cpp

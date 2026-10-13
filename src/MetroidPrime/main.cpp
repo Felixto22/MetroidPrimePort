@@ -17,6 +17,7 @@
 #include "port_photo.h"
 #include "port_savestate.h"
 #include "port_log.h"
+#include "port_memory_log.h"
 #include "port_disc.h"
 #include "port_mods.h"
 #include "port_textures.h"
@@ -1258,6 +1259,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
         nextFrameDeadline = SDL_GetTicksNS();
       }
       PortDebug::RecordFrame(workEndNs - loopStartNs, sTicksAdvanced, presented);
+      PortMemoryLog::Tick(SDL_GetTicksNS());
       {
         // The whole iteration, pacing included: what a player sees as a frame.
         const uint64_t frameEndNs = SDL_GetTicksNS();
