@@ -243,8 +243,9 @@ public:
   // Drops every latch and timer; inputs held now are consumed until released.
   void Reset();
   // One poll. contexts: the active context bits (layers are added from the
-  // profile's Layer actions). nowMs: a monotonic clock.
-  const Output& Poll(const RawState& raw, uint16_t contexts, double nowMs);
+  // profile's Layer actions). nowMs: a monotonic clock. quiet: context bits whose
+  // switching on or off leaves held inputs alone instead of consuming them.
+  const Output& Poll(const RawState& raw, uint16_t contexts, double nowMs, uint16_t quiet = 0);
   const Output& Last() const { return mOut; }
   // The context bits the last poll used (with layers).
   uint16_t ActiveContexts() const { return mContexts; }

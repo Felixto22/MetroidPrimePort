@@ -512,6 +512,12 @@ static bool ScanTextOpen(uint16_t contexts) {
   return (contexts & PortInput::kCtxMenu) != 0 && (contexts & PortInput::kCtxScan) != 0;
 }
 
+// The scan text's Menu context comes and goes under the held lock: switching it
+// must not consume the lock's input, which the Menu rows also use (issue #103).
+static uint16_t QuietContexts(uint16_t before, uint16_t after) {
+  return ScanTextOpen(before) || ScanTextOpen(after) ? PortInput::kCtxMenu : 0;
+}
+
 // One of menu (front end, pause screen, save station, upgrade message), map, morph
 // ball or gameplay; the scan visor adds scan to gameplay, and the scan text adds
 // menu to that, so its A follows the Menu rows while gameplay keeps the lock
@@ -1108,7 +1114,8 @@ SPoll Poll(unsigned mouseHeld, bool focused) {
   FillRawState(raw, mouseHeld, focused);
   sClockMs += static_cast< double >(PortDebug::TickPeriod()) * 1000.0;
   const uint16_t contexts = GameContexts();
-  const PortInput::Output& out = sRuntime.Poll(raw, contexts, sClockMs);
+  const PortInput::Output& out =
+      sRuntime.Poll(raw, contexts, sClockMs, QuietContexts(sRuntime.ActiveContexts(), contexts));
   SPoll r;
   if (PortInputRemap::Capturing()) {
     // The F1 Remap page is recording an input: it reaches neither the game nor
@@ -1156,7 +1163,9 @@ void PollPortActions() {
       raw.keys.set(w * 64 + static_cast< size_t >(bit));
     }
   }
-  const PortInput::Output& out = sRuntime.Poll(raw, GameContexts(), static_cast< double >(SDL_GetTicksNS()) / 1e6);
+  const uint16_t contexts = GameContexts();
+  const PortInput::Output& out = sRuntime.Poll(raw, contexts, static_cast< double >(SDL_GetTicksNS()) / 1e6,
+                                               QuietContexts(sRuntime.ActiveContexts(), contexts));
   // The F1 Remap page is recording an input: a bound PortMenu would close it.
   if (PortInputRemap::Capturing()) return;
   if (out.Pressed(Action::PortMenu)) PortDebug::RequestToggle();
