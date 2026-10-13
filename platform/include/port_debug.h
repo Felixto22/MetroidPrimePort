@@ -302,6 +302,13 @@ const int kAmbientOcclusionMin = 0;
 const int kAmbientOcclusionMax = 100;
 int AmbientOcclusion();
 void SetAmbientOcclusion(int percent);
+// How dark the sun's real-time shadow makes the retail world and actors, as a percentage (0: off).
+// Remastered imports shade their PBR surfaces by the sun themselves. Off in the original experience.
+const int kSunShadowsDefault = 50;
+const int kSunShadowsMin = 0;
+const int kSunShadowsMax = 100;
+int SunShadows();
+void SetSunShadows(int percent);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

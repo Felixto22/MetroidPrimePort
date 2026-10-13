@@ -52,6 +52,8 @@ struct State {
 };
 
 State g_state;
+// How dark the sun's shadow makes retail (TEV) surfaces (set_retail_strength), as fade[2].
+std::atomic<float> g_retailStrength{0.f};
 std::vector<gx::DrawData> g_casters;
 std::array<std::vector<gx::DrawData>, 8> g_recorded;
 uint32_t g_nextSlot = 0;
@@ -243,7 +245,8 @@ bool set_frame(const float worldToView[3][4], const cascade::Frustum& frustum, c
     out.fade[0] = -2.f;
     out.fade[1] = -1.f;
   }
-  out.fade[2] = out.fade[3] = 0.f;
+  out.fade[2] = g_retailStrength.load(std::memory_order_relaxed);
+  out.fade[3] = 0.f;
   return true;
 }
 
@@ -339,5 +342,8 @@ void shutdown() {
   if (task != InvalidEncoderTask) {
     unregister_encoder_task_type(task);
   }
+}
+void set_retail_strength(float strength) {
+  g_retailStrength.store(std::clamp(strength, 0.f, 1.f), std::memory_order_relaxed);
 }
 } // namespace aurora::gfx::shadow

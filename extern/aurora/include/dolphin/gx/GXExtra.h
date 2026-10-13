@@ -328,6 +328,8 @@ GXBool GXPortFrameRadiance(f32 out[3], u32* serial);
 // what is outside the view; GXPortShadowBoxCasts says whether a world box reaches into the map of
 // the last GXPortSetShadowFrame (the FIFO's, so a frame behind the game thread).
 void GXPortSetShadowCaster(GXBool on);
+// How much the sun's shadow darkens retail (non-PBR) surfaces, 0..1 (0: they don't receive it).
+void GXPortSetShadowStrength(f32 strength);
 void GXPortSetShadowCasterOnly(GXBool on);
 void GXPortSetShadowFrame(const f32 worldToView[3][4], const f32 frustum[6], const f32 sunDir[3], f32 distance,
                           const f32 color[3]);

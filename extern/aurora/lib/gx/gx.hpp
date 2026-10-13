@@ -628,7 +628,8 @@ struct ShaderConfig {
 static_assert(std::has_unique_object_representations_v<ShaderConfig>);
 // Whether a draw samples the sun's shadow map: a lit PBR surface drawn in colour without per-pixel fog.
 inline bool shadow_receives(const ShaderConfig& sc) noexcept {
-  return sc.shadow && sc.pbr != 0 && sc.volFog == VolFogNone && sc.depthOnly == 0 && sc.lineMode == 0 && !sc.drawId;
+  // Retail (TEV) surfaces receive too (shader.cpp, shadow_fade.z).
+  return sc.shadow && sc.volFog == VolFogNone && sc.depthOnly == 0 && sc.lineMode == 0 && !sc.drawId;
 }
 
 struct PipelineConfig;

@@ -3921,6 +3921,46 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   if (info.usesPTTexMtx.any()) {
     uniBufAttrs += fmt::format("\n    postmtx: array<mat3x4f, {}>,", MaxPTTexMtx);
   }
+  if (config.pbr == 0 && info.shadowReceive) {
+    // Port extension: the sun's shadow on retail (TEV) surfaces. They have their light baked in
+    // (lightmaps, vertex colours), so there is no sun term to take out: the cascaded map, read as
+    // the PBR receivers read it, darkens the result by shadow_fade.z (0: off) before the fog.
+    vtxOutAttrs += fmt::format("\n    @location({}) shd_pos: vec3f,", vtxOutIdx++);
+    vtxXfrAttrs += "\n    out.shd_pos = mv_pos;";
+    fragmentFn += R"""(
+    if (ubuf.shadow_fade.z > 0.0) {
+        var bayer = array<f32, 16>(16.0, 144.0, 48.0, 176.0, 208.0, 80.0, 240.0, 112.0,
+                                   64.0, 192.0, 32.0, 160.0, 255.0, 128.0, 224.0, 96.0);
+        let fc = vec2u(in.pos.xy) & vec2u(3u);
+        let depth = -in.shd_pos.z;
+        let dz = depth + 2.5 * (bayer[fc.y * 4u + fc.x] / 255.0);
+        let c = min(dot(select(vec4u(0u), vec4u(1u), vec4f(dz) > ubuf.shadow_splits), vec4u(1u)), 3u);
+        let sp = vec4f(in.shd_pos, 1.0) * ubuf.shadow_recv[c];
+        let suv = vec2f(sp.x * 0.5 + 0.5, 0.5 - sp.y * 0.5);
+        let sref = saturate(sp.z - 0.00025);
+        let st = ubuf.shadow_color.w;
+        var sum = 0.0;
+        for (var sy = -1; sy <= 1; sy++) {
+            for (var sx = -1; sx <= 1; sx++) {
+                let w = f32((2 - abs(sx)) * (2 - abs(sy))) / 16.0;
+                sum += w * textureSampleCompareLevel(shadow_map, shadow_samp, suv + vec2f(f32(sx), f32(sy)) * st,
+                                                    c, sref);
+            }
+        }
+        let f = saturate((depth - ubuf.shadow_fade.x) / (ubuf.shadow_fade.y - ubuf.shadow_fade.x));
+        let sun_vis = max(sum, f * f * (3.0 - 2.0 * f));
+        // Surfaces facing away from the sun are already dark in the bake: shadow those less.
+        var shd_n = normalize(cross(dpdx(in.shd_pos), -dpdy(in.shd_pos)));
+        shd_n = select(shd_n, -shd_n, dot(shd_n, -in.shd_pos) < 0.0);
+        let facing = smoothstep(0.0, 0.3, dot(shd_n, ubuf.shadow_dir.xyz));
+        prev = vec4f(prev.rgb * (1.0 - ubuf.shadow_fade.z * facing * (1.0 - sun_vis)), prev.a);
+    })""";
+    texBindings += fmt::format("\n@group(2) @binding({})\n"
+                               "var shadow_map: texture_depth_2d_array;\n"
+                               "@group(2) @binding({})\n"
+                               "var shadow_samp: sampler_comparison;",
+                               kShadowMapBinding, kShadowSamplerBinding);
+  }
   if (info.usesFog) {
     uniformPre +=
         "\n"

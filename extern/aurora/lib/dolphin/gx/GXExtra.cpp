@@ -237,6 +237,8 @@ void GXPortSetShadowCaster(GXBool on) {
   GX_WRITE_U8(on ? 1 : 0);
 }
 
+void GXPortSetShadowStrength(f32 strength) { aurora::gfx::shadow::set_retail_strength(strength); }
+
 void GXPortSetShadowCasterOnly(GXBool on) {
   GX_WRITE_AURORA(GX_AURORA_PORT_SHADOW_CASTER);
   GX_WRITE_U8(on ? 2 : 1);

@@ -254,6 +254,7 @@ PortRandoGen::Settings sRandoSettings;
 float sFirstPersonFov = PortDebug::kFovRetail;
 int sCameraBob = PortDebug::kCameraBobRetail;
 int sAmbientOcclusion = PortDebug::kAmbientOcclusionDefault;
+int sSunShadows = PortDebug::kSunShadowsDefault;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
@@ -672,6 +673,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     if (std::isfinite(f) && f >= PortDebug::kFovMin && f <= PortDebug::kFovMax) {
       sFirstPersonFov = f;
     }
+  } else if (key == "sun_shadows") {
+    sSunShadows = std::clamp(std::atoi(value.c_str()), PortDebug::kSunShadowsMin, PortDebug::kSunShadowsMax);
   } else if (key == "ambient_occlusion") {
     sAmbientOcclusion = std::clamp(std::atoi(value.c_str()), PortDebug::kAmbientOcclusionMin,
                                    PortDebug::kAmbientOcclusionMax);
@@ -845,6 +848,7 @@ std::string SettingsText() {
   file << "fov=" << sFirstPersonFov << '\n';
   file << "camera_bob=" << sCameraBob << '\n';
   file << "ambient_occlusion=" << sAmbientOcclusion << '\n';
+  file << "sun_shadows=" << sSunShadows << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
@@ -1794,6 +1798,17 @@ void SetFirstPersonFov(float degrees) {
     sFirstPersonFov = std::clamp(degrees, kFovMin, kFovMax);
     MarkDirty();
   }
+}
+
+int SunShadows() {
+  EnsureInitialized();
+  return sOriginalExperience ? 0 : sSunShadows;
+}
+
+void SetSunShadows(int percent) {
+  EnsureInitialized();
+  sSunShadows = std::clamp(percent, kSunShadowsMin, kSunShadowsMax);
+  MarkDirty();
 }
 
 int AmbientOcclusion() {
@@ -6494,6 +6509,12 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Screen-space ambient occlusion: soft shade in corners, creases and where\n"
                         "things meet the ground. 0 turns it off.");
+  int sunShadows = sSunShadows;
+  if (ImGui::SliderInt("Sun shadows", &sunShadows, kSunShadowsMin, kSunShadowsMax, sunShadows == 0 ? "Off" : "%d%%")) {
+    SetSunShadows(sunShadows);
+  }
+  ImGui::SetItemTooltip("Real-time shadows from the room's sun on the original world, Samus and\n"
+                        "enemies: how dark they are. 0 turns them off.");
   {
     // Issue #72: PrimeHack-style arm cannon placement.
     float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};

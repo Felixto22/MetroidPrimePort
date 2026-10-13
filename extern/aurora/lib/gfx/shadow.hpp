@@ -54,5 +54,7 @@ bool record();
 // The maps (a 2D array, a layer a cascade) and their comparison sampler, for the receivers' bind group.
 const wgpu::TextureView& map_view();
 const wgpu::Sampler& sampler();
+// How much the sun's shadow darkens retail (TEV) receivers, 0..1 (0: not at all); any thread.
+void set_retail_strength(float strength);
 void shutdown();
 } // namespace aurora::gfx::shadow
