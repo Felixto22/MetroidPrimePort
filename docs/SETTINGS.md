@@ -536,7 +536,9 @@ other `X:\Users\<name>`: `X:\Users\<user>`); the
   uses immediate yaw/pitch with an approximately ±87° pitch range. Up moves aim
   up by default; `MP_MOUSE_INVERT_X=1` and `MP_MOUSE_INVERT_Y=1` invert either axis.
   SDL and the compositor own pointer locking; capture is released outside
-  playable first person (menus, cinematics, morph ball, and scripted input locks).
+  playable first person (menus, cinematics, and scripted input locks). Morph ball
+  has no mouse aim but keeps the pointer locked, so a bomb click can't land
+  outside the window (the pause and map screens release it).
   Mouse aim replaces the R-button free look, so switching it on in F1 also
   switches on twin stick (still its own setting): the mouse and a pad's right
   stick then add into the same aim.

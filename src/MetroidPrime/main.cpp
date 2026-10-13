@@ -1,5 +1,7 @@
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CMain.hpp"
+#include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/Player/CPlayer.hpp"
 
 // Port: Aurora owns the application/window/GPU loop; the game entry is renamed
 // and driven by platform/main.cpp.
@@ -159,6 +161,18 @@ bool COsContext::mProgressiveMode;
 u32 sARAMMemArray[2];
 float sInfiniteLoopTime;
 static uint sTicksAdvanced = 0;
+
+// Port: the player is in (or going into or out of) morph ball during play, with
+// no pause or map screen up.
+static bool MorphBallHoldsMouse() {
+  const CStateManager* mgr = PortDebug::StateManager();
+  if (mgr == nullptr || PortDebug::PauseScreenOpen() || PortDebug::MapScreenOpen() ||
+      mgr->GetGameState() != CStateManager::kGS_Running) {
+    return false;
+  }
+  const CPlayer* player = mgr->GetPlayer();
+  return player != nullptr && player->GetMorphballTransitionState() != CPlayer::kMS_Unmorphed;
+}
 
 // Port: apply the selected aspect ratio to the game's framebuffer and viewport.
 // Aurora derives the internal EFB from the render mode, so this also resizes the
@@ -1045,7 +1059,11 @@ int CMain::RsMain(int argc, const char* const* argv) {
           // mouse events, and a captured pointer has no position for its touch bar.
           const bool wantLock = !PortDebug::Visible() && !PortPhoto::Active() && !resumePrompt && focused;
 #else
-          const bool wantLock = wantRelative;
+          // Morph ball has no mouse aim, but its bombs are on the mouse buttons:
+          // keep the pointer locked so a click can't land outside the window.
+          const bool wantLock = wantRelative ||
+                                (PortDebug::MouseAim() && MorphBallHoldsMouse() && !PortDebug::Visible() &&
+                                 !PortPhoto::PanelWantsCursor() && !resumePrompt && focused);
 #endif
           if (SDL_GetWindowRelativeMouseMode(sCaptureWindow) != wantLock) {
             SDL_SetWindowRelativeMouseMode(sCaptureWindow, wantLock);
