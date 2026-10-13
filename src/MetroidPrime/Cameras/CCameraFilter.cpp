@@ -304,8 +304,8 @@ namespace {
 // `DrawRandomStatic` samples a random main-memory address on GameCube to produce
 // noise. The port's renderer dereferences the texture source, so hand it a real
 // scratch buffer of noise instead of a fake address. Like the original
-// (`((rand() + 0x1f) & ~0x1f) + 0x8000`), each call starts at a new 32-byte
-// aligned offset so the static animates.
+// (`((rand() + 0x1f) & ~0x1f) + 0x8000`), each call starts at a different
+// 32-byte aligned offset so the static animates.
 void* RandomStaticTextureData() {
   constexpr int kMaxWidth = 642;
   constexpr int kMaxHeight = 482;
@@ -325,7 +325,11 @@ void* RandomStaticTextureData() {
       memcpy(sBuffer + i, &state, sizeof(state));
     }
   }
-  return sBuffer + (((rand() & 0x7fff) + 0x1f) & ~0x1f);
+  // A fresh offset every frame would make aurora cache a new texture per frame
+  // for 600 frames (over 300 MiB within a minute near a drone, issue #107), so
+  // the static cycles through a few fixed offsets instead.
+  constexpr int kSlots = 8;
+  return sBuffer + (rand() % kSlots) * ((kMaxOffset / kSlots) & ~0x1fu);
 }
 } // namespace
 
