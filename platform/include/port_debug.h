@@ -295,6 +295,13 @@ const int kCameraBobMin = 0;
 const int kCameraBobMax = 100;
 int CameraBob();
 void SetCameraBob(int percent);
+// Screen-space ambient occlusion over the world, as a percentage of its full strength (0: off).
+// Off in the original experience.
+const int kAmbientOcclusionDefault = 60;
+const int kAmbientOcclusionMin = 0;
+const int kAmbientOcclusionMax = 100;
+int AmbientOcclusion();
+void SetAmbientOcclusion(int percent);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

@@ -6,6 +6,7 @@
 #include "../../gfx/probe.hpp"
 #include "../../gfx/shadow.hpp"
 #include "../../gfx/volfog.hpp"
+#include "../../gfx/ssao.hpp"
 #include "../../gfx/thermal.hpp"
 #include "../../gfx/xray.hpp"
 #include "../../webgpu/gpu_prof.hpp"
@@ -163,6 +164,23 @@ GXBool GXPortVolumetricFog(const GXPortFogParams* fog) {
   u32 words[sizeof(params) / sizeof(u32)];
   std::memcpy(words, &params, sizeof(words));
   GX_WRITE_AURORA(GX_AURORA_PORT_VOLUMETRIC_FOG);
+  for (const u32 word : words) {
+    GX_WRITE_U32(word);
+  }
+  return true;
+}
+
+GXBool GXPortSSAO(const GXPortSsaoParams* ssao) {
+  if (ssao == nullptr || sDrawIdMode || ssao->ao[0] <= 0.f || ssao->ao[1] <= 0.f) {
+    return true;
+  }
+  if (!aurora::gfx::ssao::ensure_task()) {
+    return false;
+  }
+  static_assert(sizeof(GXPortSsaoParams) == sizeof(aurora::gfx::ssao::Params));
+  u32 words[sizeof(GXPortSsaoParams) / sizeof(u32)];
+  std::memcpy(words, ssao, sizeof(words));
+  GX_WRITE_AURORA(GX_AURORA_PORT_SSAO);
   for (const u32 word : words) {
     GX_WRITE_U32(word);
   }

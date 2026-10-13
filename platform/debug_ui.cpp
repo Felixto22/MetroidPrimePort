@@ -253,6 +253,7 @@ std::mutex sRandoMutex;
 PortRandoGen::Settings sRandoSettings;
 float sFirstPersonFov = PortDebug::kFovRetail;
 int sCameraBob = PortDebug::kCameraBobRetail;
+int sAmbientOcclusion = PortDebug::kAmbientOcclusionDefault;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
@@ -671,6 +672,9 @@ void ApplySetting(const std::string& key, const std::string& value) {
     if (std::isfinite(f) && f >= PortDebug::kFovMin && f <= PortDebug::kFovMax) {
       sFirstPersonFov = f;
     }
+  } else if (key == "ambient_occlusion") {
+    sAmbientOcclusion = std::clamp(std::atoi(value.c_str()), PortDebug::kAmbientOcclusionMin,
+                                   PortDebug::kAmbientOcclusionMax);
   } else if (key == "camera_bob") {
     const int v = std::atoi(value.c_str());
     sCameraBob = std::clamp(v, PortDebug::kCameraBobMin, PortDebug::kCameraBobMax);
@@ -840,6 +844,7 @@ std::string SettingsText() {
   file << "savestate_room_state=" << (sSaveStateRoomState ? 1 : 0) << '\n';
   file << "fov=" << sFirstPersonFov << '\n';
   file << "camera_bob=" << sCameraBob << '\n';
+  file << "ambient_occlusion=" << sAmbientOcclusion << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
@@ -1789,6 +1794,17 @@ void SetFirstPersonFov(float degrees) {
     sFirstPersonFov = std::clamp(degrees, kFovMin, kFovMax);
     MarkDirty();
   }
+}
+
+int AmbientOcclusion() {
+  EnsureInitialized();
+  return sOriginalExperience ? 0 : sAmbientOcclusion;
+}
+
+void SetAmbientOcclusion(int percent) {
+  EnsureInitialized();
+  sAmbientOcclusion = std::clamp(percent, kAmbientOcclusionMin, kAmbientOcclusionMax);
+  MarkDirty();
 }
 
 int CameraBob() {
@@ -6471,6 +6487,13 @@ void DrawVideoDisplay() {
   if (ImGui::Button("Retail##camera_bob")) {
     SetCameraBob(kCameraBobRetail);
   }
+  int ambientOcclusion = sAmbientOcclusion;
+  if (ImGui::SliderInt("Ambient occlusion", &ambientOcclusion, kAmbientOcclusionMin, kAmbientOcclusionMax,
+                       ambientOcclusion == 0 ? "Off" : "%d%%")) {
+    SetAmbientOcclusion(ambientOcclusion);
+  }
+  ImGui::SetItemTooltip("Screen-space ambient occlusion: soft shade in corners, creases and where\n"
+                        "things meet the ground. 0 turns it off.");
   {
     // Issue #72: PrimeHack-style arm cannon placement.
     float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};

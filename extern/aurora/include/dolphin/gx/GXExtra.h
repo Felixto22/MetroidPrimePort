@@ -280,6 +280,16 @@ typedef struct {
   u32 volume;              // the ambient volume (GXPBRVolume id), 0 for none
 } GXPortFogParams;
 GXBool GXPortVolumetricFog(const GXPortFogParams* params);
+// Port extension: screen-space ambient occlusion over the opaque world as drawn so far, multiplied
+// into the frame's linear colour (see aurora::gfx::ssao). The viewmodel, drawn nearer than
+// depth[2], and the sky are left alone. View space is GX's.
+typedef struct {
+  f32 frustum[4]; // left, right, bottom, top at a view depth of 1
+  f32 depth[4];   // near, far, and the GX z range the world draws in (min, max)
+  f32 ao[4];      // radius (world units), strength (0..1), bias (world units), fade distance
+  u32 misc[4];    // sample count (4..32), frame counter, 0, 0
+} GXPortSsaoParams;
+GXBool GXPortSSAO(const GXPortSsaoParams* params);
 // The draws after GXPortVolumetricFog fog themselves as Remastered's transparents do, until this:
 // opaque ones per pixel as the full-screen pass, blended and additive ones per vertex (blended:
 // colour T + in-scatter, additive: colour T). Harmless when no fog was drawn.

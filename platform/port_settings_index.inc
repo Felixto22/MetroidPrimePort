@@ -109,6 +109,7 @@
 {"Video", "Display", "HUD and view", "Hide helmet", "helmet visor frame hide first person"},
 {"Video", "Display", "HUD and view", "Hide visor effects", "visor effects static scanlines hide"},
 {"Video", "Display", "HUD and view", "Field of view", "fov field of view zoom camera"},
+{"Video", "Display", "HUD and view", "Ambient occlusion", "ambient occlusion ssao ao shadows corners contact shading"},
 {"Video", "Display", "HUD and view", "Camera bob", "camera bob sway head bobbing motion sickness dizzy nausea comfort"},
 {"Video", "Display", "HUD and view", "Arm cannon right", "arm cannon gun offset right position"},
 {"Video", "Display", "HUD and view", "Arm cannon forward", "arm cannon gun offset forward depth position"},

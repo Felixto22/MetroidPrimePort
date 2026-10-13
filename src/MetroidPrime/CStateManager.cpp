@@ -2933,6 +2933,40 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
   return distance > 0.f;
 }
 
+// Screen-space ambient occlusion over the opaque world (port_debug.h AmbientOcclusion), before
+// the volumetric fog so the fog lies over it. Not in the thermal or X-ray visors.
+static void PortDrawAmbientOcclusion(const CStateManager& mgr) {
+  const int strength = PortDebug::AmbientOcclusion();
+  const CPlayerState::EPlayerVisor visor = mgr.GetPlayerState()->GetActiveVisor(mgr);
+  if (strength <= 0 || visor == CPlayerState::kPV_Thermal || visor == CPlayerState::kPV_XRay) {
+    return;
+  }
+  static const float sRadius = port::EnvFloat("MP_SSAO_RADIUS", 1.2f);
+  static const float sBias = port::EnvFloat("MP_SSAO_BIAS", 0.04f);
+  static const float sFade = port::EnvFloat("MP_SSAO_DISTANCE", 60.f);
+  static const float sSamples = port::EnvFloat("MP_SSAO_SAMPLES", 16.f);
+  const CGraphics::CProjectionState& proj = CGraphics::GetProjectionState();
+  const float zNear = proj.GetNear();
+  GXPortSsaoParams p;
+  memset(&p, 0, sizeof(p));
+  p.frustum[0] = proj.GetLeft() / zNear;
+  p.frustum[1] = proj.GetRight() / zNear;
+  p.frustum[2] = proj.GetBottom() / zNear;
+  p.frustum[3] = proj.GetTop() / zNear;
+  p.depth[0] = zNear;
+  p.depth[1] = proj.GetFar();
+  // SetupViewForDraw's depth range, as the volumetric fog reads it.
+  p.depth[2] = 0.125f;
+  p.depth[3] = 1.f;
+  p.ao[0] = sRadius;
+  p.ao[1] = static_cast< float >(strength) / 100.f;
+  p.ao[2] = sBias;
+  p.ao[3] = sFade;
+  p.misc[0] = static_cast< u32 >(sSamples);
+  p.misc[1] = static_cast< u32 >(CGraphics::GetFrameCounter());
+  GXPortSSAO(&p);
+}
+
 static void PortDrawVolumetricFog(const CStateManager& mgr, const CTransform4f& view,
                                   const CFrustumPlanes& frustum) {
   const CPlayerState::EPlayerVisor visor = mgr.GetPlayerState()->GetActiveVisor(mgr);
@@ -3368,6 +3402,7 @@ void CStateManager::DrawWorld() const {
 #ifdef TARGET_PC
   // Remastered fogs the opaque world and sky full-screen, then the actors and transparents as
   // they draw (up to GXPortVolumetricFogEnd).
+  PortDrawAmbientOcclusion(*this);
   PortDrawVolumetricFog(*this, backupViewMatrix, frustum);
   // Remastered's X-ray distortion of the opaque world (pass A of its visor post).
   if (GetPlayerState()->GetActiveVisor(*this) == CPlayerState::kPV_XRay) {
