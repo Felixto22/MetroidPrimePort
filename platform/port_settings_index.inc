@@ -43,6 +43,8 @@
 {"Controls", "Controller settings", "Stick aim", "Twin stick (right stick aims)", "twin stick right stick camera aim"},
 {"Controls", "Controller settings", "Stick aim", "Remastered movement (twin stick and mouse aim)", "remastered movement diagonal twin stick"},
 {"Controls", "Controller settings", "Stick aim", "Stick aim speed", "right stick camera turn speed sensitivity"},
+{"Controls", "Controller settings", "Stick aim", "Separate vertical speed", "horizontal vertical split stick aim speed sensitivity"},
+{"Controls", "Controller settings", "Stick aim", "Vertical stick aim speed", "right stick vertical up down speed sensitivity"},
 {"Controls", "Controller settings", "Stick aim", "Invert stick aim Y (the game's Reverse Y Axis)", "reverse y axis invert stick flip"},
 {"Controls", "Controller settings", "Sticks and triggers", "Stick deadzone", "deadzone dead zone left stick drift"},
 {"Controls", "Controller settings", "Sticks and triggers", "C-stick deadzone", "deadzone dead zone c-stick substick drift"},

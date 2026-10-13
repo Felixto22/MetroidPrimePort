@@ -69,7 +69,9 @@
   right stick feeds the first-person aim through the same path as the mouse (so
   the same sensitivity/invert apply, tuned by `stick_aim_rate`, default 900 px/s, 50-10000; the F1
   slider and the pause menu's Stick Aim Speed row, both shown only with twin stick
-  on, go up to 8100)
+  on, go up to 8100; with `stick_aim_split=1`, the F1 "Separate vertical speed"
+  checkbox, `stick_aim_rate` sets only horizontal speed and `stick_aim_rate_y`,
+  same range, default 900, the vertical)
   and is consumed, so it no longer drives the game's free-look. Under mouse aim
   a C-stick held from the keyboard is not consumed, so keyboard beam keys still
   pick beams, and an L from a key or mouse button stays lock-on. Fire

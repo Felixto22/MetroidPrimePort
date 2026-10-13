@@ -2290,7 +2290,7 @@ void AddStickAim(float x, float y, float dt) {
   }
   // x right / y up; the aim state expects SDL-style right/down positive.
   sStickAimVelX = x * sInput.stickAimRate;
-  sStickAimVelY = -y * sInput.stickAimRate;
+  sStickAimVelY = -y * (sInput.stickAimSplit ? sInput.stickAimRateY : sInput.stickAimRate);
   sMouseFrameX += sStickAimVelX * dt;
   sMouseFrameY += sStickAimVelY * dt;
 }
@@ -6936,8 +6936,28 @@ void DrawControlsController() {
                            ImGuiSliderFlags_Logarithmic)) {
       SetStickAimRate(stickRate);
     }
-    ItemHelp("How fast the right stick turns the camera at full tilt. 900 px/s (the default) is "
-             "about 180 degrees a second at the default mouse sensitivity.");
+    ItemHelp(sInput.stickAimSplit
+                 ? "How fast the right stick turns the camera left and right at full tilt. 900 px/s "
+                   "(the default) is about 180 degrees a second at the default mouse sensitivity."
+                 : "How fast the right stick turns the camera at full tilt. 900 px/s (the default) is "
+                   "about 180 degrees a second at the default mouse sensitivity.");
+    bool split = sInput.stickAimSplit;
+    if (ImGui::Checkbox("Separate vertical speed", &split)) {
+      sInput.stickAimSplit = split;
+      MarkDirty();
+    }
+    ItemHelp("Gives looking up and down its own speed; Stick aim speed then sets only left and "
+             "right.");
+    if (sInput.stickAimSplit) {
+      float stickRateY = sInput.stickAimRateY;
+      if (ImGui::SliderFloat("Vertical stick aim speed", &stickRateY, 100.f, 8100.f, "%.0f px/s",
+                             ImGuiSliderFlags_Logarithmic) &&
+          std::isfinite(stickRateY) && stickRateY >= 50.f && stickRateY <= 10000.f) {
+        sInput.stickAimRateY = stickRateY;
+        MarkDirty();
+      }
+      ItemHelp("How fast the right stick turns the camera up and down at full tilt.");
+    }
     // The game's own option, saved with its settings; free look uses it too.
     ImGui::BeginDisabled(gpGameState == nullptr);
     bool invertY = gpGameState != nullptr && gpGameState->GameOptions().GetInvertYAxis();
