@@ -202,7 +202,8 @@
   a kind or model is its own profile on top. "Reset..." restores a preset (after a confirmation).
   "Separate menu buttons" (on by default; `menu_standard_buttons=`,
   `MP_MENU_STANDARD_BUTTONS`) makes a controller read the "Menus and map" rows instead of
-  the game buttons in the pause screen, front end and map. Their defaults are the pad's own
+  the game buttons in the pause screen, front end, map, save stations and upgrade messages
+  (the scan text takes only its A from them, so the held scan lock stays). Their defaults are the pad's own
   A/B/X/Y, shoulders, triggers and D-pad (A confirms, B backs out, the triggers page and
   zoom), and they can be rebound like any row; the prompts there follow them. Start and the
   map button keep their gameplay inputs (a Menu row on either input is ignored); bindings

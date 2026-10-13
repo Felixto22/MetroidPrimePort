@@ -562,9 +562,12 @@ bool TouchVisorTapScan();
 void SetTouchVisorTapScan(bool on);
 void SetWheelState(uint32_t mask);
 uint32_t WheelState();
-// CInGameGuiManager publishes each frame whether the pause menu is up (stale = closed).
-void SetPauseScreenOpen(bool open);
+// CInGameGuiManager publishes each frame whether the pause menu is up (stale = closed),
+// and whether a paused dialog (save station, upgrade message) is.
+void SetPauseScreenOpen(bool open, bool dialog);
 bool PauseScreenOpen();
+// The pause menu or a paused dialog: input reads the Menu rows there (issue #93).
+bool PausedMenuOpen();
 void RequestVisor(int visor);
 void RequestBeam(int beam);
 // The HUD's beam/visor menu icons for the touch wheels (Android), decoded to RGBA8 when the HUD

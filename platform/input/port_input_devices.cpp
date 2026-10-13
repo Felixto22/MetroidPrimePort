@@ -500,11 +500,18 @@ s8 StickY(float down, float up) {
   return static_cast< s8 >(std::clamp(static_cast< int >(y), -127, 127));
 }
 
-// One of menu (front end, pause screen), map, morph ball or gameplay; the scan
-// visor adds scan to gameplay.
+// The scan text is up (the scan freeze): it reads A while the lock stays held.
+static bool ScanTextOpen(uint16_t contexts) {
+  return (contexts & PortInput::kCtxMenu) != 0 && (contexts & PortInput::kCtxScan) != 0;
+}
+
+// One of menu (front end, pause screen, save station, upgrade message), map, morph
+// ball or gameplay; the scan visor adds scan to gameplay, and the scan text adds
+// menu to that, so its A follows the Menu rows while gameplay keeps the lock
+// (issue #93).
 uint16_t GameContexts() {
   CStateManager* mgr = PortDebug::StateManager();
-  if (mgr == nullptr || PortDebug::PauseScreenOpen()) return PortInput::kCtxMenu;
+  if (mgr == nullptr || PortDebug::PausedMenuOpen()) return PortInput::kCtxMenu;
   if (PortDebug::MapScreenOpen()) return PortInput::kCtxMap;
   if (const CPlayer* player = mgr->GetPlayer()) {
     const CPlayer::EPlayerMorphBallState morph = player->GetMorphballTransitionState();
@@ -512,7 +519,10 @@ uint16_t GameContexts() {
   }
   uint16_t contexts = PortInput::kCtxGameplay;
   const CPlayerState* state = mgr->GetPlayerState();
-  if (state != nullptr && state->GetCurrentVisor() == CPlayerState::kPV_Scan) contexts |= PortInput::kCtxScan;
+  if (state != nullptr && state->GetCurrentVisor() == CPlayerState::kPV_Scan) {
+    contexts |= PortInput::kCtxScan;
+    if (mgr->GetGameState() == CStateManager::kGS_SoftPaused) contexts |= PortInput::kCtxMenu;
+  }
   return contexts;
 }
 
@@ -1090,7 +1100,8 @@ SPoll Poll(unsigned mouseHeld, bool focused) {
   PortInput::RawState raw;
   FillRawState(raw, mouseHeld, focused);
   sClockMs += static_cast< double >(PortDebug::TickPeriod()) * 1000.0;
-  const PortInput::Output& out = sRuntime.Poll(raw, GameContexts(), sClockMs);
+  const uint16_t contexts = GameContexts();
+  const PortInput::Output& out = sRuntime.Poll(raw, contexts, sClockMs);
   SPoll r;
   if (PortInputRemap::Capturing()) {
     // The F1 Remap page is recording an input: it reaches neither the game nor
@@ -1101,6 +1112,12 @@ SPoll Poll(unsigned mouseHeld, bool focused) {
   RouteDirectActions(out);
 
   r.status = Synthesize(out);
+  // The scan text reads only A: the Menu row's, not gameplay's (issue #93). The
+  // other buttons keep gameplay's, so the held lock stays.
+  if (ScanTextOpen(contexts) && MenuButtonsActive()) {
+    r.status.button &= static_cast< u16 >(~PAD_BUTTON_A);
+    if (out.Held(Action::MenuA)) r.status.button |= PAD_BUTTON_A;
+  }
   return r;
 }
 

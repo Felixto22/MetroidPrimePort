@@ -293,6 +293,7 @@ WheelIcon sWheelIcons[2][4];
 std::atomic<uint64_t> sWheelStampNs{0};
 // Whether the pause menu (inventory, logbook) is up; the touch overlay shows R there.
 std::atomic<bool> sPauseScreenOpen{false};
+std::atomic<bool> sPausedDialogOpen{false};
 std::atomic<uint64_t> sPauseScreenStampNs{0};
 std::atomic<int> sVisorRequest{-1};
 std::atomic<uint64_t> sVisorRequestUntilNs{0};
@@ -2685,14 +2686,20 @@ uint32_t WheelState() {
 }
 
 // Game thread, once per frame from CInGameGuiManager::Update.
-void SetPauseScreenOpen(bool open) {
+void SetPauseScreenOpen(bool open, bool dialog) {
   sPauseScreenOpen.store(open);
+  sPausedDialogOpen.store(dialog);
   sPauseScreenStampNs.store(SDL_GetTicksNS());
 }
 
 // Not refreshed for a while (left the game) counts as closed.
 bool PauseScreenOpen() {
   return sPauseScreenOpen.load() && SDL_GetTicksNS() - sPauseScreenStampNs.load() < 300'000'000;
+}
+
+bool PausedMenuOpen() {
+  return (sPauseScreenOpen.load() || sPausedDialogOpen.load()) &&
+         SDL_GetTicksNS() - sPauseScreenStampNs.load() < 300'000'000;
 }
 
 void RequestVisor(int visor) {
