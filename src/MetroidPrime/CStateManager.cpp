@@ -1738,7 +1738,8 @@ static void ApplyHoldToggle(CFinalInput& input, const CPlayer* player,
   const bool locked = orbit == CPlayer::kOS_OrbitObject ||
                       orbit == CPlayer::kOS_ForcedOrbitObject || orbit == CPlayer::kOS_Grapple;
   const PortHoldToggle::Output outL =
-      sLockOn.Update(unmorphed && PortDebug::LockOnToggle(), heldL, pressL, locked);
+      sLockOn.Update(unmorphed && PortDebug::LockOnToggle(), heldL, pressL, locked,
+                     input.Time());
   if (sLockOn.Latched() || outL.held != heldL) {
     input.PortSetL(outL.held, outL.pressed);
   }
