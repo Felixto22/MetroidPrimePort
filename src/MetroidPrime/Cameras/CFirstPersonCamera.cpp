@@ -347,6 +347,17 @@ void CFirstPersonCamera::UpdateTransform(CStateManager& mgr, float dt) {
       mgr.GetCameraManager()->IsInCinematicCamera() || x1d4_closeInTimer > 0.f) {
     bobXf = CTransform4f::Identity();
     bob->SetCameraBobTransform(bobXf);
+  } else if (PortDebug::CameraBob() != PortDebug::kCameraBobRetail) {
+    // Comfort setting: scale the view's bob toward no bob. The translation
+    // scales linearly and the rotation (view wander, landing dip) is slerped
+    // from identity, so 0% is a perfectly steady view.
+    const float scale = static_cast< float >(PortDebug::CameraBob()) / 100.f;
+    const CVector3f bobTranslation = bobXf.GetTranslation() * scale;
+    const CQuaternion bobRotation = CQuaternion::Slerp(
+        CQuaternion::NoRotation(), CQuaternion::FromMatrix(bobXf), scale);
+    // Not written back to the bob object: it recomputes its transform each
+    // tick, and this may run more than once per tick with frame interpolation.
+    bobXf = bobRotation.BuildTransform4f(bobTranslation);
   }
   x190_gunFollowXf = gunRotation.BuildTransform4f() * gunXf;
   SetTransform(x190_gunFollowXf * bobXf.GetRotation());

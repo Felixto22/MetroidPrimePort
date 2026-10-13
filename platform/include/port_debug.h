@@ -286,6 +286,15 @@ const float kFovMin = 45.f;
 const float kFovMax = 90.f;
 float FirstPersonFov();
 void SetFirstPersonFov(float degrees);
+// First-person camera bob, as a percentage of the retail motion (100). It scales
+// the walk bob, the idle view wander and the landing dip of the view only; the
+// arm cannon keeps its own bob. Lower values help with motion sickness. 100 in
+// the original experience.
+const int kCameraBobRetail = 100;
+const int kCameraBobMin = 0;
+const int kCameraBobMax = 100;
+int CameraBob();
+void SetCameraBob(int percent);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

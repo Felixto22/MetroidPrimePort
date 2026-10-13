@@ -252,6 +252,7 @@ bool sLogFile = true;
 std::mutex sRandoMutex;
 PortRandoGen::Settings sRandoSettings;
 float sFirstPersonFov = PortDebug::kFovRetail;
+int sCameraBob = PortDebug::kCameraBobRetail;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
@@ -670,6 +671,9 @@ void ApplySetting(const std::string& key, const std::string& value) {
     if (std::isfinite(f) && f >= PortDebug::kFovMin && f <= PortDebug::kFovMax) {
       sFirstPersonFov = f;
     }
+  } else if (key == "camera_bob") {
+    const int v = std::atoi(value.c_str());
+    sCameraBob = std::clamp(v, PortDebug::kCameraBobMin, PortDebug::kCameraBobMax);
   } else if (key == "gun_offset") {
     float v[3] = {};
     if (std::sscanf(value.c_str(), "%f,%f,%f", &v[0], &v[1], &v[2]) == 3) {
@@ -835,6 +839,7 @@ std::string SettingsText() {
   file << "quick_resume=" << (sQuickResume ? 1 : 0) << '\n';
   file << "savestate_room_state=" << (sSaveStateRoomState ? 1 : 0) << '\n';
   file << "fov=" << sFirstPersonFov << '\n';
+  file << "camera_bob=" << sCameraBob << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
@@ -1784,6 +1789,17 @@ void SetFirstPersonFov(float degrees) {
     sFirstPersonFov = std::clamp(degrees, kFovMin, kFovMax);
     MarkDirty();
   }
+}
+
+int CameraBob() {
+  EnsureInitialized();
+  return sOriginalExperience ? kCameraBobRetail : sCameraBob;
+}
+
+void SetCameraBob(int percent) {
+  EnsureInitialized();
+  sCameraBob = std::clamp(percent, kCameraBobMin, kCameraBobMax);
+  MarkDirty();
 }
 
 void GunOffset(float out[3]) {
@@ -6442,6 +6458,18 @@ void DrawVideoDisplay() {
     ImGui::TextDisabled("About %.0f deg horizontal at this aspect.", hfov);
     ImGui::SetItemTooltip("First-person vertical FOV (retail 55). The arm cannon stays at the retail\n"
                           "FOV; morph ball and cutscene cameras are unchanged.");
+  }
+
+  int cameraBob = sCameraBob;
+  if (ImGui::SliderInt("Camera bob", &cameraBob, kCameraBobMin, kCameraBobMax, "%d%%")) {
+    SetCameraBob(cameraBob);
+  }
+  ImGui::SetItemTooltip("How much the first-person view sways while walking, idling and landing\n"
+                        "(retail 100%%). Lower it if moving makes you dizzy; the arm cannon keeps\n"
+                        "its own bob.");
+  ImGui::SameLine();
+  if (ImGui::Button("Retail##camera_bob")) {
+    SetCameraBob(kCameraBobRetail);
   }
   {
     // Issue #72: PrimeHack-style arm cannon placement.
