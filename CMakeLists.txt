@@ -229,6 +229,7 @@ set(MP_PORT_SOURCES
     platform/port_room_geo.cpp
     platform/port_room_geo_file.cpp
     platform/port_room_liquid.cpp
+    platform/port_retail_water.cpp
     platform/port_collision_view.cpp
     platform/port_remastered_cmdl.cpp
     platform/port_remastered_anuv.cpp

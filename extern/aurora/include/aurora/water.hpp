@@ -38,6 +38,10 @@ struct DrawDesc {
   uint32_t cube = 0;
   float cubeScale = 0.f; // the cube's texels times this; the TOP shader also times the volume's max
   float cubeMips = 0.f;  // the mip read at roughness 1
+  // Port extension: with no cube, reflect the scene in screen space instead of nothing.
+  bool screenReflections = false;
+  // Port extension: foam where the surface meets what is under it, within this depth (m; 0: none).
+  float foam = 0.f;
   float viewToCube[3][4] = {};
   // The ambient volume (probe::create_volume id, 0 for none): rows of view position ->
   // texture coordinates, and what its mean is multiplied by (rgb; w for its largest channel).

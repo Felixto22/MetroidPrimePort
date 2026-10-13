@@ -13,6 +13,7 @@
 #include "port_room_env.h"
 #include "port_room_geo.h"
 #include "port_room_liquid.h"
+#include "port_retail_water.h"
 #include "port_savestate.h"
 #include "port_skip_cutscenes.h"
 #include "port_viewmodel.h"
@@ -745,6 +746,7 @@ CStateManager::~CStateManager() {
   PortRoomEnv::SetLoadedAreas(nullptr, 0);
   PortRoomGeo::SetLoadedAreas(nullptr, 0);
   PortRoomLiquid::SetLoadedAreas(nullptr, 0);
+  PortRetailWater::Reset();
   CMemory::OffsetFakeStatics(
       -(x808_objectLists.size() * sizeof(CObjectList) + 0x11c)); // TODO what is this 11c?
   x88c_rumbleManager->HardStopAll();

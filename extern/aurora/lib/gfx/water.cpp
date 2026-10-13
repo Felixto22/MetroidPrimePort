@@ -248,8 +248,62 @@ fn brdf(nv: f32, rough: f32) -> vec2f {
   return textureSampleLevel(brdfLut, cubeSamp, vec2f(nv, rough), 0.0).xy;
 }
 
+// Port extension (DrawDesc::screenReflections, pad.x): with no probe cube, the reflection is
+// marched through the scene snapshot in screen space, and where the ray leaves the screen or
+// finds nothing the colour at its last on-screen point stands in, faded toward the edges.
+var<private> g_vpos: vec3f;
+
+fn scene_lin(px: vec2i) -> f32 {
+  var z = textureLoad(sceneDepth, px, 0).r;
+  if (u.misc.x > 0.5) { z = 1.0 - z; }
+  let dz = clamp((z - u.depth.z) / (u.depth.w - u.depth.z), 0.0, 1.0);
+  return u.depth.x * u.depth.y / (u.depth.y - dz * (u.depth.y - u.depth.x));
+}
+
+fn scene_exposed(uv: vec2f) -> vec3f {
+  let size = vec2i(textureDimensions(sceneColor));
+  let px = clamp(vec2i(uv * vec2f(size)), vec2i(0), size - 1);
+  let y = srgb_dec(textureLoad(sceneColor, px, 0).rgb);
+  return min(vec3f(untone(y.r), untone(y.g), untone(y.b)), vec3f(4.0));
+}
+
+fn ssr(r: vec3f) -> vec3f {
+  let size = vec2f(textureDimensions(sceneDepth));
+  var p = g_vpos;
+  var last = vec2f(-1.0);
+  var stepLen = max(0.1, -g_vpos.z * 0.015);
+  for (var i = 0; i < 48; i++) {
+    p = p + r * stepLen;
+    stepLen = stepLen * 1.08;
+    let c = vec4f(p, 1.0) * u.proj;
+    if (c.w <= 1e-4) { break; }
+    let ndc = c.xy / c.w;
+    let uv = vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0))) { break; }
+    last = uv;
+    if (u.misc.y > 0.5) {
+      let sz = scene_lin(vec2i(uv * size));
+      let rayZ = -p.z;
+      if (rayZ > sz + 0.02 && rayZ < sz + max(stepLen * 2.0, 0.5)) {
+        return scene_exposed(uv);
+      }
+    }
+  }
+  if (last.x < 0.0) {
+    // Straight off the screen: the colour at the top of the screen above the surface.
+    let c = vec4f(g_vpos, 1.0) * u.proj;
+    let ndc = c.xy / max(c.w, 1e-4);
+    return scene_exposed(vec2f(clamp(ndc.x * 0.5 + 0.5, 0.0, 1.0), 0.02)) * 0.8;
+  }
+  let edge = min(min(last.x, 1.0 - last.x), min(last.y, 1.0 - last.y));
+  return scene_exposed(last) * mix(0.6, 0.85, smoothstep(0.0, 0.1, edge));
+}
+
 fn env_at(r: vec3f, lod: f32) -> vec3f {
-  if (u.misc.w < 0.5) { return vec3f(0.0); }
+  if (u.misc.w < 0.5) {
+    if (u.pad.x > 0.5) { return ssr(normalize(r)); }
+    return vec3f(0.0);
+  }
   let rb = vec3f(dot(u.cube0.xyz, r), dot(u.cube1.xyz, r), dot(u.cube2.xyz, r));
   return textureSampleLevel(cube, cubeSamp, rb, lod).rgb * u.cubeP.x;
 }
@@ -306,6 +360,7 @@ fn untone(y: f32) -> f32 {
 
 @fragment
 fn fs_main(in: VOut) -> @location(0) vec4f {
+  g_vpos = in.vpos;
   // The normal map, read twice along the flow and cross-faded.
   let fl = textureSample(sourceFlowMap, flowSamp, in.uv.zw).xyz;
   let dir = (fl.xy * 2.0 - 1.0) * u.S[4].y;
@@ -394,6 +449,14 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
     o1 = fade * (1.0 - omF * tint);
     col = col - omF * tint * in.fog.xyz;
     o0 = fade * col;
+    // Port extension (DrawDesc::foam, pad.y): broken foam along the shallows, lit as the surface.
+    if (u.pad.y > 0.0 && d < 1e29) {
+      let shore = 1.0 - smoothstep(0.0, u.pad.y, d);
+      let breakup = smoothstep(0.45, 0.62, 0.5 * (n1.x + n2.y));
+      let foam = shore * (0.35 + 0.65 * breakup) * fade;
+      o0 = o0 + foam * 0.85 * in.light.rgb / max(u.volScale.rgb, vec3f(1e-3)) * 0.8;
+      o1 = min(o1 + vec3f(foam * 0.85), vec3f(1.0));
+    }
   }
 
   // Remastered's blend, dst = o0 + dst * (1 - o1), in the light the EFB holds tone mapped.
@@ -802,6 +865,8 @@ void draw(const DrawDesc& desc, const Vertex* verts, uint32_t vertexCount, const
   u.misc[3] = desc.cube != 0 ? 1.f : 0.f;
   u.cube[0] = desc.cubeScale;
   u.cube[1] = desc.cubeMips;
+  u.pad[0] = desc.screenReflections ? 1.f : 0.f;
+  u.pad[1] = desc.foam;
 
   Payload p{};
   p.flags = (desc.bottom ? 1u : 0u) | (rain ? 2u : 0u);

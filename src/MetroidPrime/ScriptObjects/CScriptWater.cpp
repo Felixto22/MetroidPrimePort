@@ -29,6 +29,7 @@
 #include "MetaRender/CCubeRenderer.hpp"
 #ifdef TARGET_PC
 #include "port_room_liquid.h"
+#include "port_retail_water.h"
 #endif
 
 #include "rstl/math.hpp"
@@ -279,6 +280,13 @@ void CScriptWater::Render(const CStateManager& mgr) const {
     remastered = PortRoomLiquid::Draw(mgr, mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()), GetUniqueId().value,
                                       GetTranslation(), x1b4_fluidPlane->GetFluidType(),
                                       GetTranslation().GetZ() + x130_bounds.GetMaxPoint().GetZ());
+    // Else the enhanced retail surface (port_retail_water.h).
+    if (!remastered) {
+      remastered = PortRetailWater::Draw(mgr, GetUniqueId().value, GetTranslation() + x130_bounds.GetMinPoint(),
+                                         GetTranslation() + x130_bounds.GetMaxPoint(),
+                                         GetTranslation().GetZ() + x130_bounds.GetMaxPoint().GetZ(),
+                                         x1b4_fluidPlane->GetFluidType(), x2a8_insideFogColor);
+    }
 #endif
     if (!remastered)
     x1b4_fluidPlane->Render(

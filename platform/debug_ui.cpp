@@ -255,6 +255,7 @@ float sFirstPersonFov = PortDebug::kFovRetail;
 int sCameraBob = PortDebug::kCameraBobRetail;
 int sAmbientOcclusion = PortDebug::kAmbientOcclusionDefault;
 int sSunShadows = PortDebug::kSunShadowsDefault;
+bool sEnhancedWater = true;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
@@ -673,6 +674,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     if (std::isfinite(f) && f >= PortDebug::kFovMin && f <= PortDebug::kFovMax) {
       sFirstPersonFov = f;
     }
+  } else if (key == "enhanced_water") {
+    sEnhancedWater = ParseBool(value);
   } else if (key == "sun_shadows") {
     sSunShadows = std::clamp(std::atoi(value.c_str()), PortDebug::kSunShadowsMin, PortDebug::kSunShadowsMax);
   } else if (key == "ambient_occlusion") {
@@ -849,6 +852,7 @@ std::string SettingsText() {
   file << "camera_bob=" << sCameraBob << '\n';
   file << "ambient_occlusion=" << sAmbientOcclusion << '\n';
   file << "sun_shadows=" << sSunShadows << '\n';
+  file << "enhanced_water=" << (sEnhancedWater ? 1 : 0) << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
@@ -1798,6 +1802,17 @@ void SetFirstPersonFov(float degrees) {
     sFirstPersonFov = std::clamp(degrees, kFovMin, kFovMax);
     MarkDirty();
   }
+}
+
+bool EnhancedWater() {
+  EnsureInitialized();
+  return sEnhancedWater && !sOriginalExperience;
+}
+
+void SetEnhancedWater(bool enabled) {
+  EnsureInitialized();
+  sEnhancedWater = enabled;
+  MarkDirty();
 }
 
 int SunShadows() {
@@ -6515,6 +6530,11 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Real-time shadows from the room's sun on the original world, Samus and\n"
                         "enemies: how dark they are. 0 turns them off.");
+  bool enhancedWater = sEnhancedWater;
+  if (ImGui::Checkbox("Enhanced water", &enhancedWater)) {
+    SetEnhancedWater(enhancedWater);
+  }
+  ImGui::SetItemTooltip("Water and poison with waves, ripples, reflections, depth colour and foam.");
   {
     // Issue #72: PrimeHack-style arm cannon placement.
     float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};

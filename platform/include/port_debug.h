@@ -309,6 +309,10 @@ const int kSunShadowsMin = 0;
 const int kSunShadowsMax = 100;
 int SunShadows();
 void SetSunShadows(int percent);
+// The retail water and poison drawn by the water shader (port_retail_water.h): waves, ripples,
+// reflections, depth tint and foam. Off in the original experience.
+bool EnhancedWater();
+void SetEnhancedWater(bool enabled);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

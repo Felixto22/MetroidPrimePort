@@ -210,6 +210,7 @@ enum EPortOption {
   kPO_CameraBob,
   kPO_AmbientOcclusion,
   kPO_SunShadows,
+  kPO_EnhancedWater,
 };
 #define PORT_OPTION(opt) static_cast< EGameOption >(opt)
 
@@ -254,6 +255,7 @@ static const SGameOption skPortDisplayOptions[] = {
      static_cast< float >(PortDebug::kAmbientOcclusionMax), 10.f, kOT_Float},
     {PORT_OPTION(kPO_SunShadows), -1, static_cast< float >(PortDebug::kSunShadowsMin),
      static_cast< float >(PortDebug::kSunShadowsMax), 10.f, kOT_Float},
+    {PORT_OPTION(kPO_EnhancedWater), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_AntiAliasing), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_SpeedrunTimer), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_PhotoMode), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
@@ -289,7 +291,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {15, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {16, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -321,6 +323,8 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     return L"Ambient Occlusion";
   case kPO_SunShadows:
     return L"Sun Shadows";
+  case kPO_EnhancedWater:
+    return L"Enhanced Water";
   case kPO_AntiAliasing:
     return L"Anti-Aliasing";
   case kPO_HudScale:
@@ -376,6 +380,8 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::AmbientOcclusion();
   case kPO_SunShadows:
     return PortDebug::SunShadows();
+  case kPO_EnhancedWater:
+    return PortDebug::EnhancedWater() ? 1 : 0;
   case kPO_AntiAliasing:
     return PortDebug::Msaa() > 1 ? 1 : 0;
   case kPO_HudScale:
@@ -422,6 +428,7 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_CameraBob:
   case kPO_AmbientOcclusion:
   case kPO_SunShadows:
+  case kPO_EnhancedWater:
   case kPO_AntiAliasing:
   case kPO_HudScale:
   case kPO_HideHelmet:
@@ -477,6 +484,9 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_SunShadows:
     PortDebug::SetSunShadows(value);
+    break;
+  case kPO_EnhancedWater:
+    PortDebug::SetEnhancedWater(value > 0);
     break;
   case kPO_AntiAliasing:
     PortDebug::SetMsaa(value > 0 ? 4 : 1);
