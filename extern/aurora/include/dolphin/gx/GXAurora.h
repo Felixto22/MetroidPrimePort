@@ -346,6 +346,10 @@ extern "C" {
 #define GX_AURORA_PORT_PER_PIXEL_LIGHTING 0x0072
 // Port extension: blended particles fade against the scene copy (GXPortSetSoftParticles). Payload: u8 on.
 #define GX_AURORA_PORT_SOFT_PARTICLES 0x0073
+// Port extension: the following draws are foliage that bends away from the pushers (GXPortSetFoliage). Payload: u8 on.
+#define GX_AURORA_PORT_FOLIAGE 0x0074
+// Port extension: what pushes foliage this pass (GXPortSetFoliagePushers). Payload: 132 u32 words.
+#define GX_AURORA_PORT_FOLIAGE_PUSHERS 0x0075
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

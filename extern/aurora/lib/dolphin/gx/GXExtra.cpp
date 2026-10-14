@@ -222,6 +222,37 @@ void GXPortSetSoftParticles(GXBool on) {
   GX_WRITE_U8(on ? 1 : 0);
 }
 
+void GXPortSetFoliage(GXBool on) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_FOLIAGE);
+  GX_WRITE_U8(on ? 1 : 0);
+}
+
+void GXPortSetFoliagePushers(const f32 up[3], const f32 (*pos)[4], const f32 (*params)[4], u32 count) {
+  if (count > GX_PORT_FOLIAGE_MAX_PUSHERS) {
+    count = GX_PORT_FOLIAGE_MAX_PUSHERS;
+  }
+  const auto put = [](f32 f) {
+    u32 word;
+    std::memcpy(&word, &f, sizeof(word));
+    GX_WRITE_U32(word);
+  };
+  GX_WRITE_AURORA(GX_AURORA_PORT_FOLIAGE_PUSHERS);
+  put(up[0]);
+  put(up[1]);
+  put(up[2]);
+  put(static_cast<f32>(count));
+  for (u32 i = 0; i < GX_PORT_FOLIAGE_MAX_PUSHERS; ++i) {
+    for (int k = 0; k < 4; ++k) {
+      put(i < count ? pos[i][k] : 0.f);
+    }
+  }
+  for (u32 i = 0; i < GX_PORT_FOLIAGE_MAX_PUSHERS; ++i) {
+    for (int k = 0; k < 4; ++k) {
+      put(i < count ? params[i][k] : 0.f);
+    }
+  }
+}
+
 void GXPortSetBump(f32 strength) {
   GX_WRITE_AURORA(GX_AURORA_PORT_BUMP);
   u32 word;

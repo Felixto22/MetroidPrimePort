@@ -3,6 +3,7 @@
 #include "port_apclient.h"
 #include "port_collision_view.h"
 #include "port_debug.h"
+#include "port_foliage.h"
 #include "port_env.h"
 #include "port_freecam.h"
 #include "port_photo.h"
@@ -3303,6 +3304,10 @@ void CStateManager::DrawWorld() const {
   const CViewport backupViewport = CGraphics::GetViewport();
   const CFrustumPlanes frustum = SetupViewForDraw(backupViewport);
   const CTransform4f backupViewMatrix = CGraphics::GetViewMatrix();
+#ifdef TARGET_PC
+  // What bends the foliage this pass (Samus, shots), in this pass's view space.
+  PortFoliage::Upload(*this);
+#endif
   const TAreaId visAreaId = GetVisAreaId();
   const rstl::reserved_vector< TUniqueId, 20 >& renderLast =
       x86c_stateManagerContainer->xf39c_renderLast;

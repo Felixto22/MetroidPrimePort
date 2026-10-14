@@ -571,6 +571,8 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
                               config.shaderConfig.volFog == VolFogNone && !shadow_receives(config.shaderConfig) &&
                               g_gxState.blendMode == GX_BM_BLEND && g_gxState.blendFacSrc == GX_BL_SRCALPHA &&
                               g_gxState.blendFacDst == GX_BL_INVSRCALPHA;
+  // Foliage: a triangle draw, in both depth pre-pass passes alike so their depths match.
+  config.shaderConfig.foliage = g_gxState.foliage && !drawId && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0;
   // Soft particles: a blended particle draw in colour, with nothing else in the froxel slot.
   config.shaderConfig.soft = 0;
   if (g_gxState.softParticles && g_gxState.particleFog && !drawId && !depthOnly &&

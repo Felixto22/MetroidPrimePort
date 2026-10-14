@@ -353,6 +353,10 @@ void SetParticleDensity(int percent);
 // cutting a hard line into walls and floors. Off in the original experience.
 bool SoftParticles();
 void SetSoftParticles(bool enabled);
+// Interactive foliage: plants (leaves, ferns, grass, hanging vines) bend away from Samus and from
+// shots passing through them, and sway back after. Off in the original experience.
+bool InteractiveFoliage();
+void SetInteractiveFoliage(bool enabled);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

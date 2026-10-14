@@ -263,6 +263,7 @@ int sGlassReflections = PortDebug::kGlassReflectionsDefault;
 int sBumpMapping = PortDebug::kBumpMappingDefault;
 int sParticleDensity = PortDebug::kParticleDensityDefault;
 bool sSoftParticles = true;
+bool sInteractiveFoliage = true;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
@@ -688,6 +689,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
                                   PortDebug::kParticleDensityMax);
   } else if (key == "soft_particles") {
     sSoftParticles = ParseBool(value);
+  } else if (key == "interactive_foliage") {
+    sInteractiveFoliage = ParseBool(value);
   } else if (key == "glass_reflections") {
     sGlassReflections = std::clamp(std::atoi(value.c_str()), PortDebug::kGlassReflectionsMin,
                                    PortDebug::kGlassReflectionsMax);
@@ -884,6 +887,7 @@ std::string SettingsText() {
   file << "bump_mapping=" << sBumpMapping << '\n';
   file << "particle_density=" << sParticleDensity << '\n';
   file << "soft_particles=" << (sSoftParticles ? 1 : 0) << '\n';
+  file << "interactive_foliage=" << (sInteractiveFoliage ? 1 : 0) << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
@@ -1865,6 +1869,17 @@ bool SoftParticles() {
 void SetSoftParticles(bool enabled) {
   EnsureInitialized();
   sSoftParticles = enabled;
+  MarkDirty();
+}
+
+bool InteractiveFoliage() {
+  EnsureInitialized();
+  return sInteractiveFoliage && !sOriginalExperience;
+}
+
+void SetInteractiveFoliage(bool enabled) {
+  EnsureInitialized();
+  sInteractiveFoliage = enabled;
   MarkDirty();
 }
 
@@ -6688,6 +6703,12 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Smoke, steam and glows fade where they touch walls and floors\n"
                         "instead of cutting a hard edge into them.");
+  bool interactiveFoliage = sInteractiveFoliage;
+  if (ImGui::Checkbox("Interactive vegetation", &interactiveFoliage)) {
+    SetInteractiveFoliage(interactiveFoliage);
+  }
+  ImGui::SetItemTooltip("Leaves, ferns, grass and hanging vines bend away from Samus and from\n"
+                        "shots passing through them, and sway back after.");
   {
     // Issue #72: PrimeHack-style arm cannon placement.
     float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};

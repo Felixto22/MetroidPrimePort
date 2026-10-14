@@ -305,6 +305,15 @@ void GXPortSetPerPixelLighting(GXBool on);
 // opaque scene behind them, read from this frame's scene capture (GXPortSceneCapture), instead of
 // cutting into walls and floors. Only turn it on after a capture this frame. Stays until changed.
 void GXPortSetSoftParticles(GXBool on);
+// Port extension: the following triangle draws are foliage: their vertices bend away from the
+// pushers set with GXPortSetFoliagePushers. Stays until changed.
+void GXPortSetFoliage(GXBool on);
+// Port extension: what pushes foliage, in view space (call after the pass's view is set).
+// `up`: the world's up direction (xyz). Each pusher: pos[i] = feet position (xyz) and radius (w);
+// params[i] = strength (x), seconds since it let go (y; 0: pushing now, later a damped sway back)
+// and height (z). At most 16; count 0 leaves foliage still.
+#define GX_PORT_FOLIAGE_MAX_PUSHERS 16
+void GXPortSetFoliagePushers(const f32 up[3], const f32 (*pos)[4], const f32 (*params)[4], u32 count);
 // The draws after GXPortVolumetricFog fog themselves as Remastered's transparents do, until this:
 // opaque ones per pixel as the full-screen pass, blended and additive ones per vertex (blended:
 // colour T + in-scatter, additive: colour T). Harmless when no fog was drawn.

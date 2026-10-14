@@ -3106,10 +3106,45 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
       vtxXfrAttrsPre += bumpCode(windPos, vtx_attr(config, GX_VA_CLR0), vtx_attr(config, GX_VA_NRM));
       windPos = "bump_pos";
     }
-    vtxXfrAttrsPre += fmt::format(
-        "\n    let mv_pos = vec4f({}, 1.0) * ubuf.postex_mtx[in_pnmtxidx];"
-        "\n    out.pos = vec4f(mv_pos, 1.0) * ubuf.proj;",
-        windPos);
+    if (config.foliage) {
+      // Port extension: interactive foliage. Each pusher (Samus, a shot) bends the vertices within
+      // its radius and height away from its axis, more the higher they are over its feet (a stem's
+      // base stays put); one that has let go sways the foliage back in a damped swing.
+      vtxXfrAttrsPre += fmt::format(
+          "\n    let mv_pos_rest = vec4f({}, 1.0) * ubuf.postex_mtx[in_pnmtxidx];", windPos);
+      vtxXfrAttrsPre += R"""(
+    var fol_d = vec3f(0.0);
+    {
+        let fol_up = ubuf.fol_up.xyz;
+        let fol_n = min(u32(ubuf.fol_up.w), 16u);
+        for (var fi = 0u; fi < fol_n; fi++) {
+            let fp = ubuf.fol_pos[fi];
+            let fs = ubuf.fol_par[fi];
+            let rel = mv_pos_rest - fp.xyz;
+            let h = dot(rel, fol_up);
+            let hz = rel - fol_up * h;
+            let dist = length(hz);
+            let fall = 1.0 - smoothstep(fp.w * 0.35, fp.w, dist);
+            let band = smoothstep(-0.25, 0.15, h) * (1.0 - smoothstep(fs.z, fs.z + 0.6, h));
+            let anchor = clamp(h / 0.6, 0.0, 1.0);
+            var amt = fall * band * anchor * fs.x * fp.w * 0.55;
+            if (fs.y > 0.0) {
+                amt = amt * exp(-fs.y * 2.5) * cos(fs.y * 11.0);
+            }
+            let dir = select(vec3f(0.0), hz / dist, dist > 1e-3);
+            fol_d = fol_d + dir * amt - fol_up * (abs(amt) * 0.25);
+        }
+        let fl = length(fol_d);
+        fol_d = select(fol_d, fol_d * (0.9 / fl), fl > 0.9);
+    }
+    let mv_pos = mv_pos_rest + fol_d;
+    out.pos = vec4f(mv_pos, 1.0) * ubuf.proj;)""";
+    } else {
+      vtxXfrAttrsPre += fmt::format(
+          "\n    let mv_pos = vec4f({}, 1.0) * ubuf.postex_mtx[in_pnmtxidx];"
+          "\n    out.pos = vec4f(mv_pos, 1.0) * ubuf.proj;",
+          windPos);
+    }
   } else if (config.lineMode == 3) {
     // GX_POINTS: expand single vertex to axis-aligned screen-space square
     vtxXfrAttrsPre +=
@@ -4099,6 +4134,11 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   }
   if (info.bumpSlot != 0) {
     uniBufAttrs += "\n    bump: vec4f,";
+  }
+  if (info.usesFoliage) {
+    uniBufAttrs += "\n    fol_up: vec4f,";
+    uniBufAttrs += "\n    fol_pos: array<vec4f, 16>,";
+    uniBufAttrs += "\n    fol_par: array<vec4f, 16>,";
   }
   if (!prevColorNormalized && !prevAlphaNormalized) {
     fragmentFn += "\n    prev = tev_overflow_vec4f(prev);";

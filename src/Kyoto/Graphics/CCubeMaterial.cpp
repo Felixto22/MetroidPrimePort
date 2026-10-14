@@ -2,6 +2,7 @@
 
 #ifdef TARGET_PC
 #include "port_debug.h"
+#include "port_foliage.h"
 #include <dolphin/gx/GXExtra.h>
 #endif
 
@@ -680,10 +681,17 @@ bool CCubeMaterial::PortNeedsModelMatrix() const {
 // Glass (port_debug.h GlassReflections): the strength GXPortSetGlass last set, -1 before any.
 static int sPortGlass = -1;
 
+// Interactive foliage (port_debug.h InteractiveFoliage): whether GXPortSetFoliage is on.
+static bool sPortFoliage = false;
+
 void CCubeMaterial::PortEndGlass() {
   if (sPortGlass > 0) {
     sPortGlass = 0;
     GXPortSetGlass(GX_FALSE, 0.f);
+  }
+  if (sPortFoliage) {
+    sPortFoliage = false;
+    GXPortSetFoliage(GX_FALSE);
   }
 }
 #endif
@@ -704,6 +712,23 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
     if (want != sPortGlass) {
       sPortGlass = want;
       GXPortSetGlass(glass ? GX_TRUE : GX_FALSE, static_cast< float >(strength) / 100.f);
+    }
+    // A material sampling a plant's texture bends away from Samus and shots (PortFoliage).
+    bool foliage = false;
+    if (PortDebug::InteractiveFoliage() && (glassFlags & kStateFlag_PortPBR) == 0) {
+      const uint* words = reinterpret_cast< const uint* >(GetData());
+      const uint count = SBig(words[1]);
+      const rstl::vector< TCachedToken< CTexture > >& textures = model.GetTextures();
+      for (uint i = 0; i < count && !foliage; ++i) {
+        const uint index = SBig(words[2 + i]);
+        if (index < static_cast< uint >(textures.size())) {
+          foliage = PortFoliage::IsFoliageTexture(textures[index].GetTag().GetId());
+        }
+      }
+    }
+    if (foliage != sPortFoliage) {
+      sPortFoliage = foliage;
+      GXPortSetFoliage(foliage ? GX_TRUE : GX_FALSE);
     }
   }
 #endif

@@ -467,6 +467,11 @@ struct GXState {
   bool perPixelLighting = false;
   // GX_AURORA_PORT_SOFT_PARTICLES: blended particle draws fade against the scene copy (ShaderConfig::soft).
   bool softParticles = false;
+  // GX_AURORA_PORT_FOLIAGE: triangle draws bend away from the pushers (ShaderConfig::foliage).
+  bool foliage = false;
+  // GX_AURORA_PORT_FOLIAGE_PUSHERS: up (xyz) and count (w), then 16 positions (xyz, w radius) and
+  // 16 parameters (strength, release age, height), all in view space.
+  std::array<Vec4<float>, 33> foliageUniform{};
   bool shadowCaster = false;
   bool shadowCasterOnly = false; // they cast but aren't drawn (GXPortSetShadowCasterOnly)
   bool shadowActive = false;
@@ -634,7 +639,10 @@ struct ShaderConfig {
   // (scene copy in the froxel slot; ShaderInfo::usesSoft). 1: its alpha (src alpha blends),
   // 2: colour and alpha (src one blends), 0: not soft.
   u8 soft : 2 = 0;
-  u8 pad2 : 5 = 0; // keeps the struct free of padding (memcmp and hash)
+  // GX_AURORA_PORT_FOLIAGE on a triangle draw: its vertices bend away from the pushers
+  // (GXState::foliageUniform; ShaderInfo::usesFoliage).
+  u8 foliage : 1 = 0;
+  u8 pad2 : 4 = 0; // keeps the struct free of padding (memcmp and hash)
   std::array<AttrConfig, MaxVtxAttr> attrs;
   std::array<TevSwap, MaxTevSwap> tevSwapTable;
   std::array<TevStage, MaxTevStages> tevStages;
@@ -680,7 +688,8 @@ struct ShaderInfo {
   bool usesHudDyin : 1 = false; // ShaderConfig::hudSample >= 2: the hud_dyin uniform
   bool usesLightmap : 1 = false; // ShaderConfig::pbrLightmapAttr is set
   bool usesVolFog : 1 = false;
-  bool usesSoft : 1 = false;      // ShaderConfig::soft: the scene copy
+  bool usesSoft : 1 = false;
+  bool usesFoliage : 1 = false;   // ShaderConfig::foliage: the pusher uniform      // ShaderConfig::soft: the scene copy
   bool usesGlass : 1 = false;     // ShaderConfig::glass: the glass uniform and the scene copy
   u8 bumpSlot = 0;                // ShaderConfig::bumpSlot: 1 + the normal map's texmap slot, 0 for none
   std::array<s8, MaxTextures> mapCoord{-1, -1, -1, -1, -1, -1, -1, -1}; // texcoord each texmap is read with

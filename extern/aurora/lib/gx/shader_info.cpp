@@ -390,6 +390,10 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
   if (config.soft != 0) {
     info.usesSoft = true;
   }
+  if (config.foliage) {
+    info.usesFoliage = true;
+    info.uniformSize += sizeof(g_gxState.foliageUniform);
+  }
   if (config.glass) {
     info.usesGlass = true;
     info.uniformSize += sizeof(Vec4<float>); // GXState::glassParams
@@ -608,6 +612,11 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     const int pick = bump_pick(info);
     buf.append(pick >= 0 ? Vec4<float>{g_gxState.bumpStrength, static_cast<f32>(info.mapCoord[pick]), 0.f, 0.f}
                          : Vec4<float>{0.f, -1.f, 0.f, 0.f});
+  }
+  if (info.usesFoliage) {
+    for (const auto& v : g_gxState.foliageUniform) {
+      buf.append(v);
+    }
   }
 }
 
