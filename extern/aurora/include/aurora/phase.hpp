@@ -27,11 +27,52 @@ inline int64_t now_ns() noexcept {
       .count();
 }
 
-// `name` must outlive the process (a string literal).
+// Time spent per phase name since reset_totals, for the slot's own thread to read (the stall
+// log says where a slow frame went). Up to MaxTotals names; the rest are lumped as "other".
+constexpr int MaxTotals = 48;
+struct Total {
+  const char* name;
+  int64_t ns;
+};
+struct Totals {
+  Total entries[MaxTotals];
+  int count = 0;
+  int64_t otherNs = 0;
+};
+inline Totals& totals(Slot slot) noexcept {
+  static Totals s_totals[SlotCount];
+  return s_totals[slot];
+}
+inline void reset_totals(Slot slot) noexcept {
+  Totals& t = totals(slot);
+  t.count = 0;
+  t.otherNs = 0;
+}
+inline void add_total(Slot slot, const char* name, int64_t ns) noexcept {
+  if (name == nullptr || ns <= 0) {
+    return;
+  }
+  Totals& t = totals(slot);
+  for (int i = 0; i < t.count; ++i) {
+    if (t.entries[i].name == name) {
+      t.entries[i].ns += ns;
+      return;
+    }
+  }
+  if (t.count < MaxTotals) {
+    t.entries[t.count++] = {name, ns};
+  } else {
+    t.otherNs += ns;
+  }
+}
+
+// `name` must outlive the process (a string literal, or an interned string).
 inline void set(Slot slot, const char* name) noexcept {
   State& s = state(slot);
+  const int64_t now = now_ns();
+  add_total(slot, s.name.load(std::memory_order_relaxed), now - s.sinceNs.load(std::memory_order_relaxed));
   s.name.store(name, std::memory_order_relaxed);
-  s.sinceNs.store(now_ns(), std::memory_order_relaxed);
+  s.sinceNs.store(now, std::memory_order_relaxed);
 }
 
 // Sets a phase and puts the previous one back on exit.

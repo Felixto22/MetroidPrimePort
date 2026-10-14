@@ -282,6 +282,9 @@ bool sHeatDistortion = true;
 bool sUnderwaterEffects = true;
 bool sSnowFootprints = true;
 bool sAmbientParticles = true;
+bool sSmarterEnemies = true;
+int sEnemySpeed = PortDebug::kEnemySpeedDefault;
+bool sCannonMelee = true;
 bool sCinematicLook = true;
 int sGlobalIllumination = PortDebug::kGlobalIlluminationDefault;
 float sGunOffset[3] = {};
@@ -747,6 +750,12 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sSnowFootprints = ParseBool(value);
   } else if (key == "ambient_particles") {
     sAmbientParticles = ParseBool(value);
+  } else if (key == "smarter_enemies") {
+    sSmarterEnemies = ParseBool(value);
+  } else if (key == "enemy_speed") {
+    sEnemySpeed = std::clamp(std::atoi(value.c_str()), PortDebug::kEnemySpeedMin, PortDebug::kEnemySpeedMax);
+  } else if (key == "cannon_melee") {
+    sCannonMelee = ParseBool(value);
   } else if (key == "cinematic_look") {
     sCinematicLook = ParseBool(value);
   } else if (key == "global_illumination") {
@@ -967,6 +976,9 @@ std::string SettingsText() {
   file << "underwater_effects=" << (sUnderwaterEffects ? 1 : 0) << '\n';
   file << "snow_footprints=" << (sSnowFootprints ? 1 : 0) << '\n';
   file << "ambient_particles=" << (sAmbientParticles ? 1 : 0) << '\n';
+  file << "smarter_enemies=" << (sSmarterEnemies ? 1 : 0) << '\n';
+  file << "enemy_speed=" << sEnemySpeed << '\n';
+  file << "cannon_melee=" << (sCannonMelee ? 1 : 0) << '\n';
   file << "cinematic_look=" << (sCinematicLook ? 1 : 0) << '\n';
   file << "global_illumination=" << sGlobalIllumination << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
@@ -2159,6 +2171,39 @@ bool AmbientParticles() {
 void SetAmbientParticles(bool enabled) {
   EnsureInitialized();
   sAmbientParticles = enabled;
+  MarkDirty();
+}
+
+bool SmarterEnemies() {
+  EnsureInitialized();
+  return sSmarterEnemies && !sOriginalExperience;
+}
+
+void SetSmarterEnemies(bool enabled) {
+  EnsureInitialized();
+  sSmarterEnemies = enabled;
+  MarkDirty();
+}
+
+int EnemySpeed() {
+  EnsureInitialized();
+  return sOriginalExperience ? 100 : sEnemySpeed;
+}
+
+void SetEnemySpeed(int percent) {
+  EnsureInitialized();
+  sEnemySpeed = std::clamp(percent, kEnemySpeedMin, kEnemySpeedMax);
+  MarkDirty();
+}
+
+bool CannonMelee() {
+  EnsureInitialized();
+  return sCannonMelee && !sOriginalExperience;
+}
+
+void SetCannonMelee(bool enabled) {
+  EnsureInitialized();
+  sCannonMelee = enabled;
   MarkDirty();
 }
 
@@ -7109,6 +7154,22 @@ void DrawVideoDisplay() {
     SetAmbientParticles(ambientParticles);
   }
   ImGui::SetItemTooltip("Dust motes floating in the air (catching the light), embers and ash over lava.");
+  bool smarterEnemies = sSmarterEnemies;
+  if (ImGui::Checkbox("Smarter enemies", &smarterEnemies)) {
+    SetSmarterEnemies(smarterEnemies);
+  }
+  ImGui::SetItemTooltip("Enemies dodge shots and flee when nearly dead; a space pirate's partner charges and strikes\n"
+                        "when you shoot it, and pirates throw each other health packs; Seedlings latch on (morph to shake them off).");
+  int enemySpeed = sEnemySpeed;
+  if (ImGui::SliderInt("Enemy speed", &enemySpeed, kEnemySpeedMin, kEnemySpeedMax, enemySpeed == 0 ? "Off" : "%d%%")) {
+    SetEnemySpeed(enemySpeed);
+  }
+  ImGui::SetItemTooltip("How fast enemies move, animate and attack, as a percentage (bosses keep their pace).");
+  bool cannonMelee = sCannonMelee;
+  if (ImGui::Checkbox("Cannon melee", &cannonMelee)) {
+    SetCannonMelee(cannonMelee);
+  }
+  ImGui::SetItemTooltip("LB (or V on the keyboard) strikes with the arm cannon, as hard as a charged shot of the beam.");
   bool cinematicLook = sCinematicLook;
   if (ImGui::Checkbox("Cinematic look", &cinematicLook)) {
     SetCinematicLook(cinematicLook);

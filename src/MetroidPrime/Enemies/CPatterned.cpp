@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "port_enemy_ai.h"
+#endif
 #include "MetroidPrime/Enemies/CPatterned.hpp"
 
 #include <math.h>
@@ -887,15 +890,28 @@ void CPatterned::Think(float dt, CStateManager& mgr) {
     thinkDt = dt * CalcDyingThinkRate();
   }
 
-  x450_bodyController->Update(thinkDt, mgr);
+#ifdef TARGET_PC
+  // Port: faster enemies (port_enemy_ai.h): the body, its animation (and so its root motion) and
+  // its state machine run ahead; the move is still made over the frame's own time.
+  const float aiDt = thinkDt * PortEnemyAi::SpeedScale(*this);
+#else
+  const float aiDt = thinkDt;
+#endif
+  x450_bodyController->Update(aiDt, mgr);
   x450_bodyController->MultiplyPlaybackRate(x3b4_speed);
 
   reinterpret_cast< CAdvancementDeltas& >(x434_posDelta) =
-      UpdateAnimation(thinkDt, mgr, !x450_bodyController->IsFrozen());
+      UpdateAnimation(aiDt, mgr, !x450_bodyController->IsFrozen());
 
   if (x403_25_enableStateMachine && x450_bodyController->GetPercentageFrozen() < 1.f) {
-    x330_stateMachineState.Update(mgr, *this, thinkDt);
+    x330_stateMachineState.Update(mgr, *this, aiDt);
   }
+#ifdef TARGET_PC
+  // Port: dodging, fleeing, pirates defending and healing each other (port_enemy_ai.h).
+  if (x400_25_alive && x450_bodyController->GetPercentageFrozen() < 1.f) {
+    PortEnemyAi::Think(*this, dt, mgr);
+  }
+#endif
 
   ThinkAboutMove(thinkDt);
 

@@ -10,6 +10,7 @@
 #include <aurora/aurora.h>
 #include <aurora/event.h>
 #include <aurora/phase.hpp>
+#include <dolphin/gx/GXExtra.h>
 #include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_timer.h>
 
@@ -162,6 +163,120 @@ bool COsContext::mProgressiveMode;
 u32 sARAMMemArray[2];
 float sInfiniteLoopTime;
 static uint sTicksAdvanced = 0;
+
+// Port: where slow frames go, for the log (main-thread phases, and the GPU's passes once a slow
+// stretch has switched their timing on).
+namespace PortFrameReport {
+struct Named {
+  const char* name;
+  double ms;
+};
+// The main thread's phases over a stretch of frames.
+static Named sPeriod[64];
+static int sPeriodCount = 0;
+static uint64_t sPeriodStartNs = 0;
+static uint64_t sPeriodWorkNs = 0;
+static uint sPeriodFrames = 0;
+static bool sGpuTimesOn = false;
+static uint64_t sLastSlowNs = 0;
+
+static void AddPeriod(const char* name, double ms) {
+  for (int i = 0; i < sPeriodCount; ++i) {
+    if (sPeriod[i].name == name) {
+      sPeriod[i].ms += ms;
+      return;
+    }
+  }
+  if (sPeriodCount < 64) {
+    sPeriod[sPeriodCount++] = {name, ms};
+  }
+}
+
+// The heaviest phases in `list`, "name 12 ms, ...", per frame when frames > 1.
+static void Top(Named* list, int count, uint frames, char* out, size_t size) {
+  std::sort(list, list + count, [](const Named& a, const Named& b) { return a.ms > b.ms; });
+  size_t used = 0;
+  out[0] = '\0';
+  for (int i = 0; i < count && i < 5 && used + 8 < size; ++i) {
+    const double ms = list[i].ms / double(frames > 0 ? frames : 1);
+    if (ms < 0.5) {
+      break;
+    }
+    const int n = snprintf(out + used, size - used, "%s%s %.1f ms", i == 0 ? "" : ", ", list[i].name, ms);
+    if (n <= 0) {
+      break;
+    }
+    used += size_t(n);
+  }
+}
+
+// This frame's phases (since the loop began), heaviest first.
+static void FramePhases(char* out, size_t size) {
+  const aurora::phase::Totals& t = aurora::phase::totals(aurora::phase::Main);
+  Named list[aurora::phase::MaxTotals];
+  int count = 0;
+  for (int i = 0; i < t.count; ++i) {
+    list[count++] = {t.entries[i].name, double(t.entries[i].ns) / 1e6};
+  }
+  Top(list, count, 1, out, size);
+}
+
+static void GpuPasses(char* out, size_t size) {
+  out[0] = '\0';
+  if (!sGpuTimesOn) {
+    return;
+  }
+  GXPortGpuTime times[6];
+  float total = 0.f, span = 0.f;
+  const u32 n = GXPortGetGpuTimes(times, 6, &total, &span);
+  size_t used = snprintf(out, size, "%.1f ms total", double(total));
+  for (u32 i = 0; i < n && used + 8 < size; ++i) {
+    const int w = snprintf(out + used, size - used, ", %s %.1f", times[i].name, double(times[i].msPerFrame));
+    if (w <= 0) {
+      break;
+    }
+    used += size_t(w);
+  }
+}
+
+// At the end of each frame's work: folds the frame into the stretch, and every 4 s of slow frames
+// (under 40 FPS of work on average) says where they went.
+static void EndFrame(uint64_t loopStartNs, uint64_t workEndNs) {
+  const aurora::phase::Totals& t = aurora::phase::totals(aurora::phase::Main);
+  for (int i = 0; i < t.count; ++i) {
+    AddPeriod(t.entries[i].name, double(t.entries[i].ns) / 1e6);
+  }
+  sPeriodWorkNs += workEndNs - loopStartNs;
+  ++sPeriodFrames;
+  if (sPeriodStartNs == 0) {
+    sPeriodStartNs = workEndNs;
+  }
+  if (workEndNs - sPeriodStartNs < 4000000000ull) {
+    return;
+  }
+  const double avg = double(sPeriodWorkNs) / 1e6 / double(sPeriodFrames);
+  if (avg > 25.0 && getenv("MP_NO_STALL_LOG") == nullptr) {
+    char phases[512];
+    Top(sPeriod, sPeriodCount, sPeriodFrames, phases, sizeof(phases));
+    char gpu[512];
+    GpuPasses(gpu, sizeof(gpu));
+    PortLog::Write("MP slow: %.1f ms of work a frame over %u frames; main: %s%s%s\n", avg, sPeriodFrames, phases,
+                   gpu[0] != '\0' ? "; gpu: " : "", gpu);
+    sLastSlowNs = workEndNs;
+    if (!sGpuTimesOn && GXPortGpuTimesSupported()) {
+      sGpuTimesOn = true;
+      GXPortSetGpuTimes(GX_TRUE);
+    }
+  } else if (sGpuTimesOn && workEndNs - sLastSlowNs > 60000000000ull) {
+    sGpuTimesOn = false;
+    GXPortSetGpuTimes(GX_FALSE);
+  }
+  sPeriodCount = 0;
+  sPeriodWorkNs = 0;
+  sPeriodFrames = 0;
+  sPeriodStartNs = workEndNs;
+}
+} // namespace PortFrameReport
 
 // Port: the player is in (or going into or out of) morph ball during play, with
 // no pause or map screen up.
@@ -950,6 +1065,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
     try {
     while (!x160_24_finished) {
       const uint64_t loopStartNs = SDL_GetTicksNS();
+      aurora::phase::reset_totals(aurora::phase::Main);
       bool presented = false;
       PortWatchdog::Heartbeat(s_frameLog + 1);
       if ((s_frameLog++ % 60) == 0 && (frameLogAll || s_frameLog == 1)) {
@@ -1176,8 +1292,10 @@ int CMain::RsMain(int argc, const char* const* argv) {
           idleMicros = idleTime * 1000000;
         else
           idleMicros = 0;
+        aurora::phase::set(aurora::phase::Main, "resource loading (AsyncIdle)");
         AsyncIdle(idleMicros);
 
+        aurora::phase::set(aurora::phase::Main, "EndScene");
         gpRender->EndScene();
         aurora::phase::set(aurora::phase::Main, "after EndScene");
         presented = true;
@@ -1263,6 +1381,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
         nextFrameDeadline = SDL_GetTicksNS();
       }
       PortDebug::RecordFrame(workEndNs - loopStartNs, sTicksAdvanced, presented);
+      PortFrameReport::EndFrame(loopStartNs, workEndNs);
       PortMemoryLog::Tick(SDL_GetTicksNS());
       {
         // The whole iteration, pacing included: what a player sees as a frame.
@@ -1300,11 +1419,21 @@ int CMain::RsMain(int argc, const char* const* argv) {
           if (sLastStallLogNs != 0 && workEndNs - sLastStallLogNs < 2000000000ull) {
             ++sStallsUnlogged;
           } else {
+            char phases[512];
+            PortFrameReport::FramePhases(phases, sizeof(phases));
+            char gpu[512];
+            PortFrameReport::GpuPasses(gpu, sizeof(gpu));
             PortLog::Write("MP stall: frame %u took %llu ms (events %llu, input %llu, tick %llu, draw %llu)%s, "
-                           "%u more since the last line\n",
+                           "%u more since the last line; in: %s%s%s\n",
                            s_frameLog, ms(workEndNs - loopStartNs), ms(eventsDoneNs - loopStartNs),
                            ms(inputDoneNs - eventsDoneNs), ms(tickDoneNs - inputDoneNs),
-                           ms(workEndNs - tickDoneNs), presented ? "" : ", not presented", sStallsUnlogged);
+                           ms(workEndNs - tickDoneNs), presented ? "" : ", not presented", sStallsUnlogged, phases,
+                           gpu[0] != '\0' ? "; gpu: " : "", gpu);
+            if (!PortFrameReport::sGpuTimesOn && GXPortGpuTimesSupported()) {
+              PortFrameReport::sGpuTimesOn = true;
+              PortFrameReport::sLastSlowNs = workEndNs;
+              GXPortSetGpuTimes(GX_TRUE);
+            }
             sLastStallLogNs = workEndNs;
             sStallsUnlogged = 0;
           }

@@ -5,6 +5,12 @@
 
 #include "rstl/string.hpp"
 
+#ifdef TARGET_PC
+#include <aurora/phase.hpp>
+#include <set>
+#include <string>
+#endif
+
 static const char* tmp = "Msg[%3d] %s";
 static const char* tmp2 = "-------------------------";
 static const char* tmp3 = "Draw[%3d] %s";
@@ -191,6 +197,14 @@ bool CIOWinManager::DistributeOneMessage(const CArchitectureMessage& msg,
   return false;
 }
 
+#ifdef TARGET_PC
+// A stable copy of a window's name, for aurora::phase (which keeps the pointer).
+static const char* PortInternName(const char* name) {
+  static std::set< std::string > sNames;
+  return sNames.insert(std::string("draw ") + (name != nullptr ? name : "?")).first->c_str();
+}
+#endif
+
 void CIOWinManager::Draw() const {
   for (IOWinPQNode* node = x0_drawRoot; node; node = node->GetNext()) {
     node->GetIOWin()->PreDraw();
@@ -198,6 +212,10 @@ void CIOWinManager::Draw() const {
       break;
   }
   for (IOWinPQNode* node = x0_drawRoot; node; node = node->GetNext()) {
+#ifdef TARGET_PC
+    // Port: which window's draw a slow frame spent its time in (main.cpp's stall log).
+    aurora::phase::set(aurora::phase::Main, PortInternName(node->GetIOWin()->GetName().data()));
+#endif
     node->GetIOWin()->Draw();
     if (!node->GetIOWin()->GetIsContinueDraw())
       break;

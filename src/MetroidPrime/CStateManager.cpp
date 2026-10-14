@@ -10,6 +10,7 @@
 #include "port_foliage.h"
 #include "port_dynamic_lights.h"
 #include "port_rt_shadows.h"
+#include "port_enemy_ai.h"
 #include "port_fx.h"
 #include "port_gpu_geo.h"
 #include "port_env.h"
@@ -759,6 +760,7 @@ CStateManager::~CStateManager() {
   PortFoliage::Reset();
   PortGpuGeo::Reset();
   PortFx::Reset();
+  PortEnemyAi::Reset();
   CMemory::OffsetFakeStatics(
       -(x808_objectLists.size() * sizeof(CObjectList) + 0x11c)); // TODO what is this 11c?
   x88c_rumbleManager->HardStopAll();

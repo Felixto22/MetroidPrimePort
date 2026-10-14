@@ -236,6 +236,9 @@ enum EPortOption {
   kPO_UnderwaterEffects,
   kPO_SnowFootprints,
   kPO_AmbientParticles,
+  kPO_SmarterEnemies,
+  kPO_EnemySpeed,
+  kPO_CannonMelee,
 };
 #define PORT_OPTION(opt) static_cast< EGameOption >(opt)
 
@@ -311,6 +314,10 @@ static const SGameOption skPortDisplayOptions[] = {
     {PORT_OPTION(kPO_UnderwaterEffects), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_SnowFootprints), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_AmbientParticles), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_SmarterEnemies), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_EnemySpeed), -1, static_cast< float >(PortDebug::kEnemySpeedMin),
+     static_cast< float >(PortDebug::kEnemySpeedMax), 10.f, kOT_Float},
+    {PORT_OPTION(kPO_CannonMelee), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_CinematicLook), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_GlobalIllumination), -1, static_cast< float >(PortDebug::kGlobalIlluminationMin),
      static_cast< float >(PortDebug::kGlobalIlluminationMax), 10.f, kOT_Float},
@@ -349,7 +356,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {41, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {44, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -429,6 +436,12 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     return L"Snow Footprints";
   case kPO_AmbientParticles:
     return L"Ambient Particles";
+  case kPO_SmarterEnemies:
+    return L"Smarter Enemies";
+  case kPO_EnemySpeed:
+    return L"Enemy Speed";
+  case kPO_CannonMelee:
+    return L"Cannon Melee";
   case kPO_CinematicLook:
     return L"Cinematic Look";
   case kPO_GlobalIllumination:
@@ -536,6 +549,12 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::SnowFootprints() ? 1 : 0;
   case kPO_AmbientParticles:
     return PortDebug::AmbientParticles() ? 1 : 0;
+  case kPO_SmarterEnemies:
+    return PortDebug::SmarterEnemies() ? 1 : 0;
+  case kPO_EnemySpeed:
+    return PortDebug::EnemySpeed();
+  case kPO_CannonMelee:
+    return PortDebug::CannonMelee() ? 1 : 0;
   case kPO_CinematicLook:
     return PortDebug::CinematicLook() ? 1 : 0;
   case kPO_GlobalIllumination:
@@ -610,6 +629,9 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_UnderwaterEffects:
   case kPO_SnowFootprints:
   case kPO_AmbientParticles:
+  case kPO_SmarterEnemies:
+  case kPO_EnemySpeed:
+  case kPO_CannonMelee:
   case kPO_CinematicLook:
   case kPO_GlobalIllumination:
   case kPO_AntiAliasing:
@@ -739,6 +761,15 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_AmbientParticles:
     PortDebug::SetAmbientParticles(value > 0);
+    break;
+  case kPO_SmarterEnemies:
+    PortDebug::SetSmarterEnemies(value > 0);
+    break;
+  case kPO_EnemySpeed:
+    PortDebug::SetEnemySpeed(value);
+    break;
+  case kPO_CannonMelee:
+    PortDebug::SetCannonMelee(value > 0);
     break;
   case kPO_CinematicLook:
     PortDebug::SetCinematicLook(value > 0);

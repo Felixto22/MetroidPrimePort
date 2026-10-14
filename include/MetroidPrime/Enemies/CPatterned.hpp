@@ -288,6 +288,11 @@ public:
   float GetPlayerLeashTime() const { return x3d0_playerLeashTime; }
   EFlavorType GetFlavorType() const { return x3fc_flavor; }
   const bool IsAlive() const { return x400_25_alive; }
+#ifdef TARGET_PC
+  // port_enemy_ai.h: whether it flies, and whether its state machine runs.
+  bool PortIsFlyer() const { return x400_31_isFlyer; }
+  bool PortStateMachineEnabled() const { return x403_25_enableStateMachine; }
+#endif
   void SetWasHit(const bool v) { x400_24_hitByPlayerProjectile = v; }
   bool GetWasHit() const { return x400_24_hitByPlayerProjectile; }
   void SetPendingDeath(const bool v) { x401_30_pendingDeath = v; }

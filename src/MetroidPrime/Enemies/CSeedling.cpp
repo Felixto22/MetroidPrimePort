@@ -5,6 +5,10 @@
 #include "MetroidPrime/CWorld.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 
+#ifdef TARGET_PC
+#include "port_enemy_ai.h"
+#endif
+
 const char* const CSeedling::skSpikeLocators[12] = {
     "A_spike1_LCTR_SDK", "A_spike2_LCTR_SDK", "A_spike3_LCTR_SDK", "A_spike4_LCTR_SDK",
     "A_spike5_LCTR_SDK", "A_spike6_LCTR_SDK", "B_spike1_LCTR_SDK", "B_spike2_LCTR_SDK",
@@ -75,6 +79,12 @@ void CSeedling::Think(float dt, CStateManager& mgr) {
   if (!GetActive()) {
     return;
   }
+#ifdef TARGET_PC
+  // Port: latched onto Samus' visor (port_enemy_ai.h), it holds on instead.
+  if (PortEnemyAi::SeedlingThink(*this, dt, mgr)) {
+    return;
+  }
+#endif
 
   ++x5d4_thinkCounter;
   x5d6_26_playerObstructed = false;
@@ -185,6 +195,9 @@ void CSeedling::ProjectileAttack(CStateManager& mgr, EStateMsg msg, float arg) {
   case kStateMsg_Deactivate:
     x32c_animState = kAS_NotReady;
     x71c_attackCoolOff = x308_attackTimeVariation * mgr.Random()->Float() + x304_averageAttackTime;
+#ifdef TARGET_PC
+    x71c_attackCoolOff *= PortEnemyAi::SeedlingCoolOffScale();
+#endif
     break;
   }
 }
@@ -248,6 +261,10 @@ rstl::optional_object< CAABox > CSeedling::GetTouchBounds() const {
 
 void CSeedling::Touch(CActor& actor, CStateManager& mgr) {
   if (IsAlive() && TCastToPtr< CPlayer >(actor)) {
+#ifdef TARGET_PC
+    // Port: it jumps onto Samus instead of bursting (port_enemy_ai.h).
+    if (!PortEnemyAi::SeedlingTouch(*this, mgr))
+#endif
     MassiveDeath(mgr);
   }
 

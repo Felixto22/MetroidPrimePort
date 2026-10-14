@@ -770,6 +770,98 @@ void NoteFluid(int fluidType, const CVector3f& boxMin, const CVector3f& boxMax, 
   }
 }
 
+void ThrowPack(const CVector3f& from, const CVector3f& to, float seconds) {
+  if (!PortDebug::ModernParticles()) {
+    return;
+  }
+  seconds = std::max(seconds, 0.2f);
+  constexpr float g = 9.8f;
+  const CVector3f v = (to - from) * (1.f / seconds) + CVector3f(0.f, 0.f, 0.5f * g * seconds);
+  // The pack: a bright green core and a softer halo, the same arc.
+  Emit(from, v, seconds, 0.22f, 0xff60ff80, fxp::Glow, 0.f, g);
+  Emit(from, v, seconds, 0.6f, 0x9040ff70, fxp::Glow, 0.f, g);
+  // A trail: the same arc again, each a little later and shorter-lived.
+  for (int i = 1; i <= 8; ++i) {
+    Particle p{};
+    const float delay = 0.035f * float(i);
+    p.pos[0] = from.GetX(), p.pos[1] = from.GetY(), p.pos[2] = from.GetZ();
+    p.t0 = sNow + delay;
+    p.vel[0] = v.GetX(), p.vel[1] = v.GetY(), p.vel[2] = v.GetZ();
+    p.life = std::max(0.05f, seconds - delay);
+    p.size = 0.14f * (1.f - 0.08f * float(i));
+    p.drag = 0.f;
+    p.gravity = g;
+    p.floorZ = kNoFloor;
+    p.color = 0xc070ff90;
+    p.flags = fxp::Glow | fxp::Shrink;
+    p.seed = sRng.Unit();
+    if (sParticles.size() < kMaxParticles) {
+      sParticles.push_back(p);
+    }
+  }
+  // Where it lands: a ring and sparkles, once it is there.
+  for (int i = 0; i < 14; ++i) {
+    Particle p{};
+    p.pos[0] = to.GetX(), p.pos[1] = to.GetY(), p.pos[2] = to.GetZ();
+    p.t0 = sNow + seconds;
+    const CVector3f d = sRng.Dir() * sRng.Range(1.f, 2.5f) + CVector3f(0.f, 0.f, 1.f);
+    p.vel[0] = d.GetX(), p.vel[1] = d.GetY(), p.vel[2] = d.GetZ();
+    p.life = sRng.Range(0.5f, 0.9f);
+    p.size = 0.06f;
+    p.drag = 2.f;
+    p.gravity = -0.5f;
+    p.floorZ = kNoFloor;
+    p.color = 0xff80ffa0;
+    p.flags = fxp::Glow | fxp::Shrink;
+    p.seed = sRng.Unit();
+    if (sParticles.size() < kMaxParticles) {
+      sParticles.push_back(p);
+    }
+  }
+  Particle ring{};
+  ring.pos[0] = to.GetX(), ring.pos[1] = to.GetY(), ring.pos[2] = to.GetZ();
+  ring.t0 = sNow + seconds;
+  ring.life = 0.45f;
+  ring.size = 2.2f;
+  ring.floorZ = kNoFloor;
+  ring.color = 0xc060ff80;
+  ring.flags = fxp::Ring;
+  if (sParticles.size() < kMaxParticles) {
+    sParticles.push_back(ring);
+  }
+}
+
+void MeleeHit(const CVector3f& at, const CVector3f& dir, int beam) {
+  if (!PortDebug::ModernParticles()) {
+    return;
+  }
+  ShotKind kind = kPower;
+  switch (beam) {
+  case CPlayerState::kBI_Ice:
+    kind = kIce;
+    break;
+  case CPlayerState::kBI_Wave:
+    kind = kWave;
+    break;
+  case CPlayerState::kBI_Plasma:
+    kind = kPlasma;
+    break;
+  case CPlayerState::kBI_Phazon:
+    kind = kPhazon;
+    break;
+  default:
+    break;
+  }
+  const Palette c = ColorsOf(kind);
+  const CVector3f back = -Norm(dir);
+  Emit(at, CVector3f(0.f, 0.f, 0.f), 0.1f, 1.6f, 0xffffffff, fxp::Glow);
+  Emit(at, CVector3f(0.f, 0.f, 0.f), 0.3f, 2.2f, (c.core & 0x00ffffff) | 0xd0000000, fxp::Ring);
+  for (int i = 0; i < 26; ++i) {
+    const CVector3f v = Norm(back * 0.5f + sRng.Dir()) * sRng.Range(5.f, 11.f);
+    Emit(at, v, sRng.Range(0.3f, 0.7f), 0.04f, c.spark, fxp::Spark, 1.5f, 9.8f, kNoFloor, 0.04f);
+  }
+}
+
 void NoteSky(bool drawn) { sSkyDrawn = drawn; }
 
 bool ReplacesEnvFx(int envFxType) {

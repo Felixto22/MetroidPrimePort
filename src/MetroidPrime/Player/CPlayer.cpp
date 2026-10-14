@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "port_enemy_ai.h"
+#endif
 #include "MetroidPrime/Player/CPlayer.hpp"
 
 #include "port_console.h"
@@ -766,6 +769,10 @@ void CPlayer::UpdateGunTransform(const CVector3f& gunPos, CStateManager& mgr) {
     break;
   }
 
+#ifdef TARGET_PC
+  // The cannon strike's turn (port_enemy_ai.h).
+  gunXf = gunXf * PortEnemyAi::MeleeGunTurn();
+#endif
   x490_gun->SetTransform(gunXf);
   CTransform4f out = gunXf;
   UpdateAimTargetPrediction(out, mgr);
@@ -798,6 +805,8 @@ void CPlayer::UpdateArmAndGunTransforms(float dt, CStateManager& mgr) {
     if (!x490_gun->GetGrappleArm().IsArmMoving()) {
       grappleOffset += userGunOffset;
     }
+    // The cannon strike's thrust (port_enemy_ai.h).
+    gunOffset += PortEnemyAi::MeleeGunOffset();
 #endif
     gunOffset[kDZ] += GetEyeHeight();
     grappleOffset[kDZ] += GetEyeHeight();
@@ -2027,6 +2036,10 @@ void CPlayer::StartLandingControlFreeze() {
 }
 
 void CPlayer::ProcessInput(const CFinalInput& input, CStateManager& mgr) {
+#ifdef TARGET_PC
+  // The cannon strike on LB (port_enemy_ai.h).
+  PortEnemyAi::PlayerInput(*this, input, mgr);
+#endif
   if (input.ControllerNumber() != 0) {
     return;
   }

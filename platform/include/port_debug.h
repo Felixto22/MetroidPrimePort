@@ -441,6 +441,20 @@ void SetSnowFootprints(bool enabled);
 // Ambient particles: dust motes in the air, embers and ash rising where there is lava.
 bool AmbientParticles();
 void SetAmbientParticles(bool enabled);
+// Smarter enemies: they dodge shots and flee when nearly dead; pirates defend and heal each other;
+// Seedlings latch onto Samus' visor until she morphs (port_enemy_ai.h).
+bool SmarterEnemies();
+void SetSmarterEnemies(bool enabled);
+// Enemy speed: how fast enemies move, animate and attack (bosses excluded), as a percentage
+// (100: the original pace, up to 200). 100 in the original experience.
+const int kEnemySpeedDefault = 150;
+const int kEnemySpeedMin = 100;
+const int kEnemySpeedMax = 200;
+int EnemySpeed();
+void SetEnemySpeed(int percent);
+// Cannon melee: LB (V on the keyboard) strikes with the arm cannon as hard as a charged shot.
+bool CannonMelee();
+void SetCannonMelee(bool enabled);
 // Global illumination: screen-space bounce light traced by a compute shader (aurora::gfx::ssgi),
 // as a percentage (0: off, up to 200). Off in the original experience.
 const int kGlobalIlluminationDefault = 100;
