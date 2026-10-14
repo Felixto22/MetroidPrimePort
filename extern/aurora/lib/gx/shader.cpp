@@ -588,35 +588,6 @@ AlphaCompareExpr alpha_compare(GXCompare comp, u8 ref) {
 }
 
 // When the alpha compare drops a pixel, in terms of alphaCompare (the alpha as 0-255).
-AlphaCompareExpr alpha_compare_discard(const ShaderConfig& config);
-
-bool shadow_cutout(const ShaderConfig& sc, u32& texMap, u32& texCoord) noexcept {
-  if (!sc.alphaCompare || sc.lineMode != 0) {
-    return false;
-  }
-  for (u32 i = 0; i < sc.tevStageCount; ++i) {
-    const auto& stage = sc.tevStages[i];
-    if (stage.texMapId == GX_TEXMAP_NULL || stage.texCoordId == GX_TEXCOORD_NULL ||
-        static_cast<u32>(stage.texMapId) >= MaxTextures || static_cast<u32>(stage.texCoordId) >= MaxTexCoord) {
-      continue;
-    }
-    const auto& tcg = sc.tcgs[stage.texCoordId];
-    if (tcg.src < GX_TG_TEX0 || tcg.src > GX_TG_TEX7 || (tcg.type != GX_TG_MTX2x4 && tcg.type != GX_TG_MTX3x4) ||
-        tcg.postMtx != GX_PTIDENTITY || tcg.normalize ||
-        sc.attrs[GX_VA_TEX0 + (tcg.src - GX_TG_TEX0)].attrType == GX_NONE ||
-        sc.attrs[GX_VA_TEX0MTXIDX + stage.texCoordId].attrType != GX_NONE) {
-      return false;
-    }
-    if (alpha_compare_discard(sc).constant == 1) {
-      return false;
-    }
-    texMap = static_cast<u32>(stage.texMapId);
-    texCoord = static_cast<u32>(stage.texCoordId);
-    return true;
-  }
-  return false;
-}
-
 AlphaCompareExpr alpha_compare_discard(const ShaderConfig& config) {
   const auto comp0 = alpha_compare(config.alphaCompare.comp0, config.alphaCompare.ref0);
   const auto comp1 = alpha_compare(config.alphaCompare.comp1, config.alphaCompare.ref1);
@@ -2932,6 +2903,34 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
 
 absl::flat_hash_set<gfx::ShaderRef> s_seenShaders;
 } // namespace
+
+bool shadow_cutout(const ShaderConfig& sc, u32& texMap, u32& texCoord) noexcept {
+  if (!sc.alphaCompare || sc.lineMode != 0) {
+    return false;
+  }
+  for (u32 i = 0; i < sc.tevStageCount; ++i) {
+    const auto& stage = sc.tevStages[i];
+    if (stage.texMapId == GX_TEXMAP_NULL || stage.texCoordId == GX_TEXCOORD_NULL ||
+        static_cast<u32>(stage.texMapId) >= MaxTextures || static_cast<u32>(stage.texCoordId) >= MaxTexCoord) {
+      continue;
+    }
+    const auto& tcg = sc.tcgs[stage.texCoordId];
+    if (tcg.src < GX_TG_TEX0 || tcg.src > GX_TG_TEX7 || (tcg.type != GX_TG_MTX2x4 && tcg.type != GX_TG_MTX3x4) ||
+        tcg.postMtx != GX_PTIDENTITY || tcg.normalize ||
+        sc.attrs[GX_VA_TEX0 + (tcg.src - GX_TG_TEX0)].attrType == GX_NONE ||
+        sc.attrs[GX_VA_TEX0MTXIDX + stage.texCoordId].attrType != GX_NONE) {
+      return false;
+    }
+    if (alpha_compare_discard(sc).constant == 1) {
+      return false;
+    }
+    texMap = static_cast<u32>(stage.texMapId);
+    texCoord = static_cast<u32>(stage.texCoordId);
+    return true;
+  }
+  return false;
+}
+
 
 std::string_view inventory_visor_expr(std::string_view name) noexcept {
   return name == "alpha" ? InvAlphaExpr : name == "weight" ? InvWeightExpr : std::string_view{};
