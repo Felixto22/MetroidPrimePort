@@ -7,6 +7,7 @@
 #include "../../gfx/shadow.hpp"
 #include "../../gfx/volfog.hpp"
 #include "../../gfx/ssao.hpp"
+#include "../../gfx/ssgi.hpp"
 #include "../../gfx/scenecap.hpp"
 #include "../../gfx/thermal.hpp"
 #include "../../gfx/xray.hpp"
@@ -208,6 +209,23 @@ GXBool GXPortSSAO(const GXPortSsaoParams* ssao) {
   u32 words[sizeof(GXPortSsaoParams) / sizeof(u32)];
   std::memcpy(words, ssao, sizeof(words));
   GX_WRITE_AURORA(GX_AURORA_PORT_SSAO);
+  for (const u32 word : words) {
+    GX_WRITE_U32(word);
+  }
+  return true;
+}
+
+GXBool GXPortSSGI(const GXPortSsgiParams* ssgi) {
+  if (ssgi == nullptr || sDrawIdMode || ssgi->gi[0] <= 0.f || ssgi->gi[1] <= 0.f) {
+    return true;
+  }
+  if (!aurora::gfx::ssgi::ensure_task()) {
+    return false;
+  }
+  static_assert(sizeof(GXPortSsgiParams) == sizeof(aurora::gfx::ssgi::Params));
+  u32 words[sizeof(GXPortSsgiParams) / sizeof(u32)];
+  std::memcpy(words, ssgi, sizeof(words));
+  GX_WRITE_AURORA(GX_AURORA_PORT_SSGI);
   for (const u32 word : words) {
     GX_WRITE_U32(word);
   }

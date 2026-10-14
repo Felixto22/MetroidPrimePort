@@ -295,6 +295,16 @@ typedef struct {
   u32 misc[4];    // sample count (4..32), frame counter, 0, 0
 } GXPortSsaoParams;
 GXBool GXPortSSAO(const GXPortSsaoParams* params);
+// Port extension: screen-space global illumination over the opaque world as drawn so far
+// (aurora::gfx::ssgi): light bouncing off what's on screen onto what's beside it, traced by a
+// compute pass.
+typedef struct {
+  f32 frustum[4]; // left, right, bottom, top at a view depth of 1
+  f32 depth[4];   // near, far, and the GX z range the world draws in
+  f32 gi[4];      // ray length (world units), strength (0..2), thickness (world units), fade distance
+  u32 misc[4];    // rays per texel (2..16), steps per ray (4..24), 0, 0
+} GXPortSsgiParams;
+GXBool GXPortSSGI(const GXPortSsgiParams* params);
 // Port extension: a copy of the opaque frame as drawn so far, with the world's linear depth, that
 // glass draws reflect (aurora::gfx::scenecap). depth: near, far, and the GX z range the world draws in.
 GXBool GXPortSceneCapture(const f32 depth[4]);

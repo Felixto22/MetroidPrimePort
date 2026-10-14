@@ -3060,6 +3060,40 @@ static void PortDrawAmbientOcclusion(const CStateManager& mgr) {
   GXPortSSAO(&p);
 }
 
+// Screen-space global illumination (port_debug.h GlobalIllumination): the bounce light, traced by
+// a compute shader over the world as drawn so far (aurora::gfx::ssgi).
+static void PortDrawGlobalIllumination(const CStateManager& mgr) {
+  const int strength = PortDebug::GlobalIllumination();
+  const CPlayerState::EPlayerVisor visor = mgr.GetPlayerState()->GetActiveVisor(mgr);
+  if (strength <= 0 || visor == CPlayerState::kPV_Thermal || visor == CPlayerState::kPV_XRay) {
+    return;
+  }
+  static const float sLength = port::EnvFloat("MP_SSGI_LENGTH", 3.f);
+  static const float sThickness = port::EnvFloat("MP_SSGI_THICKNESS", 0.6f);
+  static const float sFade = port::EnvFloat("MP_SSGI_DISTANCE", 50.f);
+  static const float sRays = port::EnvFloat("MP_SSGI_RAYS", 8.f);
+  static const float sSteps = port::EnvFloat("MP_SSGI_STEPS", 12.f);
+  const CGraphics::CProjectionState& proj = CGraphics::GetProjectionState();
+  const float zNear = proj.GetNear();
+  GXPortSsgiParams p;
+  memset(&p, 0, sizeof(p));
+  p.frustum[0] = proj.GetLeft() / zNear;
+  p.frustum[1] = proj.GetRight() / zNear;
+  p.frustum[2] = proj.GetBottom() / zNear;
+  p.frustum[3] = proj.GetTop() / zNear;
+  p.depth[0] = zNear;
+  p.depth[1] = proj.GetFar();
+  p.depth[2] = 0.125f;
+  p.depth[3] = 1.f;
+  p.gi[0] = sLength;
+  p.gi[1] = static_cast< float >(strength) / 100.f;
+  p.gi[2] = sThickness;
+  p.gi[3] = sFade;
+  p.misc[0] = static_cast< u32 >(sRays);
+  p.misc[1] = static_cast< u32 >(sSteps);
+  GXPortSSGI(&p);
+}
+
 static void PortDrawVolumetricFog(const CStateManager& mgr, const CTransform4f& view,
                                   const CFrustumPlanes& frustum) {
   const CPlayerState::EPlayerVisor visor = mgr.GetPlayerState()->GetActiveVisor(mgr);
@@ -3502,6 +3536,7 @@ void CStateManager::DrawWorld() const {
   // Remastered fogs the opaque world and sky full-screen, then the actors and transparents as
   // they draw (up to GXPortVolumetricFogEnd).
   PortDrawAmbientOcclusion(*this);
+  PortDrawGlobalIllumination(*this);
   // The opaque frame for glass to reflect (GXPortSetGlass) and soft particles to fade against.
   {
     const bool portSoft = PortDebug::SoftParticles();

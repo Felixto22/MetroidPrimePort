@@ -6,6 +6,7 @@
 #include "gfx/bloom.hpp"
 #include "gfx/volfog.hpp"
 #include "gfx/ssao.hpp"
+#include "gfx/ssgi.hpp"
 #include "gfx/scenecap.hpp"
 #include "gfx/thermal.hpp"
 #include "gfx/xray.hpp"
@@ -304,6 +305,12 @@ bool ensure_task() { return false; }
 bool record(const Params& params) { return false; }
 void shutdown() {}
 } // namespace aurora::gfx::volfog
+
+namespace aurora::gfx::ssgi {
+bool ensure_task() { return false; }
+bool record(const Params& params) { return false; }
+void shutdown() {}
+} // namespace aurora::gfx::ssgi
 
 namespace aurora::gfx::ssao {
 bool ensure_task() { return false; }

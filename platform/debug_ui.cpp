@@ -268,6 +268,7 @@ bool sRainDetails = true;
 bool sBurnableFoliage = true;
 bool sClusteredLighting = true;
 bool sCinematicLook = true;
+int sGlobalIllumination = PortDebug::kGlobalIlluminationDefault;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
@@ -703,6 +704,9 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sClusteredLighting = ParseBool(value);
   } else if (key == "cinematic_look") {
     sCinematicLook = ParseBool(value);
+  } else if (key == "global_illumination") {
+    sGlobalIllumination = std::clamp(std::atoi(value.c_str()), PortDebug::kGlobalIlluminationMin,
+                                     PortDebug::kGlobalIlluminationMax);
   } else if (key == "glass_reflections") {
     sGlassReflections = std::clamp(std::atoi(value.c_str()), PortDebug::kGlassReflectionsMin,
                                    PortDebug::kGlassReflectionsMax);
@@ -904,6 +908,7 @@ std::string SettingsText() {
   file << "burnable_foliage=" << (sBurnableFoliage ? 1 : 0) << '\n';
   file << "clustered_lighting=" << (sClusteredLighting ? 1 : 0) << '\n';
   file << "cinematic_look=" << (sCinematicLook ? 1 : 0) << '\n';
+  file << "global_illumination=" << sGlobalIllumination << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
@@ -1940,6 +1945,17 @@ bool CinematicLook() {
 void SetCinematicLook(bool enabled) {
   EnsureInitialized();
   sCinematicLook = enabled;
+  MarkDirty();
+}
+
+int GlobalIllumination() {
+  EnsureInitialized();
+  return sOriginalExperience ? 0 : sGlobalIllumination;
+}
+
+void SetGlobalIllumination(int percent) {
+  EnsureInitialized();
+  sGlobalIllumination = std::clamp(percent, kGlobalIlluminationMin, kGlobalIlluminationMax);
   MarkDirty();
 }
 
@@ -6792,6 +6808,13 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Bloom on the brightest light (shots, the sky, glows) and a filmic colour\n"
                         "grade: more contrast and colour, cool shadows, warm highlights.");
+  int globalIllumination = sGlobalIllumination;
+  if (ImGui::SliderInt("Global illumination", &globalIllumination, kGlobalIlluminationMin,
+                       kGlobalIlluminationMax, globalIllumination == 0 ? "Off" : "%d%%")) {
+    SetGlobalIllumination(globalIllumination);
+  }
+  ImGui::SetItemTooltip("Light bouncing between surfaces (screen-space, traced by a compute shader):\n"
+                        "lit walls tint the floor beside them, glows colour their surroundings. 0 turns it off.");
   {
     // Issue #72: PrimeHack-style arm cannon placement.
     float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};

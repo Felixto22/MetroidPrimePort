@@ -360,6 +360,8 @@ extern "C" {
 #define GX_AURORA_PORT_WATERFALL 0x0079
 // Port extension: the specular draws' heat glow (GXPortSetGunHeat). Payload: 5 f32.
 #define GX_AURORA_PORT_GUN_HEAT 0x007A
+// Port extension: screen-space global illumination over the world drawn so far (GXPortSSGI). Payload: 16 u32 words.
+#define GX_AURORA_PORT_SSGI 0x007B
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 
