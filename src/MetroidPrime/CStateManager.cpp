@@ -3415,11 +3415,16 @@ void CStateManager::DrawWorld() const {
   // Remastered fogs the opaque world and sky full-screen, then the actors and transparents as
   // they draw (up to GXPortVolumetricFogEnd).
   PortDrawAmbientOcclusion(*this);
-  // The opaque frame for glass to reflect (GXPortSetGlass).
-  if (PortDebug::GlassReflections() > 0) {
-    const CGraphics::CProjectionState& portProj = CGraphics::GetProjectionState();
-    const float portDepth[4] = {portProj.GetNear(), portProj.GetFar(), 0.125f, 1.f};
-    GXPortSceneCapture(portDepth);
+  // The opaque frame for glass to reflect (GXPortSetGlass) and soft particles to fade against.
+  {
+    const bool portSoft = PortDebug::SoftParticles();
+    bool portCaptured = false;
+    if (PortDebug::GlassReflections() > 0 || portSoft) {
+      const CGraphics::CProjectionState& portProj = CGraphics::GetProjectionState();
+      const float portDepth[4] = {portProj.GetNear(), portProj.GetFar(), 0.125f, 1.f};
+      portCaptured = GXPortSceneCapture(portDepth) != GX_FALSE;
+    }
+    GXPortSetSoftParticles(portSoft && portCaptured ? GX_TRUE : GX_FALSE);
   }
   PortDrawVolumetricFog(*this, backupViewMatrix, frustum);
   // Remastered's X-ray distortion of the opaque world (pass A of its visor post).
@@ -3729,6 +3734,10 @@ void CStateManager::DrawWorld() const {
     xf34_thermalFlag = kTD_Bypass;
   }
 
+#ifdef TARGET_PC
+  // The HUD, visor and the next pass's draws before its capture don't fade against this frame.
+  GXPortSetSoftParticles(GX_FALSE);
+#endif
   DrawDebugStuff();
   RenderCamerasAndAreaLights();
   ResetViewAfterDraw(backupViewport, backupViewMatrix);

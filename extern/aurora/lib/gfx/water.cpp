@@ -35,7 +35,7 @@ namespace aurora::gfx::water {
 namespace {
 Module Log("aurora::gfx::water");
 
-constexpr uint32_t UniformSize = 640;
+constexpr uint32_t UniformSize = 912;
 constexpr auto EvictAfter = std::chrono::seconds(10);
 
 struct Uniform {
@@ -55,6 +55,8 @@ struct Uniform {
   float misc[4];  // reversed Z, has depth, has volume, has cube
   float cube[4];  // scale, mips
   float pad[4];
+  float ripples[16][4]; // DrawDesc::ripples
+  float rippleInfo[4];  // count, tile
 };
 static_assert(sizeof(Uniform) == UniformSize);
 
@@ -141,6 +143,8 @@ struct U {
   misc: vec4f,
   cubeP: vec4f,
   pad: vec4f,
+  ripples: array<vec4f, 16>,
+  rippleInfo: vec4f,
 }
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var normalMap: texture_2d<f32>;
@@ -372,6 +376,23 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
   let n = mix(n1, n2, abs(2.0 * pa - 1.0)) * 1.9921875 - 1.0;
   let nzc = sqrt(1.0 - min(dot(n, n), 1.0));
   var Nw = in.t * n.x + cross(in.n, in.t) * n.y + in.n * nzc;
+  // Port extension (DrawDesc::ripples): rings spreading from shots and from what wades through,
+  // as slopes in the normal map's plane (world x, y for the retail surface).
+  let rcount = min(u32(u.rippleInfo.x), 16u);
+  if (rcount > 0u) {
+    let wp = in.uv.zw * u.rippleInfo.y;
+    var rg = vec2f(0.0);
+    for (var ri = 0u; ri < rcount; ri++) {
+      let r = u.ripples[ri];
+      let dv = wp - r.xy;
+      let d = length(dv);
+      let x = d - r.z * 1.8;
+      let env = exp(-x * x * 4.0) * r.w / (1.0 + d * 0.8);
+      let k = 18.0;
+      rg = rg + (dv / max(d, 1e-3)) * (cos(k * x) * env * 0.35);
+    }
+    Nw = Nw - in.t * rg.x - cross(in.n, in.t) * rg.y;
+  }
   var rainLight = vec3f(0.0);
   if (RAIN) {
     let cellId = floor(in.rain / u.R[1].w);
@@ -867,6 +888,10 @@ void draw(const DrawDesc& desc, const Vertex* verts, uint32_t vertexCount, const
   u.cube[1] = desc.cubeMips;
   u.pad[0] = desc.screenReflections ? 1.f : 0.f;
   u.pad[1] = desc.foam;
+  const uint32_t ripples = std::min(desc.rippleCount, DrawDesc::MaxRipples);
+  std::memcpy(u.ripples, desc.ripples, sizeof(float) * 4 * ripples);
+  u.rippleInfo[0] = float(ripples);
+  u.rippleInfo[1] = desc.rippleTile;
 
   Payload p{};
   p.flags = (desc.bottom ? 1u : 0u) | (rain ? 2u : 0u);

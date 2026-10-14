@@ -1339,6 +1339,12 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.perPixelLighting = on;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_SOFT_PARTICLES) {
+    const bool on = reader.read<u8>() != 0;
+    if (g_gxState.softParticles != on) {
+      g_gxState.softParticles = on;
+      g_gxState.dirty |= DirtyPipeline;
+    }
   } else if (subCmd == GX_AURORA_PORT_BUMP) {
     const u32 word = reader.read<u32>();
     float strength;

@@ -465,6 +465,8 @@ struct GXState {
   float bumpStrength = 0.f;
   // GX_AURORA_PORT_PER_PIXEL_LIGHTING: lit TEV draws light per pixel (ShaderConfig::perPixel).
   bool perPixelLighting = false;
+  // GX_AURORA_PORT_SOFT_PARTICLES: blended particle draws fade against the scene copy (ShaderConfig::soft).
+  bool softParticles = false;
   bool shadowCaster = false;
   bool shadowCasterOnly = false; // they cast but aren't drawn (GXPortSetShadowCasterOnly)
   bool shadowActive = false;
@@ -628,7 +630,11 @@ struct ShaderConfig {
   u8 bumpSlot = 0;
   // GX_AURORA_PORT_PER_PIXEL_LIGHTING: the colour channels are lit per pixel (shader.cpp's ppl).
   u8 perPixel : 1 = 0;
-  u8 pad2 : 7 = 0; // keeps the struct free of padding (memcmp and hash)
+  // GX_AURORA_PORT_SOFT_PARTICLES on a blended particle draw: how it fades near the scene behind it
+  // (scene copy in the froxel slot; ShaderInfo::usesSoft). 1: its alpha (src alpha blends),
+  // 2: colour and alpha (src one blends), 0: not soft.
+  u8 soft : 2 = 0;
+  u8 pad2 : 5 = 0; // keeps the struct free of padding (memcmp and hash)
   std::array<AttrConfig, MaxVtxAttr> attrs;
   std::array<TevSwap, MaxTevSwap> tevSwapTable;
   std::array<TevStage, MaxTevStages> tevStages;
@@ -674,6 +680,7 @@ struct ShaderInfo {
   bool usesHudDyin : 1 = false; // ShaderConfig::hudSample >= 2: the hud_dyin uniform
   bool usesLightmap : 1 = false; // ShaderConfig::pbrLightmapAttr is set
   bool usesVolFog : 1 = false;
+  bool usesSoft : 1 = false;      // ShaderConfig::soft: the scene copy
   bool usesGlass : 1 = false;     // ShaderConfig::glass: the glass uniform and the scene copy
   u8 bumpSlot = 0;                // ShaderConfig::bumpSlot: 1 + the normal map's texmap slot, 0 for none
   std::array<s8, MaxTextures> mapCoord{-1, -1, -1, -1, -1, -1, -1, -1}; // texcoord each texmap is read with

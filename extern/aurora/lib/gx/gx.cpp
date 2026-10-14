@@ -571,6 +571,19 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
                               config.shaderConfig.volFog == VolFogNone && !shadow_receives(config.shaderConfig) &&
                               g_gxState.blendMode == GX_BM_BLEND && g_gxState.blendFacSrc == GX_BL_SRCALPHA &&
                               g_gxState.blendFacDst == GX_BL_INVSRCALPHA;
+  // Soft particles: a blended particle draw in colour, with nothing else in the froxel slot.
+  config.shaderConfig.soft = 0;
+  if (g_gxState.softParticles && g_gxState.particleFog && !drawId && !depthOnly &&
+      config.shaderConfig.lineMode == 0 && config.shaderConfig.volFog == VolFogNone && !config.shaderConfig.glass &&
+      !shadow_receives(config.shaderConfig) && g_gxState.colorUpdate && g_gxState.blendMode == GX_BM_BLEND) {
+    const auto src = g_gxState.blendFacSrc;
+    const auto dst = g_gxState.blendFacDst;
+    if (src == GX_BL_SRCALPHA && (dst == GX_BL_INVSRCALPHA || dst == GX_BL_ONE)) {
+      config.shaderConfig.soft = 1;
+    } else if (src == GX_BL_ONE && (dst == GX_BL_INVSRCALPHA || dst == GX_BL_ONE)) {
+      config.shaderConfig.soft = 2;
+    }
+  }
   // Bump: an opaque retail draw that samples a texture, with a texmap slot no stage uses for the
   // normal map (build_bind_groups binds one when a sampled replacement has it).
   config.shaderConfig.bumpSlot = 0;
@@ -650,7 +663,7 @@ GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept {
   ZoneScoped;
 
   if (!info.sampledTextures.any() && !info.sampledIndTextures.any() && !info.usesVolFog && !info.shadowReceive &&
-      !info.usesLightmap && !info.usesGlass && info.bumpSlot == 0) {
+      !info.usesLightmap && !info.usesGlass && !info.usesSoft && info.bumpSlot == 0) {
     // Don't bother re-binding anything
     return {};
   }
@@ -671,7 +684,7 @@ GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept {
   textureEntries[kBrdfLutBinding].textureView = gfx::probe::brdf_lut_view().Get();
   textureEntries[kVolFogFroxelBinding].binding = kVolFogFroxelBinding;
   textureEntries[kVolFogFroxelBinding].textureView =
-      info.usesGlass ? gfx::scenecap::view().Get() : gfx::volfog::froxel_view().Get();
+      info.usesGlass || info.usesSoft ? gfx::scenecap::view().Get() : gfx::volfog::froxel_view().Get();
   textureEntries[kVolFogSamplerBinding].binding = kVolFogSamplerBinding;
   textureEntries[kVolFogSamplerBinding].sampler = gfx::volfog::sampler().Get();
   if (info.shadowReceive) {

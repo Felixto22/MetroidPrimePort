@@ -42,6 +42,14 @@ struct DrawDesc {
   bool screenReflections = false;
   // Port extension: foam where the surface meets what is under it, within this depth (m; 0: none).
   float foam = 0.f;
+  // Port extension: up to MaxRipples circular ripples (the game's CRippleManager's), each world
+  // x, y of its centre, seconds since it started and its strength (0..1, its fade included),
+  // read in the plane the mesh's second uv set spans times rippleTile (the retail surface's
+  // world metres; port_retail_water.cpp). Rings run out at ~1.8 m/s.
+  static constexpr uint32_t MaxRipples = 16;
+  uint32_t rippleCount = 0;
+  float rippleTile = 1.f;
+  float ripples[MaxRipples][4] = {};
   float viewToCube[3][4] = {};
   // The ambient volume (probe::create_volume id, 0 for none): rows of view position ->
   // texture coordinates, and what its mean is multiplied by (rgb; w for its largest channel).

@@ -300,6 +300,9 @@ CElementGen::CElementGen(TToken< CGenDescription > gen, EModelOrientationType or
 
   if (CIntElement* maxp = x28_loadedGenDesc->x1c_MAXP) {
     maxp->GetValue(x74_curFrame, x90_MAXP);
+#ifdef TARGET_PC
+    x90_MAXP = PortScaledMaxp(x90_MAXP, x270_MBSP, x26c_30_MBLR);
+#endif
   }
 
   int count = x90_MAXP;
@@ -369,6 +372,31 @@ CElementGen::~CElementGen() {
     delete *it;
   }
 }
+
+#ifdef TARGET_PC
+namespace {
+// Particle density (port setting): systems that emit a crowd (sparks, smoke, debris, drips)
+// emit more of it and may hold more alive. Systems of a few particles are left alone: they are
+// glows, beams and flashes, where a copy only stacks on the first and changes its brightness.
+const int kPortDensityMinMaxp = 10;
+// One quad batch is at most 0xffff vertices (GXBegin's count is 16-bit).
+const int kPortMaxBatchVerts = 0xfff0;
+
+float PortDensityScale() { return static_cast< float >(PortDebug::ParticleDensity()) * 0.01f; }
+
+bool PortDensityApplies(int retailMaxp) { return retailMaxp >= kPortDensityMinMaxp; }
+
+int PortScaledMaxp(int retailMaxp, int mbsp, bool mblr) {
+  const float scale = PortDensityScale();
+  if (scale <= 1.f || !PortDensityApplies(retailMaxp)) {
+    return retailMaxp;
+  }
+  const int vertsPerParticle = 4 * (mblr ? rstl::max_val(1, mbsp) : 1);
+  const int limit = rstl::max_val(retailMaxp, kPortMaxBatchVerts / vertsPerParticle);
+  return rstl::min_val(limit, static_cast< int >(static_cast< float >(retailMaxp) * scale + 0.5f));
+}
+} // namespace
+#endif
 
 void CElementGen::Initialize() {
   if (sStaticListInitialized)
@@ -619,12 +647,24 @@ bool CElementGen::InternalUpdate(double dt) {
       }
 
       grte = rstl::max_val(0.0f, grte * x98_generatorRate);
+#ifdef TARGET_PC
+      int retailMaxp = x90_MAXP;
+      if (x28_loadedGenDesc->x1c_MAXP) {
+        x28_loadedGenDesc->x1c_MAXP->GetValue(x74_curFrame, retailMaxp);
+      }
+      if (PortDensityApplies(retailMaxp)) {
+        grte *= rstl::max_val(1.f, PortDensityScale());
+      }
+#endif
       x8c_generatorRemainder += grte;
       int genCount = static_cast< int >(floor(x8c_generatorRemainder));
       x8c_generatorRemainder -= static_cast< float >(genCount);
 
       if (x28_loadedGenDesc->x1c_MAXP) {
         x28_loadedGenDesc->x1c_MAXP->GetValue(x74_curFrame, x90_MAXP);
+#ifdef TARGET_PC
+        x90_MAXP = PortScaledMaxp(x90_MAXP, x270_MBSP, x26c_30_MBLR);
+#endif
       }
 
       CreateNewParticles(genCount);
@@ -894,9 +934,26 @@ void CElementGen::CreateNewParticles(int count) {
     newCount = x90_MAXP - x30_particles.size();
   }
 
+#ifdef TARGET_PC
+  // The retail cap on live particles across every system, raised with the density setting.
+  const int aliveCap =
+      static_cast< int >(static_cast< float >(0xa00) * rstl::max_val(1.f, PortDensityScale()));
+  if (newCount + mParticleAliveCount > aliveCap) {
+    newCount = aliveCap - mParticleAliveCount;
+  }
+  // The density can be raised while a system lives: it keeps the orientation slots it began with.
+  if (x2c_orientType == kMOT_One &&
+      newCount + static_cast< int >(x30_particles.size()) > static_cast< int >(x50_parentMatrices.size())) {
+    newCount = static_cast< int >(x50_parentMatrices.size()) - static_cast< int >(x30_particles.size());
+  }
+  if (newCount <= 0) {
+    return;
+  }
+#else
   if (newCount + mParticleAliveCount > 0xa00) {
     newCount = 0xa00 - mParticleAliveCount;
   }
+#endif
 
   CGlobalRandom gr(x27c_randState);
   x30_particles.reserve(newCount + x30_particles.size());
@@ -908,6 +965,18 @@ void CElementGen::CreateNewParticles(int count) {
       x60_advValues.push_back(CAdvancedValues());
     }
   }
+#ifdef TARGET_PC
+  // A denser burst can need more than one doubling; never index past the advanced values.
+  if (x26d_28_enableADV) {
+    const int need = newCount + static_cast< int >(x30_particles.size());
+    if (static_cast< int >(x60_advValues.size()) < need) {
+      x60_advValues.reserve(need);
+      while (static_cast< int >(x60_advValues.size()) < need) {
+        x60_advValues.push_back(CAdvancedValues());
+      }
+    }
+  }
+#endif
 
   CParticleGlobals::mParticleAccessParameters = NULL;
 

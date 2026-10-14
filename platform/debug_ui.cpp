@@ -261,6 +261,8 @@ bool sFastDoors = true;
 int sShadowQuality = 4096;
 int sGlassReflections = PortDebug::kGlassReflectionsDefault;
 int sBumpMapping = PortDebug::kBumpMappingDefault;
+int sParticleDensity = PortDebug::kParticleDensityDefault;
+bool sSoftParticles = true;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
@@ -681,6 +683,11 @@ void ApplySetting(const std::string& key, const std::string& value) {
     }
   } else if (key == "bump_mapping") {
     sBumpMapping = std::clamp(std::atoi(value.c_str()), PortDebug::kBumpMappingMin, PortDebug::kBumpMappingMax);
+  } else if (key == "particle_density") {
+    sParticleDensity = std::clamp(std::atoi(value.c_str()), PortDebug::kParticleDensityMin,
+                                  PortDebug::kParticleDensityMax);
+  } else if (key == "soft_particles") {
+    sSoftParticles = ParseBool(value);
   } else if (key == "glass_reflections") {
     sGlassReflections = std::clamp(std::atoi(value.c_str()), PortDebug::kGlassReflectionsMin,
                                    PortDebug::kGlassReflectionsMax);
@@ -875,6 +882,8 @@ std::string SettingsText() {
   file << "shadow_quality=" << sShadowQuality << '\n';
   file << "glass_reflections=" << sGlassReflections << '\n';
   file << "bump_mapping=" << sBumpMapping << '\n';
+  file << "particle_density=" << sParticleDensity << '\n';
+  file << "soft_particles=" << (sSoftParticles ? 1 : 0) << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
@@ -1834,6 +1843,28 @@ int BumpMapping() {
 void SetBumpMapping(int percent) {
   EnsureInitialized();
   sBumpMapping = std::clamp(percent, kBumpMappingMin, kBumpMappingMax);
+  MarkDirty();
+}
+
+int ParticleDensity() {
+  EnsureInitialized();
+  return sOriginalExperience ? 100 : sParticleDensity;
+}
+
+void SetParticleDensity(int percent) {
+  EnsureInitialized();
+  sParticleDensity = std::clamp(percent, kParticleDensityMin, kParticleDensityMax);
+  MarkDirty();
+}
+
+bool SoftParticles() {
+  EnsureInitialized();
+  return sSoftParticles && !sOriginalExperience;
+}
+
+void SetSoftParticles(bool enabled) {
+  EnsureInitialized();
+  sSoftParticles = enabled;
   MarkDirty();
 }
 
@@ -6644,6 +6675,19 @@ void DrawVideoDisplay() {
     SetBumpMapping(bumpMapping);
   }
   ImGui::SetItemTooltip("Relief from the normal maps of an HD texture pack (its normals folder). 0 turns it off.");
+  int particleDensity = sParticleDensity;
+  if (ImGui::SliderInt("Particle density", &particleDensity, kParticleDensityMin, kParticleDensityMax,
+                       particleDensity == 100 ? "Retail" : "%d%%")) {
+    SetParticleDensity(particleDensity);
+  }
+  ImGui::SetItemTooltip("More sparks, smoke and debris from effects, and thicker snow and rain.\n"
+                        "Effects already playing keep their count until they restart.");
+  bool softParticles = sSoftParticles;
+  if (ImGui::Checkbox("Soft particles", &softParticles)) {
+    SetSoftParticles(softParticles);
+  }
+  ImGui::SetItemTooltip("Smoke, steam and glows fade where they touch walls and floors\n"
+                        "instead of cutting a hard edge into them.");
   {
     // Issue #72: PrimeHack-style arm cannon placement.
     float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};

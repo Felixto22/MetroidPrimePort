@@ -301,6 +301,10 @@ void GXPortSetGlass(GXBool on, f32 strength);
 void GXPortSetBump(f32 strength);
 // Lights the following lit TEV draws per pixel instead of per vertex (retail GX).
 void GXPortSetPerPixelLighting(GXBool on);
+// Port extension: blended particle draws (GXPortSetParticleFog) fade out where they come near the
+// opaque scene behind them, read from this frame's scene capture (GXPortSceneCapture), instead of
+// cutting into walls and floors. Only turn it on after a capture this frame. Stays until changed.
+void GXPortSetSoftParticles(GXBool on);
 // The draws after GXPortVolumetricFog fog themselves as Remastered's transparents do, until this:
 // opaque ones per pixel as the full-screen pass, blended and additive ones per vertex (blended:
 // colour T + in-scatter, additive: colour T). Harmless when no fog was drawn.

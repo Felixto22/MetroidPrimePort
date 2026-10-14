@@ -344,6 +344,8 @@ extern "C" {
 #define GX_AURORA_PORT_BUMP 0x0071
 // Port extension: light the following TEV draws per pixel (GXPortSetPerPixelLighting). Payload: u8 on.
 #define GX_AURORA_PORT_PER_PIXEL_LIGHTING 0x0072
+// Port extension: blended particles fade against the scene copy (GXPortSetSoftParticles). Payload: u8 on.
+#define GX_AURORA_PORT_SOFT_PARTICLES 0x0073
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

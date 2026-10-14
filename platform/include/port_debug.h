@@ -341,6 +341,18 @@ const int kBumpMappingMin = 0;
 const int kBumpMappingMax = 100;
 int BumpMapping();
 void SetBumpMapping(int percent);
+// Particle density: how many particles effects emit (sparks, smoke, debris) and how thick the
+// weather falls (Phendrana's snow, Tallon's rain), as a percentage of retail. 100 in the
+// original experience.
+const int kParticleDensityDefault = 200;
+const int kParticleDensityMin = 100;
+const int kParticleDensityMax = 300;
+int ParticleDensity();
+void SetParticleDensity(int percent);
+// Soft particles: blended particles fade out where they meet the scene behind them instead of
+// cutting a hard line into walls and floors. Off in the original experience.
+bool SoftParticles();
+void SetSoftParticles(bool enabled);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

@@ -9,6 +9,8 @@
 #include "Kyoto/Math/CTransform4f.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
+#include "MetroidPrime/CFluidPlaneManager.hpp"
+#include "MetroidPrime/CRippleManager.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 
@@ -181,6 +183,29 @@ bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const
   d.bottom = view.GetTranslation().GetZ() < surfaceZ;
   d.screenReflections = true;
   d.foam = poison ? 0.35f : 0.5f;
+
+  // The game's ripples (shots landing, Samus and enemies wading) on this surface, newest first.
+  if (const CFluidPlaneManager* fluids = mgr.GetFluidPlaneManager()) {
+    const rstl::vector< CRipple >& ripples = fluids->GetRippleManager().GetRipples();
+    d.rippleTile = kRippleTile;
+    for (int i = ripples.size() - 1; i >= 0 && d.rippleCount < aurora::gfx::water::DrawDesc::MaxRipples; --i) {
+      const CRipple& r = ripples[i];
+      const float t = r.GetTime();
+      const float life = r.GetTimeFalloff();
+      const CVector3f& c = r.GetCenter();
+      if (t < 0.f || life <= 0.f || t >= life || c.GetX() < boxMin.GetX() - 1.f || c.GetX() > boxMax.GetX() + 1.f ||
+          c.GetY() < boxMin.GetY() - 1.f || c.GetY() > boxMax.GetY() + 1.f ||
+          std::fabs(c.GetZ() - surfaceZ) > 3.f) {
+        continue;
+      }
+      float(&slot)[4] = d.ripples[d.rippleCount++];
+      slot[0] = c.GetX();
+      slot[1] = c.GetY();
+      slot[2] = t;
+      // CRipple's amplitude runs 0.1..0.25 with the splash's intensity; fade it over its life.
+      slot[3] = std::clamp(r.GetLookupAmplitude() * 255.f / 0.25f, 0.f, 1.f) * (1.f - t / life);
+    }
+  }
 
   const float clock = CGraphics::GetSecondsMod900();
   // The underwater colour, as the colour light keeps through the water's depth.

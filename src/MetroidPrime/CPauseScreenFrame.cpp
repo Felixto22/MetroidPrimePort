@@ -213,6 +213,8 @@ enum EPortOption {
   kPO_EnhancedWater,
   kPO_GlassReflections,
   kPO_BumpMapping,
+  kPO_ParticleDensity,
+  kPO_SoftParticles,
 };
 #define PORT_OPTION(opt) static_cast< EGameOption >(opt)
 
@@ -262,6 +264,9 @@ static const SGameOption skPortDisplayOptions[] = {
      static_cast< float >(PortDebug::kGlassReflectionsMax), 10.f, kOT_Float},
     {PORT_OPTION(kPO_BumpMapping), -1, static_cast< float >(PortDebug::kBumpMappingMin),
      static_cast< float >(PortDebug::kBumpMappingMax), 10.f, kOT_Float},
+    {PORT_OPTION(kPO_ParticleDensity), -1, static_cast< float >(PortDebug::kParticleDensityMin),
+     static_cast< float >(PortDebug::kParticleDensityMax), 25.f, kOT_Float},
+    {PORT_OPTION(kPO_SoftParticles), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_AntiAliasing), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_SpeedrunTimer), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_PhotoMode), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
@@ -297,7 +302,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {18, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {20, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -335,6 +340,10 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     return L"Glass Reflections";
   case kPO_BumpMapping:
     return L"Bump Mapping";
+  case kPO_ParticleDensity:
+    return L"Particle Density";
+  case kPO_SoftParticles:
+    return L"Soft Particles";
   case kPO_AntiAliasing:
     return L"Anti-Aliasing";
   case kPO_HudScale:
@@ -396,6 +405,10 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::GlassReflections();
   case kPO_BumpMapping:
     return PortDebug::BumpMapping();
+  case kPO_ParticleDensity:
+    return PortDebug::ParticleDensity();
+  case kPO_SoftParticles:
+    return PortDebug::SoftParticles() ? 1 : 0;
   case kPO_AntiAliasing:
     return PortDebug::Msaa() > 1 ? 1 : 0;
   case kPO_HudScale:
@@ -445,6 +458,8 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_EnhancedWater:
   case kPO_GlassReflections:
   case kPO_BumpMapping:
+  case kPO_ParticleDensity:
+  case kPO_SoftParticles:
   case kPO_AntiAliasing:
   case kPO_HudScale:
   case kPO_HideHelmet:
@@ -509,6 +524,12 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_BumpMapping:
     PortDebug::SetBumpMapping(value);
+    break;
+  case kPO_ParticleDensity:
+    PortDebug::SetParticleDensity(value);
+    break;
+  case kPO_SoftParticles:
+    PortDebug::SetSoftParticles(value > 0);
     break;
   case kPO_AntiAliasing:
     PortDebug::SetMsaa(value > 0 ? 4 : 1);

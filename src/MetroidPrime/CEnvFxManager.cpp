@@ -390,6 +390,13 @@ void CEnvFxManager::CreateNewParticles(EEnvFxType type) {
     maxParticleCount = (type == kEFX_UnderwaterFlake) ? 0x1fd6 : 0;
 
   maxParticleCount /= 64;
+#ifdef TARGET_PC
+  // Particle density (port setting): thicker snow and rain. Each grid cell still draws in one
+  // batch (at most a few thousand vertices at the setting's top).
+  if (type == kEFX_Snow || type == kEFX_Rain) {
+    maxParticleCount = maxParticleCount * PortDebug::ParticleDensity() / 100;
+  }
+#endif
   int cellParticleCount = static_cast< int >(x30_fxDensity * maxParticleCount);
 
   static uint newParticlesSeed = 0;

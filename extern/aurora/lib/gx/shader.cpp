@@ -4156,6 +4156,31 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
                                "var glass_samp: sampler;",
                                kVolFogFroxelBinding, kVolFogSamplerBinding);
   }
+  if (info.usesSoft) {
+    // Port extension: soft particles. The fragment fades as the opaque scene behind it (the scene
+    // copy's linear depth, gfx/scenecap.hpp) comes within 0.6 m, so a sprite meeting a wall or the
+    // floor thins out instead of cutting a straight line into it. Mode 1 scales the alpha (src
+    // alpha blends), mode 2 the colour too (src one blends). A depth of 0 (no capture) leaves it.
+    vtxOutAttrs += fmt::format("\n    @location({}) soft_pos: vec3f,", vtxOutIdx++);
+    vtxXfrAttrs += "\n    out.soft_pos = mv_pos;";
+    fragmentFn += R"""(
+    {
+        let sc = vec4f(in.soft_pos, 1.0) * ubuf.proj;
+        if (sc.w > 1e-4) {
+            let suv = clamp(vec2f(sc.x / sc.w * 0.5 + 0.5, 0.5 - sc.y / sc.w * 0.5), vec2f(0.0), vec2f(1.0));
+            let sd = textureSampleLevel(glass_scene, glass_samp, vec3f(suv, 0.5), 0.0).a;
+            let sz = -in.soft_pos.z;
+            let sfade = select(1.0, smoothstep(0.0, 1.0, clamp((sd - sz) / 0.6, 0.0, 1.0)), sd > 0.0);)""";
+    fragmentFn += config.soft == 2 ? "\n            prev = prev * sfade;" : "\n            prev.a = prev.a * sfade;";
+    fragmentFn += R"""(
+        }
+    })""";
+    texBindings += fmt::format("\n@group(2) @binding({})\n"
+                               "var glass_scene: texture_3d<f32>;\n"
+                               "@group(2) @binding({})\n"
+                               "var glass_samp: sampler;",
+                               kVolFogFroxelBinding, kVolFogSamplerBinding);
+  }
   if (info.usesVolFog && !pbrVolFog) {
     fragmentFn += fmt::format("\n    // Volumetric fog\n    prev = vf_apply(prev, {}, {});", volFogSample,
                               volFogWeight("clamp(prev.a, 0.0, 1.0)"));

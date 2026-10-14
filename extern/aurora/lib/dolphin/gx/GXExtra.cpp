@@ -217,6 +217,11 @@ void GXPortSetPerPixelLighting(GXBool on) {
   GX_WRITE_U8(on ? 1 : 0);
 }
 
+void GXPortSetSoftParticles(GXBool on) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_SOFT_PARTICLES);
+  GX_WRITE_U8(on ? 1 : 0);
+}
+
 void GXPortSetBump(f32 strength) {
   GX_WRITE_AURORA(GX_AURORA_PORT_BUMP);
   u32 word;

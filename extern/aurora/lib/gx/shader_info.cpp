@@ -387,6 +387,9 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     info.bumpSlot = config.bumpSlot;
     info.uniformSize += sizeof(Vec4<float>); // GXState::bumpParams
   }
+  if (config.soft != 0) {
+    info.usesSoft = true;
+  }
   if (config.glass) {
     info.usesGlass = true;
     info.uniformSize += sizeof(Vec4<float>); // GXState::glassParams
