@@ -5,6 +5,7 @@
 
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/Basics/CBasics.hpp"
+#include "Kyoto/CRandom16.hpp"
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/Graphics/CCubeModel.hpp"
 #include "Kyoto/Graphics/CCubeSurface.hpp"
@@ -120,6 +121,12 @@ CVector3f sPlayerTrail = CVector3f::Zero();
 float sLastClock = -1.f;
 float sSeconds = 0.f;
 bool sSentEmpty = false;
+
+// The effects' own random sequence: Random() is the game's, and absent while drawing.
+CRandom16& PortRandom() {
+  static CRandom16 random(0x464f4c49);
+  return random;
+}
 
 const float kReleaseLife = 1.3f;
 const float kPlayerTrailStep = 0.8f;
@@ -300,7 +307,7 @@ void UpdateFires(const CStateManager& mgr, float dt, bool raining) {
       fire.spawnTimer = 0.25f;
       const float r = fire.Radius();
       for (int tries = 0; tries < 6; ++tries) {
-        const CVector3f& p = plant->points[size_t(mgr.Random()->Range(0, int(plant->points.size()) - 1))];
+        const CVector3f& p = plant->points[size_t(PortRandom().Range(0, int(plant->points.size()) - 1))];
         if ((p - fire.origin).Magnitude() <= r) {
           if (fire.flames.size() < 10) {
             fire.flames.emplace_back(MakeGen(*sFlameDesc, p, false));
@@ -389,7 +396,11 @@ void UpdateSplashes(const CStateManager& mgr, float dt, const CVector3f& eye) {
       }
     }
   }
-  sSplashes->Update(dt, const_cast< CStateManager& >(mgr));
+  // The splashes draw lots from Random(), which only the game's update has: lend it ours.
+  CStateManager& m = const_cast< CStateManager& >(mgr);
+  CRandom16* const old = m.PortSwapRandom(&PortRandom());
+  sSplashes->Update(dt, m);
+  m.PortSwapRandom(old);
   sSplashing = !points.empty() && sSplashes->IsRaining();
   if (sSplashing) {
     normals.assign(points.size(), CVector3f(0.f, 0.f, 1.f));

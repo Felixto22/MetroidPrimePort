@@ -242,6 +242,15 @@ public:
   CRandom16* Random() const { return x900_random; }
   rstl::list< TUniqueId >& ActiveParasites() { return xf54_activeParasites; }
   void SetRandomAvailable(bool available) { x900_random = available ? &x8fc_random : nullptr; }
+#ifdef TARGET_PC
+  // Port: lends Random() another generator (render-time effects, so the game's own sequence and
+  // its availability stay untouched); returns the one it replaced, to restore.
+  CRandom16* PortSwapRandom(CRandom16* random) {
+    CRandom16* old = x900_random;
+    x900_random = random;
+    return old;
+  }
+#endif
   uint GetUpdateFrameIndex() const { return static_cast< uint >(x8d8_updateFrameIdx); }
 
   CObjectList& ObjectListById(EGameObjectList id) { return *x808_objectLists[id]; }
