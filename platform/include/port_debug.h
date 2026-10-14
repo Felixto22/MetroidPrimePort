@@ -313,6 +313,20 @@ void SetSunShadows(int percent);
 // reflections, depth tint and foam. Off in the original experience.
 bool EnhancedWater();
 void SetEnhancedWater(bool enabled);
+// Lighting the GameCube could not afford: per-pixel GX lighting on every lit surface and the full
+// four dynamic lights (shots, explosions) per actor. Off in the original experience.
+bool EnhancedLighting();
+void SetEnhancedLighting(bool enabled);
+// The sun's shadow map resolution per cascade (1024 retail-Remastered, 2048 or 4096) and how far
+// it reaches (m). Read when the map is made: a change applies after a restart.
+int ShadowQuality();
+void SetShadowQuality(int size);
+// Fast doors: every room next to the current one streams at once, without waiting for the rooms
+// left behind to unload, in a game heap raised to kFastDoorsMem1MB (from the next start), so
+// doors open as soon as their animation allows. Off in the original experience.
+const int kFastDoorsMem1MB = 768;
+bool FastDoors();
+void SetFastDoors(bool enabled);
 // Glass (depth-sorted materials with a reflection map) gets Fresnel reflections of the scene, at
 // this percentage of full strength (0: off). Off in the original experience.
 const int kGlassReflectionsDefault = 80;

@@ -853,11 +853,12 @@ constexpr std::string_view nbt_slice_local(NbtSlice slice) noexcept {
 
 constexpr bool is_emboss_texgen(GXTexGenType type) noexcept { return type >= GX_TG_BUMP0 && type <= GX_TG_BUMP7; }
 
-auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 i, bool alpha) -> std::string {
+// ppl: per-pixel (ShaderConfig::perPixel), the inputs read from the varyings, else per vertex.
+auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 i, bool alpha, bool ppl) -> std::string {
   std::string_view swizzle = alpha ? ".a"sv : ""sv;
   std::string outVar;
   std::string_view posVar;
-  if (UsePerPixelLighting) {
+  if (ppl) {
     outVar = fmt::format("rast{}", i);
     posVar = "in.mv_pos"sv;
   } else {
@@ -866,7 +867,7 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
   }
   std::string ambSrc, matSrc;
   if (cc.ambSrc == GX_SRC_VTX) {
-    if (UsePerPixelLighting) {
+    if (ppl) {
       ambSrc = fmt::format("in.clr{}", i);
     } else {
       ambSrc = vtx_attr(config, static_cast<GXAttr>(GX_VA_CLR0 + i));
@@ -875,7 +876,7 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
     ambSrc = fmt::format("ubuf.cc{0}{1}_amb", i, alpha ? "a"sv : ""sv);
   }
   if (cc.matSrc == GX_SRC_VTX) {
-    if (UsePerPixelLighting) {
+    if (ppl) {
       matSrc = fmt::format("in.clr{}", i);
     } else {
       matSrc = vtx_attr(config, static_cast<GXAttr>(GX_VA_CLR0 + i));
@@ -897,7 +898,7 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
           var dist_attn = dot(light.dist_att, vec3f(1.0, dist, dist2));
           attn = max(0.0, cos_attn / dist_attn);)""");
   } else if (cc.attnFn == GX_AF_SPEC) {
-    std::string_view normal = UsePerPixelLighting ? "in.mv_nrm"sv : "mv_nrm"sv;
+    std::string_view normal = ppl ? "normalize(in.mv_nrm)"sv : "mv_nrm"sv;
     std::string dist_attn = diffFn != GX_DF_NONE
                                 ? "max(0.0, dot(normalize(light.dist_att), vec3f(1.0, attn, attn * attn)));"
                                 : "max(0.0, dot(light.dist_att, vec3f(1.0, attn, attn * attn)));";
@@ -912,14 +913,14 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
   if (diffFn == GX_DF_NONE) {
     lightDiffFn = "1.0"sv;
   } else if (diffFn == GX_DF_SIGN) {
-    if (UsePerPixelLighting) {
-      lightDiffFn = "dot(ldir, in.mv_nrm)"sv;
+    if (ppl) {
+      lightDiffFn = "dot(ldir, normalize(in.mv_nrm))"sv;
     } else {
       lightDiffFn = "dot(ldir, mv_nrm)"sv;
     }
   } else if (diffFn == GX_DF_CLAMP) {
-    if (UsePerPixelLighting) {
-      lightDiffFn = "max(0.0, dot(ldir, in.mv_nrm))"sv;
+    if (ppl) {
+      lightDiffFn = "max(0.0, dot(ldir, normalize(in.mv_nrm)))"sv;
     } else {
       lightDiffFn = "max(0.0, dot(ldir, mv_nrm))"sv;
     }
@@ -2858,6 +2859,9 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   ZoneScoped;
   const auto hash = xxh3_hash(config);
   const auto info = build_shader_info(config);
+  // Port: per-pixel GX lighting (ShaderConfig::perPixel) on TEV draws, when the varyings it adds
+  // (position, normal, vertex colours) leave room under the 16 inter-stage locations.
+  const bool ppl = config.perPixel && config.pbr == 0 && config.lineMode == 0 && info.sampledTexCoords.count() <= 6;
   if (EnableDebugPrints && !s_seenShaders.contains(hash)) {
     s_seenShaders.insert(hash);
 
@@ -3228,7 +3232,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
         "    cos_att: vec3f,\n"
         "    dist_att: vec3f,\n"
         "};";
-    if (UsePerPixelLighting) {
+    if (ppl) {
       vtxOutAttrs += fmt::format("\n    @location({}) mv_pos: vec3f,", vtxOutIdx++);
       vtxOutAttrs += fmt::format("\n    @location({}) mv_nrm: vec3f,", vtxOutIdx++);
       vtxXfrAttrs += fmt::format(FMT_STRING(R"""(
@@ -3258,7 +3262,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
     }
 
     // Output vertex color if necessary
-    if (UsePerPixelLighting) {
+    if (ppl) {
       if ((cc.lightingEnabled && cc.ambSrc == GX_SRC_VTX) || cc.matSrc == GX_SRC_VTX ||
           (cca.lightingEnabled && cca.ambSrc == GX_SRC_VTX) || cca.matSrc == GX_SRC_VTX) {
         vtxOutAttrs += fmt::format("\n    @location({}) clr{}: vec4f,", vtxOutIdx++, i);
@@ -3266,14 +3270,14 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
       }
     }
 
-    if (UsePerPixelLighting) {
+    if (ppl) {
       fragmentFnPre += fmt::format("\n    var rast{}: vec4f;", i);
-      fragmentFnPre += lighting_func(config, cc, i, false);
-      fragmentFnPre += lighting_func(config, cca, i, true);
+      fragmentFnPre += lighting_func(config, cc, i, false, ppl);
+      fragmentFnPre += lighting_func(config, cca, i, true, ppl);
     } else {
       vtxOutAttrs += fmt::format("\n    @location({}) cc{}: vec4f,", vtxOutIdx++, i);
-      vtxXfrAttrs += lighting_func(config, cc, i, false);
-      vtxXfrAttrs += lighting_func(config, cca, i, true);
+      vtxXfrAttrs += lighting_func(config, cc, i, false, ppl);
+      vtxXfrAttrs += lighting_func(config, cca, i, true, ppl);
       fragmentFnPre += fmt::format("\n    var rast{0} = in.cc{0};", i);
     }
   }

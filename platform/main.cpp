@@ -915,11 +915,15 @@ int main(int argc, char** argv) {
     uint32_t mem1Size = MEM1_DEFAULT_SIZE;
     {
         const int envMb = port::EnvInt("MP_MEM1_MB", -1);
-        const unsigned long mb = envMb >= 0 ? static_cast<unsigned long>(envMb) : roomGeometry ? kRoomGeoMem1MB : 0;
+        unsigned long mb = envMb >= 0 ? static_cast<unsigned long>(envMb) : roomGeometry ? kRoomGeoMem1MB : 0;
+        // Fast doors keeps several rooms streaming at once: room for all of them.
+        if (envMb < 0 && PortDebug::FastDoors()) {
+            mb = std::max(mb, static_cast<unsigned long>(PortDebug::kFastDoorsMem1MB));
+        }
         if (mb > MEM1_DEFAULT_SIZE / (1024 * 1024)) {
             mem1Size = static_cast<uint32_t>(std::min(mb, 1024UL) * 1024 * 1024);
             PortLog::Write("port: MEM1 arena raised to %u MB (%s)\n", mem1Size / (1024 * 1024),
-                           envMb >= 0 ? "MP_MEM1_MB" : "room geometry");
+                           envMb >= 0 ? "MP_MEM1_MB" : roomGeometry ? "room geometry" : "fast doors");
         }
     }
     // With room_geo_resident (or MP_ROOM_GEO_RESIDENT=1), a room geometry mod's models stay on

@@ -37,6 +37,7 @@
 #include <cstdlib>
 
 #include "Kyoto/Graphics/CCubeModel.hpp"
+#include "port_debug.h"
 #include "port_room_env.h"
 #include "port_room_geo.h"
 #include "port_room_sky.h"
@@ -336,6 +337,12 @@ void CWorld::TravelToArea(const TAreaId& aid, CStateManager& mgr, EAreaTravelTyp
 
   bool otherLoading = false;
   CGameArea* otherLoadArea = nullptr;
+#ifdef TARGET_PC
+  // Fast doors (port_debug.h): every neighbour that needs streaming, not only the first.
+  const bool portFast = PortDebug::FastDoors();
+  CGameArea* portStream[16];
+  int portStreamCount = 0;
+#endif
   if (travelType == kATT_LoadAdjacent) {
     for (int i = 0; i < area->GetDockCount(); ++i) {
       const CGameArea::Dock& dock = area->GetDock(i);
@@ -351,8 +358,20 @@ void CWorld::TravelToArea(const TAreaId& aid, CStateManager& mgr, EAreaTravelTyp
           if (!otherLoading)
             continue;
           otherLoadArea = cArea;
-        } else
+#ifdef TARGET_PC
+          if (portStreamCount < 16) {
+            portStream[portStreamCount++] = cArea;
+          }
+#endif
+        } else {
+#ifdef TARGET_PC
+          if (ScheduleAreaToLoad(cArea, mgr) && portStreamCount < 16) {
+            portStream[portStreamCount++] = cArea;
+          }
+#else
           ScheduleAreaToLoad(cArea, mgr);
+#endif
+        }
       }
     }
   }
@@ -384,6 +403,14 @@ void CWorld::TravelToArea(const TAreaId& aid, CStateManager& mgr, EAreaTravelTyp
       blockedTicks = 0;
     }
   }
+#endif
+#ifdef TARGET_PC
+  if (portFast && !x70_25_loadPaused) {
+    // The heap has room for them all: no waiting on the rooms left behind either.
+    for (int i = 0; i < portStreamCount; ++i) {
+      portStream[i]->StartStreamIn(mgr);
+    }
+  } else
 #endif
   if (!toStreamCount && otherLoadArea && !x70_25_loadPaused)
     otherLoadArea->StartStreamIn(mgr);

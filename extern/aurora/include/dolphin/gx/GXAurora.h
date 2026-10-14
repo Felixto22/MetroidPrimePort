@@ -342,6 +342,8 @@ extern "C" {
 #define GX_AURORA_PORT_SCENE_CAPTURE 0x0070
 // Port extension: how strongly replacement normal maps shade opaque TEV draws (GXPortSetBump). Payload: f32.
 #define GX_AURORA_PORT_BUMP 0x0071
+// Port extension: light the following TEV draws per pixel (GXPortSetPerPixelLighting). Payload: u8 on.
+#define GX_AURORA_PORT_PER_PIXEL_LIGHTING 0x0072
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

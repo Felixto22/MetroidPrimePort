@@ -256,6 +256,9 @@ int sCameraBob = PortDebug::kCameraBobRetail;
 int sAmbientOcclusion = PortDebug::kAmbientOcclusionDefault;
 int sSunShadows = PortDebug::kSunShadowsDefault;
 bool sEnhancedWater = true;
+bool sEnhancedLighting = true;
+bool sFastDoors = true;
+int sShadowQuality = 4096;
 int sGlassReflections = PortDebug::kGlassReflectionsDefault;
 int sBumpMapping = PortDebug::kBumpMappingDefault;
 float sGunOffset[3] = {};
@@ -681,6 +684,13 @@ void ApplySetting(const std::string& key, const std::string& value) {
   } else if (key == "glass_reflections") {
     sGlassReflections = std::clamp(std::atoi(value.c_str()), PortDebug::kGlassReflectionsMin,
                                    PortDebug::kGlassReflectionsMax);
+  } else if (key == "fast_doors") {
+    sFastDoors = ParseBool(value);
+  } else if (key == "enhanced_lighting") {
+    sEnhancedLighting = ParseBool(value);
+  } else if (key == "shadow_quality") {
+    const int v = std::atoi(value.c_str());
+    sShadowQuality = v >= 4096 ? 4096 : v >= 2048 ? 2048 : 1024;
   } else if (key == "enhanced_water") {
     sEnhancedWater = ParseBool(value);
   } else if (key == "sun_shadows") {
@@ -860,6 +870,9 @@ std::string SettingsText() {
   file << "ambient_occlusion=" << sAmbientOcclusion << '\n';
   file << "sun_shadows=" << sSunShadows << '\n';
   file << "enhanced_water=" << (sEnhancedWater ? 1 : 0) << '\n';
+  file << "enhanced_lighting=" << (sEnhancedLighting ? 1 : 0) << '\n';
+  file << "fast_doors=" << (sFastDoors ? 1 : 0) << '\n';
+  file << "shadow_quality=" << sShadowQuality << '\n';
   file << "glass_reflections=" << sGlassReflections << '\n';
   file << "bump_mapping=" << sBumpMapping << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
@@ -1832,6 +1845,39 @@ int GlassReflections() {
 void SetGlassReflections(int percent) {
   EnsureInitialized();
   sGlassReflections = std::clamp(percent, kGlassReflectionsMin, kGlassReflectionsMax);
+  MarkDirty();
+}
+
+bool FastDoors() {
+  EnsureInitialized();
+  return sFastDoors && !sOriginalExperience;
+}
+
+void SetFastDoors(bool enabled) {
+  EnsureInitialized();
+  sFastDoors = enabled;
+  MarkDirty();
+}
+
+bool EnhancedLighting() {
+  EnsureInitialized();
+  return sEnhancedLighting && !sOriginalExperience;
+}
+
+void SetEnhancedLighting(bool enabled) {
+  EnsureInitialized();
+  sEnhancedLighting = enabled;
+  MarkDirty();
+}
+
+int ShadowQuality() {
+  EnsureInitialized();
+  return sShadowQuality;
+}
+
+void SetShadowQuality(int size) {
+  EnsureInitialized();
+  sShadowQuality = size >= 4096 ? 4096 : size >= 2048 ? 2048 : 1024;
   MarkDirty();
 }
 
@@ -6566,6 +6612,26 @@ void DrawVideoDisplay() {
     SetEnhancedWater(enhancedWater);
   }
   ImGui::SetItemTooltip("Water and poison with waves, ripples, reflections, depth colour and foam.");
+  bool enhancedLighting = sEnhancedLighting;
+  if (ImGui::Checkbox("Enhanced lighting", &enhancedLighting)) {
+    SetEnhancedLighting(enhancedLighting);
+  }
+  ImGui::SetItemTooltip("Per-pixel lighting and up to four dynamic lights per object: shots and\n"
+                        "explosions light the world smoothly instead of per vertex.");
+  bool fastDoors = sFastDoors;
+  if (ImGui::Checkbox("Fast doors", &fastDoors)) {
+    SetFastDoors(fastDoors);
+  }
+  ImGui::SetItemTooltip("Load every neighbouring room at once in a larger game heap, so doors open\n"
+                        "without waiting for the next room. The heap size applies after a restart.");
+  {
+    static const char* const kShadowSizes[] = {"1024", "2048", "4096"};
+    int q = sShadowQuality >= 4096 ? 2 : sShadowQuality >= 2048 ? 1 : 0;
+    if (ImGui::Combo("Shadow resolution", &q, kShadowSizes, 3)) {
+      SetShadowQuality(1024 << q);
+    }
+    ImGui::SetItemTooltip("The sun shadow map's size per cascade. Applies after a restart.");
+  }
   int glassReflections = sGlassReflections;
   if (ImGui::SliderInt("Glass reflections", &glassReflections, kGlassReflectionsMin, kGlassReflectionsMax,
                        glassReflections == 0 ? "Off" : "%d%%")) {

@@ -212,6 +212,11 @@ void GXPortSetGlass(GXBool on, f32 strength) {
   GX_WRITE_U32(word);
 }
 
+void GXPortSetPerPixelLighting(GXBool on) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_PER_PIXEL_LIGHTING);
+  GX_WRITE_U8(on ? 1 : 0);
+}
+
 void GXPortSetBump(f32 strength) {
   GX_WRITE_AURORA(GX_AURORA_PORT_BUMP);
   u32 word;
@@ -268,6 +273,8 @@ void GXPortSetShadowCaster(GXBool on) {
   GX_WRITE_AURORA(GX_AURORA_PORT_SHADOW_CASTER);
   GX_WRITE_U8(on ? 1 : 0);
 }
+
+void GXPortSetShadowMapSize(u32 size) { aurora::gfx::shadow::set_map_size(size); }
 
 void GXPortSetShadowStrength(f32 strength) { aurora::gfx::shadow::set_retail_strength(strength); }
 

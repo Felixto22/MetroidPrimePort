@@ -1333,6 +1333,12 @@ void handle_aurora(ByteReader& reader) noexcept {
       std::memcpy(&f, &word, sizeof(f));
     }
     gfx::scenecap::record(params);
+  } else if (subCmd == GX_AURORA_PORT_PER_PIXEL_LIGHTING) {
+    const bool on = reader.read<u8>() != 0;
+    if (g_gxState.perPixelLighting != on) {
+      g_gxState.perPixelLighting = on;
+      g_gxState.dirty |= DirtyPipeline;
+    }
   } else if (subCmd == GX_AURORA_PORT_BUMP) {
     const u32 word = reader.read<u32>();
     float strength;

@@ -9,6 +9,20 @@
 #include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/Tweaks/CTweakGui.hpp"
+#ifdef TARGET_PC
+#include "port_debug.h"
+#endif
+
+// Port: with enhanced lighting, an actor that takes dynamic lights takes as many as its list holds
+// (the GameCube's budget was the data's, often fewer).
+static int PortMaxDynamicLights(int fromData) {
+#ifdef TARGET_PC
+  if (fromData > 0 && PortDebug::EnhancedLighting()) {
+    return 4;
+  }
+#endif
+  return fromData;
+}
 
 #include "Collision/CMaterialFilter.hpp"
 #include "Collision/CollisionUtil.hpp"
@@ -413,7 +427,7 @@ void CActorLights::BuildDynamicLightList(const CStateManager& mgr, const CAABox&
   x144_dynamicLights.clear();
   const rstl::vector< CLight >& lights = mgr.GetDynamicLightList();
   if (!x29a_findNearestDynamicLights) {
-    for (int i = 0; i < lights.size() && x144_dynamicLights.size() < x2bc_maxDynamicLights; ++i) {
+    for (int i = 0; i < lights.size() && x144_dynamicLights.size() < PortMaxDynamicLights(x2bc_maxDynamicLights); ++i) {
       const CLight& light = lights[i];
       if (CollisionUtil::AABoxSphereIntersection(aabb,
                                                  CSphere(light.GetPosition(), light.GetRadius())))
@@ -458,7 +472,7 @@ void CActorLights::BuildFaceLightList(const CStateManager& mgr, const CGameArea&
   x144_dynamicLights.clear();
   CVector3f accumulatedColor = CVector3f::Zero();
   for (int i = lights.GetFirstObjectIndex();
-       i != -1 && x144_dynamicLights.size() < x2bc_maxDynamicLights;
+       i != -1 && x144_dynamicLights.size() < PortMaxDynamicLights(x2bc_maxDynamicLights);
        i = lights.GetNextObjectIndex(i)) {
     const CEntity* entity = lights[i];
     if (entity != nullptr) {

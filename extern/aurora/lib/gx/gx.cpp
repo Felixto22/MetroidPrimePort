@@ -574,6 +574,7 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   // Bump: an opaque retail draw that samples a texture, with a texmap slot no stage uses for the
   // normal map (build_bind_groups binds one when a sampled replacement has it).
   config.shaderConfig.bumpSlot = 0;
+  config.shaderConfig.perPixel = g_gxState.perPixelLighting && !drawId && !depthOnly && config.shaderConfig.lineMode == 0;
   if (g_gxState.bumpStrength > 0.f && !drawId && !depthOnly && g_gxState.pbr == 0 &&
       config.shaderConfig.lineMode == 0 &&
       (g_gxState.blendMode == GX_BM_NONE ||

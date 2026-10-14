@@ -299,6 +299,8 @@ void GXPortSetGlass(GXBool on, f32 strength);
 // Port extension: opaque TEV draws whose texture has a replacement normal map (<pack>/normals/<the
 // replacement's name>) are reshaded by it at `strength` (0..1; 0: off). Stays until changed.
 void GXPortSetBump(f32 strength);
+// Lights the following lit TEV draws per pixel instead of per vertex (retail GX).
+void GXPortSetPerPixelLighting(GXBool on);
 // The draws after GXPortVolumetricFog fog themselves as Remastered's transparents do, until this:
 // opaque ones per pixel as the full-screen pass, blended and additive ones per vertex (blended:
 // colour T + in-scatter, additive: colour T). Harmless when no fog was drawn.
@@ -339,6 +341,8 @@ GXBool GXPortFrameRadiance(f32 out[3], u32* serial);
 void GXPortSetShadowCaster(GXBool on);
 // How much the sun's shadow darkens retail (non-PBR) surfaces, 0..1 (0: they don't receive it).
 void GXPortSetShadowStrength(f32 strength);
+// The sun's shadow map size per cascade, taken when the map is first made (MP_SHADOW_SIZE wins).
+void GXPortSetShadowMapSize(u32 size);
 void GXPortSetShadowCasterOnly(GXBool on);
 void GXPortSetShadowFrame(const f32 worldToView[3][4], const f32 frustum[6], const f32 sunDir[3], f32 distance,
                           const f32 color[3]);

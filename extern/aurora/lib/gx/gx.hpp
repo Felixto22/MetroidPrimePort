@@ -463,6 +463,8 @@ struct GXState {
   // GX_AURORA_PORT_BUMP: how strongly replacement normal maps shade opaque TEV draws (0: off), and
   // per draw (build_bind_groups) the texcoord the chosen map is read with (ShaderConfig::bumpSlot).
   float bumpStrength = 0.f;
+  // GX_AURORA_PORT_PER_PIXEL_LIGHTING: lit TEV draws light per pixel (ShaderConfig::perPixel).
+  bool perPixelLighting = false;
   bool shadowCaster = false;
   bool shadowCasterOnly = false; // they cast but aren't drawn (GXPortSetShadowCasterOnly)
   bool shadowActive = false;
@@ -624,7 +626,9 @@ struct ShaderConfig {
   // GX_AURORA_PORT_BUMP on an opaque TEV draw: 1 + the free texmap slot a replacement's normal map
   // is bound to (gfx::TextureRef::normalView; ShaderInfo::bumpSlot), 0 for none.
   u8 bumpSlot = 0;
-  u8 pad2{}; // keeps the struct free of padding (memcmp and hash)
+  // GX_AURORA_PORT_PER_PIXEL_LIGHTING: the colour channels are lit per pixel (shader.cpp's ppl).
+  u8 perPixel : 1 = 0;
+  u8 pad2 : 7 = 0; // keeps the struct free of padding (memcmp and hash)
   std::array<AttrConfig, MaxVtxAttr> attrs;
   std::array<TevSwap, MaxTevSwap> tevSwapTable;
   std::array<TevStage, MaxTevStages> tevStages;

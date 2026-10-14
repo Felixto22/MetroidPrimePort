@@ -60,12 +60,26 @@ uint32_t g_nextSlot = 0;
 // Read by the console from the main thread.
 std::atomic<uint32_t> g_lastCasterCount{0};
 
+// The size the game asked for (set_map_size), 0 for the default.
+std::atomic<uint32_t> g_requestedSize{0};
+
+// Latched at the first use, so the map and the cascades' fits always agree: MP_SHADOW_SIZE, else
+// the game's request, else the default.
 uint32_t map_size() {
-  static const uint32_t size = [] {
+  static std::atomic<uint32_t> latched{0};
+  uint32_t size = latched.load(std::memory_order_relaxed);
+  if (size == 0) {
     const char* env = std::getenv("MP_SHADOW_SIZE");
     const long value = env != nullptr ? std::strtol(env, nullptr, 10) : 0;
-    return value >= 256 && value <= 8192 ? static_cast<uint32_t>(value) : cascade::DefaultSize;
-  }();
+    const uint32_t requested = g_requestedSize.load(std::memory_order_relaxed);
+    size = value >= 256 && value <= 8192            ? static_cast<uint32_t>(value)
+           : requested >= 256 && requested <= 8192 ? requested
+                                                   : cascade::DefaultSize;
+    uint32_t expected = 0;
+    if (!latched.compare_exchange_strong(expected, size)) {
+      size = expected;
+    }
+  }
   return size;
 }
 
@@ -346,4 +360,5 @@ void shutdown() {
 void set_retail_strength(float strength) {
   g_retailStrength.store(std::clamp(strength, 0.f, 1.f), std::memory_order_relaxed);
 }
+void set_map_size(uint32_t size) { g_requestedSize.store(size, std::memory_order_relaxed); }
 } // namespace aurora::gfx::shadow

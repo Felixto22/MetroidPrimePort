@@ -56,5 +56,7 @@ const wgpu::TextureView& map_view();
 const wgpu::Sampler& sampler();
 // How much the sun's shadow darkens retail (TEV) receivers, 0..1 (0: not at all); any thread.
 void set_retail_strength(float strength);
+// The map's size per cascade to use when it is first made (any thread; MP_SHADOW_SIZE wins).
+void set_map_size(uint32_t size);
 void shutdown();
 } // namespace aurora::gfx::shadow
