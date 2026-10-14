@@ -677,6 +677,11 @@ struct ShaderConfig {
 };
 static_assert(std::has_unique_object_representations_v<ShaderConfig>);
 // Whether a draw samples the sun's shadow map: a lit PBR surface drawn in colour without per-pixel fog.
+// Port: an alpha-tested draw that can cast a cut-out shadow: the first TEV stage that samples a
+// texture, read through a plain texture coordinate (an attribute, a texture matrix or none, no
+// post matrix), gives the alpha the shadow pass tests. False when there's none or the test never
+// passes.
+bool shadow_cutout(const ShaderConfig& sc, u32& texMap, u32& texCoord) noexcept;
 inline bool shadow_receives(const ShaderConfig& sc) noexcept {
   // Retail (TEV) surfaces receive too (shader.cpp, shadow_fade.z).
   return sc.shadow && sc.volFog == VolFogNone && sc.depthOnly == 0 && sc.lineMode == 0 && !sc.drawId;

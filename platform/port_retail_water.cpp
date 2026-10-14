@@ -332,9 +332,9 @@ bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const
   S[2][0] = deep[0] * 0.35f; // the surface's own colour in the light
   S[2][1] = deep[1] * 0.35f;
   S[2][2] = deep[2] * 0.35f;
-  S[2][3] = 0.02f;           // reflectance facing the camera
-  S[3][0] = 5.f;             // Fresnel power
-  S[3][1] = poison ? 0.6f : 0.9f; // reflection strength
+  S[2][3] = poison ? 0.12f : 0.22f; // reflectance facing the camera: a still pool mirrors the room
+  S[3][0] = 3.5f;            // Fresnel power
+  S[3][1] = poison ? 0.75f : 1.f; // reflection strength
   S[3][2] = 1.f;
   S[3][3] = 1.f;
   S[4][0] = 0.25f;           // the vertex normal's finite difference (m)

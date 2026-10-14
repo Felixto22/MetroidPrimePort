@@ -588,6 +588,35 @@ AlphaCompareExpr alpha_compare(GXCompare comp, u8 ref) {
 }
 
 // When the alpha compare drops a pixel, in terms of alphaCompare (the alpha as 0-255).
+AlphaCompareExpr alpha_compare_discard(const ShaderConfig& config);
+
+bool shadow_cutout(const ShaderConfig& sc, u32& texMap, u32& texCoord) noexcept {
+  if (!sc.alphaCompare || sc.lineMode != 0) {
+    return false;
+  }
+  for (u32 i = 0; i < sc.tevStageCount; ++i) {
+    const auto& stage = sc.tevStages[i];
+    if (stage.texMapId == GX_TEXMAP_NULL || stage.texCoordId == GX_TEXCOORD_NULL ||
+        static_cast<u32>(stage.texMapId) >= MaxTextures || static_cast<u32>(stage.texCoordId) >= MaxTexCoord) {
+      continue;
+    }
+    const auto& tcg = sc.tcgs[stage.texCoordId];
+    if (tcg.src < GX_TG_TEX0 || tcg.src > GX_TG_TEX7 || (tcg.type != GX_TG_MTX2x4 && tcg.type != GX_TG_MTX3x4) ||
+        tcg.postMtx != GX_PTIDENTITY || tcg.normalize ||
+        sc.attrs[GX_VA_TEX0 + (tcg.src - GX_TG_TEX0)].attrType == GX_NONE ||
+        sc.attrs[GX_VA_TEX0MTXIDX + stage.texCoordId].attrType != GX_NONE) {
+      return false;
+    }
+    if (alpha_compare_discard(sc).constant == 1) {
+      return false;
+    }
+    texMap = static_cast<u32>(stage.texMapId);
+    texCoord = static_cast<u32>(stage.texCoordId);
+    return true;
+  }
+  return false;
+}
+
 AlphaCompareExpr alpha_compare_discard(const ShaderConfig& config) {
   const auto comp0 = alpha_compare(config.alphaCompare.comp0, config.alphaCompare.ref0);
   const auto comp1 = alpha_compare(config.alphaCompare.comp1, config.alphaCompare.ref1);
@@ -3147,9 +3176,37 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
                             // Pancaked: a caster further toward the sun than the map reaches (a roof high
                             // over the floor) sits on its near plane rather than being clipped. The map is
                             // orthographic, so that moves nothing across it.
-                            "\n    pos.z = max(pos.z, 0.0);"
-                            "\n    return pos;\n}}",
+                            "\n    pos.z = max(pos.z, 0.0);",
                             shadowPos);
+    // Port: an alpha-tested caster (leaves, grates) casts its cut-out: the pass reads the alpha of
+    // the texture that gives it (shadow_cutout) and drops what the alpha test would.
+    u32 cutMap = 0;
+    u32 cutCoord = 0;
+    if (shadow_cutout(config, cutMap, cutCoord)) {
+      const auto& tcg = config.tcgs[cutCoord];
+      const auto texAttr = static_cast<GXAttr>(GX_VA_TEX0 + (tcg.src - GX_TG_TEX0));
+      std::string tcExpr = tcg.mtx == GX_IDENTITY ? "sh_tc.xyz"s
+                                                  : fmt::format("sh_tc * ubuf.postex_mtx[{}]", (tcg.mtx) / 3);
+      shadowVs.replace(shadowVs.find("-> @builtin(position) vec4f {"), std::string("-> @builtin(position) vec4f {").size(),
+                       "-> ShadowOut {");
+      shadowVs += fmt::format("\n    let sh_tc = vec4f({}, 1.0, 1.0);"
+                              "\n    let sh_t = {};"
+                              "\n    var sout: ShadowOut;"
+                              "\n    sout.pos = pos;"
+                              "\n    sout.uv = {};"
+                              "\n    return sout;\n}}",
+                              attr_load(config, texAttr, vidxAttr), tcExpr,
+                              tcg.type == GX_TG_MTX3x4 ? "sh_t.xy / sh_t.z" : "sh_t.xy");
+      const auto discard = alpha_compare_discard(config);
+      shadowVs = "\n\nstruct ShadowOut {\n    @builtin(position) pos: vec4f,\n    @location(0) uv: vec2f,\n};" + shadowVs;
+      shadowVs += fmt::format("\n\n@fragment\nfn fs_shadow_cut(in: ShadowOut) {{"
+                              "\n    let alphaCompare = u32(round(clamp(textureSample(tex{0}, tex{0}_samp, in.uv).a, 0.0, 1.0) * 255.0));"
+                              "{1}\n}}",
+                              cutMap,
+                              discard.constant == 0 ? ""s : fmt::format("\n    if ({}) {{ discard; }}", discard.expr));
+    } else {
+      shadowVs += "\n    return pos;\n}";
+    }
   }
   if (config.lineMode == 0) {
     std::string windPos = vtx_attr(config, GX_VA_POS);

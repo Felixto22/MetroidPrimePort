@@ -147,6 +147,9 @@ struct DrawCache {
   gfx::PipelineRef shadowPipelineRef{};
   bool shadowCaster = false;
   GXBindGroups bindGroups{};
+  // A cut-out caster's texture group, laid out as a non-receiver's: a receiver's holds the shadow
+  // map, which the shadow pass is drawing into.
+  GXBindGroups casterBindGroups{};
   uint64_t bindGeneration = 0;
   GXVtxFmt fmt = GX_MAX_VTXFMT;
   u8 lineMode = 0;
@@ -507,11 +510,16 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
       const bool opaque = cache.config.blendMode == GX_BM_NONE ||
                           (cache.config.blendMode == GX_BM_BLEND && cache.config.blendFacSrc == GX_BL_ONE &&
                            cache.config.blendFacDst == GX_BL_ZERO);
+      // An alpha-tested draw casts its cut-out when the pass can read the alpha (shadow_cutout).
+      u32 cutMap = 0;
+      u32 cutCoord = 0;
+      const bool cutout = sc.alphaCompare && shadow_cutout(sc, cutMap, cutCoord);
       cache.shadowCaster = cache.shaderInfo.usesShadow && cache.config.depthCompare && cache.config.depthUpdate &&
-                           opaque && !sc.alphaCompare && sc.depthOnly == 0;
+                           opaque && (!sc.alphaCompare || cutout) && sc.depthOnly == 0;
       if (cache.shadowCaster) {
         PipelineConfig shadowConfig = cache.config;
-        shadowConfig.shadowPass = 1;
+        // 2, 3: cut-out, with the draw's texture group (3: a shadow receiver's layout).
+        shadowConfig.shadowPass = cutout ? 2 : 1;
         shadowConfig.msaaSamples = 1;
         cache.shadowPipelineRef = gfx::pipeline_ref(shadowConfig);
       }
@@ -541,6 +549,12 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
     const auto prevBindGroup = cache.bindGroups.textureBindGroup;
     resolve_sampled_textures(cache.shaderInfo);
     cache.bindGroups = build_bind_groups(cache.shaderInfo);
+    cache.casterBindGroups = cache.bindGroups;
+    if (cache.shaderInfo.shadowReceive && cache.config.shaderConfig.alphaCompare) {
+      ShaderInfo casterInfo = cache.shaderInfo;
+      casterInfo.shadowReceive = false;
+      cache.casterBindGroups = build_bind_groups(casterInfo);
+    }
     cache.bindGeneration = texture::current_bind_generation();
     state.dirty &= ~DirtyTextures;
     // For texture_size_bias uniform
@@ -602,7 +616,8 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
   if (cache.shadowCaster) {
     DrawData caster = draw;
     caster.pipeline = cache.shadowPipelineRef;
-    caster.bindGroups = {};
+    // A cut-out caster reads its texture; the others need no group.
+    caster.bindGroups = cache.config.shaderConfig.alphaCompare ? cache.casterBindGroups : GXBindGroups{};
     gfx::shadow::add_caster(caster);
   }
 }

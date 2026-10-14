@@ -354,9 +354,17 @@ wgpu::RenderPipeline build_pipeline(const PipelineConfig& config, ArrayRef<wgpu:
         .depthBias = 2,
         .depthBiasSlopeScale = 4.0f,
     };
+    // 2: a cut-out caster (shadow_cutout), which tests its texture's alpha in fs_shadow_cut with
+    // its texture group (laid out as a non-receiver's).
+    const bool cutout = config.shadowPass >= 2;
+    const wgpu::FragmentState cutFragment{
+        .module = shader,
+        .entryPoint = "fs_shadow_cut",
+        .targetCount = 0,
+    };
     const wgpu::RenderPipelineDescriptor descriptor{
         .label = label,
-        .layout = sShadowPipelineLayout,
+        .layout = cutout ? sPipelineLayout : sShadowPipelineLayout,
         .vertex =
             {
                 .module = shader,
@@ -366,6 +374,7 @@ wgpu::RenderPipeline build_pipeline(const PipelineConfig& config, ArrayRef<wgpu:
             },
         .primitive = to_primitive_state(config.cullMode),
         .depthStencil = &depthStencil,
+        .fragment = cutout ? &cutFragment : nullptr,
     };
     return g_device.CreateRenderPipeline(&descriptor);
   }

@@ -479,7 +479,9 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
     var env = env_at(R, lod) * (in.light.w * u.S[3].y);
     let fr = pow(1.0 - min(abs(nv), 1.0), u.S[3].x);
     let lut = brdf(clamp(nv, 0.0, 1.0), max(1.0 - u.S[1].w, 0.02));
-    env = env * (lut.x * 0.05 + lut.y);
+    // Remastered's split sum takes F0 0.05; the retail surface's screen reflections (pad.x) its
+    // own, stronger reflectance, so the room shows in the water facing the camera too.
+    env = env * (lut.x * select(0.05, max(u.S[2].w, 0.05), u.pad.x > 0.5) + lut.y);
     let F = mix(u.S[2].w, 1.0, fr);
     let lit = F * in.light.rgb;
     var col = env + lit * u.S[2].xyz * 0.3183098733;

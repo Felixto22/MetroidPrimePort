@@ -2462,6 +2462,15 @@ void CPlayer::Render(const CStateManager& mgr) const {
     firstPerson = false;
   }
 #endif
+#ifdef TARGET_PC
+  // Port: in first person the body isn't drawn, but it still casts its shadow on the world
+  // (sun shadows): drawn into the shadow map only.
+  if (firstPerson && doRender && x2f8_morphBallState == kMS_Unmorphed && PortDebug::SunShadows() > 0 &&
+      HasModelData()) {
+    GetModelData()->Touch(mgr, 0);
+    PortRenderShadowCaster(mgr);
+  }
+#endif
   if (!firstPerson && doRender) {
     bool doTransitionRender = false;
     bool doBallRender = false;
