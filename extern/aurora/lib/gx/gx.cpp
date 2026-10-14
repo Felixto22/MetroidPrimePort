@@ -589,6 +589,7 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   // Bump: an opaque retail draw that samples a texture, with a texmap slot no stage uses for the
   // normal map (build_bind_groups binds one when a sampled replacement has it).
   config.shaderConfig.bumpSlot = 0;
+  config.shaderConfig.waterfall = g_gxState.waterfall && !drawId && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0;
   // Clustered lights: a lit TEV draw, which they light per pixel.
   config.shaderConfig.clustered =
       g_gxState.clusterActive && !drawId && !depthOnly && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0;

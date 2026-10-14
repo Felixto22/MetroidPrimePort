@@ -3908,6 +3908,7 @@ void CStateManager::BuildDynamicLightListForWorld() {
     rstl::vector< CLight > portLights;
     PortFoliage::AppendFireLights(portLights);
     PortDynamicLights::Append(*this, portLights);
+    PortCinematic::TickGun(*this, portLights);
     if (!portLights.empty() || !x8e0_dynamicLights.empty()) {
       x8e0_dynamicLights = portLights;
     }
@@ -3948,6 +3949,7 @@ void CStateManager::BuildDynamicLightListForWorld() {
 #ifdef TARGET_PC
   PortFoliage::AppendFireLights(x8e0_dynamicLights);
   PortDynamicLights::Append(*this, x8e0_dynamicLights);
+  PortCinematic::TickGun(*this, x8e0_dynamicLights);
 #endif
   rstl::sort(x8e0_dynamicLights.begin(), x8e0_dynamicLights.end(), CLightPredicate());
 }

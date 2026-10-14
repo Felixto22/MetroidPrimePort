@@ -78,7 +78,9 @@ struct Plant {
   std::vector< CVector3f > points;
   uint lastSeen = 0;
   float charAmount = 0.f; // 0..1, kept once burnt
+  float consumed = 0.f;   // 0..1: how much of it the fire has eaten away, kept
   bool burning = false;
+  bool water = false;     // falling water, not a plant
 };
 
 std::map< SurfKey, Plant >& Plants() {
@@ -111,6 +113,8 @@ struct Shot {
   CVector3f trail = CVector3f::Zero(); // feet of its last trail pusher
   bool seen = false;
   bool burns = false;
+  const void* splashed[4] = {};        // the falling water it has already gone through
+  int splashedCount = 0;
 };
 const int kMaxShots = 16;
 Shot sShots[kMaxShots];
@@ -251,6 +255,74 @@ bool SegmentHitsBox(const CVector3f& p0, const CVector3f& p1, const CVector3f& m
   return true;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Shots through falling water: a ring rippling out from where each went in, and a splash.
+struct Impact {
+  CVector3f pos = CVector3f::Zero();
+  float age = 0.f;
+};
+const int kMaxImpacts = 6;
+const float kImpactLife = 1.8f;
+Impact sImpacts[kMaxImpacts];
+int sImpactCount = 0;
+TToken< CGenDescription >* sSplashDesc = nullptr;
+std::vector< std::unique_ptr< CElementGen > >& SplashGens() {
+  static auto* gens = new std::vector< std::unique_ptr< CElementGen > >();
+  return *gens;
+}
+std::vector< float >& SplashAges() {
+  static auto* ages = new std::vector< float >();
+  return *ages;
+}
+
+void SplashAt(const CVector3f& at) {
+  if (sImpactCount == kMaxImpacts) {
+    int oldest = 0;
+    for (int i = 1; i < sImpactCount; ++i) {
+      if (sImpacts[i].age > sImpacts[oldest].age) {
+        oldest = i;
+      }
+    }
+    sImpacts[oldest] = sImpacts[--sImpactCount];
+  }
+  sImpacts[sImpactCount].pos = at;
+  sImpacts[sImpactCount++].age = 1e-3f;
+  if (sSplashDesc == nullptr) {
+    sSplashDesc = new TToken< CGenDescription >(gpSimplePool->GetObj("RainWake"));
+    sSplashDesc->Lock();
+  }
+  if (sSplashDesc->IsLoaded() && SplashGens().size() < 8) {
+    CElementGen* gen = rs_new CElementGen(*sSplashDesc);
+    gen->SetGlobalTranslation(at);
+    gen->SetGlobalScale(CVector3f(1.6f, 1.6f, 1.6f));
+    SplashGens().emplace_back(gen);
+    SplashAges().push_back(0.f);
+  }
+}
+
+void UpdateSplashGens(float dt) {
+  for (int i = sImpactCount - 1; i >= 0; --i) {
+    sImpacts[i].age += dt;
+    if (sImpacts[i].age > kImpactLife) {
+      sImpacts[i] = sImpacts[--sImpactCount];
+    }
+  }
+  auto& gens = SplashGens();
+  auto& ages = SplashAges();
+  for (size_t i = 0; i < gens.size();) {
+    ages[i] += dt;
+    // A burst: it sprays for a moment, then its drops fall.
+    gens[i]->SetParticleEmission(ages[i] < 0.2f);
+    gens[i]->Update(dt);
+    if (ages[i] > 0.2f && gens[i]->IsSystemDeletable()) {
+      gens.erase(gens.begin() + std::ptrdiff_t(i));
+      ages.erase(ages.begin() + std::ptrdiff_t(i));
+      continue;
+    }
+    ++i;
+  }
+}
+
 void Ignite(const SurfKey& key, Plant& plant, const CVector3f& at, bool raining) {
   if (plant.burning || plant.charAmount > 0.8f || Fires().size() >= kMaxFires || !LoadEffects()) {
     return;
@@ -300,6 +372,10 @@ void UpdateFires(const CStateManager& mgr, float dt, bool raining) {
     const bool burning = fire.t < fire.burnTime;
     if (plant != nullptr) {
       plant->charAmount = std::max(plant->charAmount, std::min(1.f, fire.t / std::max(fire.burnTime, 1.f) * 1.3f));
+      // It burns away while the flames last; put out by the rain, what's left stays.
+      if (burning) {
+        plant->consumed = std::max(plant->consumed, std::min(0.95f, (fire.t - 0.6f) / 11.f));
+      }
     }
     // Flames: new bursts at the plant's vertices within the spread, every quarter second.
     fire.spawnTimer -= dt;
@@ -386,7 +462,7 @@ void UpdateSplashes(const CStateManager& mgr, float dt, const CVector3f& eye) {
   static std::vector< CVector3f > points, normals;
   points.clear();
   for (const auto& [key, plant] : Plants()) {
-    if (plant.lastSeen + 2 < sFrame || (Center(plant) - eye).Magnitude() > 16.f) {
+    if (plant.water || plant.lastSeen + 2 < sFrame || (Center(plant) - eye).Magnitude() > 16.f) {
       continue;
     }
     for (const CVector3f& p : plant.points) {
@@ -413,9 +489,12 @@ bool IsFoliageTexture(unsigned int assetId) {
   return std::binary_search(std::begin(kFoliageTextures), std::end(kFoliageTextures), assetId);
 }
 
-bool Active() { return PortDebug::InteractiveFoliage() || PortDebug::RainDetails() || PortDebug::BurnableFoliage(); }
+bool Active() {
+  return PortDebug::InteractiveFoliage() || PortDebug::RainDetails() || PortDebug::BurnableFoliage() ||
+         PortDebug::EnhancedWater();
+}
 
-void NoteSurface(const CCubeSurface& surface, const CCubeModel& model) {
+void NoteSurface(const CCubeSurface& surface, const CCubeModel& model, bool water) {
   const CTransform4f& xf = CGraphics::GetModelMatrix();
   const CVector3f t = xf.GetTranslation();
   const SurfKey key{surface.GetDisplayList(), int(std::lround(t.GetX() * 100.f)), int(std::lround(t.GetY() * 100.f)),
@@ -423,6 +502,7 @@ void NoteSurface(const CCubeSurface& surface, const CCubeModel& model) {
   auto [it, fresh] = Plants().try_emplace(key);
   Plant& plant = it->second;
   plant.lastSeen = sFrame;
+  plant.water = water;
   if (!fresh) {
     return;
   }
@@ -552,6 +632,7 @@ void Upload(const CStateManager& mgr) {
     }
     if (shot == nullptr && sShotCount < kMaxShots) {
       shot = &sShots[sShotCount++];
+      *shot = Shot();
       shot->uid = proj->GetUniqueId();
       shot->trail = feet;
       // Its first frame: from the gun's muzzle, near enough the eye.
@@ -563,10 +644,24 @@ void Upload(const CStateManager& mgr) {
     }
     if (shot != nullptr) {
       shot->seen = true;
-      if (burnable && shot->burns) {
+      const bool water = PortDebug::EnhancedWater();
+      if ((burnable && shot->burns) || water) {
         for (auto& [key, plant] : Plants()) {
           CVector3f hit;
-          if (plant.lastSeen + 2 >= sFrame && SegmentHitsBox(shot->last, pos, plant.min, plant.max, 0.15f, &hit)) {
+          if (plant.lastSeen + 2 < sFrame || !SegmentHitsBox(shot->last, pos, plant.min, plant.max, 0.15f, &hit)) {
+            continue;
+          }
+          if (plant.water) {
+            // Falling water: one splash per shot going through it.
+            bool done = false;
+            for (int k = 0; k < shot->splashedCount; ++k) {
+              done |= shot->splashed[k] == key.surface;
+            }
+            if (water && !done && shot->splashedCount < 4) {
+              shot->splashed[shot->splashedCount++] = key.surface;
+              SplashAt(hit);
+            }
+          } else if (burnable && shot->burns) {
             Ignite(key, plant, hit, raining);
           }
         }
@@ -598,6 +693,9 @@ void Upload(const CStateManager& mgr) {
     }
   } else {
     ClearFires();
+  }
+  if (dt > 0.f) {
+    UpdateSplashGens(dt);
   }
   if (rainDetails && raining && dt > 0.f) {
     UpdateSplashes(mgr, dt, eye);
@@ -640,12 +738,22 @@ void Upload(const CStateManager& mgr) {
       params[count][3] = 0.f;
       ++count;
     };
-    for (int i = 0; i < liveCount && count < GX_PORT_FOLIAGE_MAX_PUSHERS; ++i) {
+    for (int i = 0; i < liveCount && count < GX_PORT_FOLIAGE_MAX_PUSHERS - sImpactCount; ++i) {
       add(live[i], 0.f);
     }
-    for (int i = 0; i < sReleasedCount && count < GX_PORT_FOLIAGE_MAX_PUSHERS; ++i) {
+    for (int i = 0; i < sReleasedCount && count < GX_PORT_FOLIAGE_MAX_PUSHERS - sImpactCount; ++i) {
       add(*released[i], released[i]->age);
     }
+  }
+  // The shots' impacts on falling water (params w = 1: the waterfall shader's, not the plants').
+  for (int i = 0; i < sImpactCount && count < GX_PORT_FOLIAGE_MAX_PUSHERS; ++i) {
+    toView(sImpacts[i].pos, pos[count]);
+    pos[count][3] = 1.f;
+    params[count][0] = 1.f;
+    params[count][1] = sImpacts[i].age;
+    params[count][2] = 0.f;
+    params[count][3] = 1.f;
+    ++count;
   }
   GXPortSetFoliagePushers(up, pos, params, count);
 
@@ -661,21 +769,22 @@ void Upload(const CStateManager& mgr) {
   iv[2][3] = eye.GetZ();
   struct Burn {
     CVector3f c;
-    float r, glow, chr, dist;
+    float r, glow, chr, dist, gone;
   };
   std::vector< Burn > burns;
   if (burnable) {
     for (const auto& f : Fires()) {
       auto it = Plants().find(f->key);
       const float chr = it != Plants().end() ? it->second.charAmount : 1.f;
-      burns.push_back({f->origin, f->Radius(), f->Glow(), chr, (f->origin - eye).Magnitude()});
+      const float gone = it != Plants().end() ? it->second.consumed : 0.f;
+      burns.push_back({f->origin, f->Radius(), f->Glow(), chr, (f->origin - eye).Magnitude(), gone});
     }
     // Plants burnt earlier stay black.
     for (const auto& [key, plant] : Plants()) {
-      if (!plant.burning && plant.charAmount > 0.f && plant.lastSeen + 2 >= sFrame) {
+      if (!plant.water && !plant.burning && plant.charAmount > 0.f && plant.lastSeen + 2 >= sFrame) {
         const CVector3f c = Center(plant);
         burns.push_back({c, std::max((plant.max - plant.min).Magnitude() * 0.6f, 0.6f), 0.f, plant.charAmount,
-                         (c - eye).Magnitude()});
+                         (c - eye).Magnitude(), plant.consumed});
       }
     }
     std::sort(burns.begin(), burns.end(), [](const Burn& a, const Burn& b) { return a.dist < b.dist; });
@@ -693,7 +802,7 @@ void Upload(const CStateManager& mgr) {
     bpos[nb][3] = b.r;
     bpar[nb][0] = b.glow;
     bpar[nb][1] = b.chr;
-    bpar[nb][2] = 0.f;
+    bpar[nb][2] = b.gone;
     bpar[nb][3] = 0.f;
     ++nb;
   }
@@ -713,6 +822,9 @@ void DrawEffects(const CStateManager& mgr) {
     for (const auto& g : f->flames) {
       g->Render();
     }
+  }
+  for (const auto& g : SplashGens()) {
+    g->Render();
   }
   if (sSplashing && sSplashes != nullptr) {
     sSplashes->Draw(CTransform4f::Identity());
@@ -741,6 +853,9 @@ void AppendFireLights(rstl::vector< CLight >& lights) {
 
 void Reset() {
   ClearFires();
+  SplashGens().clear();
+  SplashAges().clear();
+  sImpactCount = 0;
   Plants().clear();
   sReleasedCount = 0;
   sShotCount = 0;

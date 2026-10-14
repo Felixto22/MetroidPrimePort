@@ -3,7 +3,17 @@
 
 #include "port_debug.h"
 
+#include "Kyoto/CSimplePool.hpp"
+#include "Kyoto/Graphics/CColor.hpp"
 #include "Kyoto/Graphics/CGraphics.hpp"
+#include "Kyoto/Particles/CElementGen.hpp"
+#include "Kyoto/Particles/CGenDescription.hpp"
+#include "MetroidPrime/CObjectList.hpp"
+#include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/Player/CPlayerGun.hpp"
+#include "MetroidPrime/TCastTo.hpp"
+#include "MetroidPrime/Weapons/CGameProjectile.hpp"
 #include "Kyoto/Math/CTransform4f.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
 
@@ -130,6 +140,139 @@ void SetSun(const float dir[3]) {
   }
 }
 
+namespace {
+float sHeat = 0.f;
+float sSinceShot = 99.f;
+float sGunClock = -1.f;
+TToken< CGenDescription >* sSmokeDesc = nullptr;
+CElementGen* sSmoke = nullptr;
+struct Seen {
+  TUniqueId uid = kInvalidUniqueId;
+  bool seen = false;
+};
+Seen sSeen[32];
+int sSeenCount = 0;
+} // namespace
+
+void TickGun(const CStateManager& mgr, rstl::vector< CLight >& lights) {
+  const float clock = CGraphics::GetSecondsMod900();
+  float dt = sGunClock < 0.f ? 0.f : clock - sGunClock;
+  if (dt < 0.f) {
+    dt += 900.f;
+  }
+  dt = std::clamp(dt, 0.f, 0.1f);
+  sGunClock = clock;
+  if (!PortDebug::CinematicLook()) {
+    sHeat = 0.f;
+    return;
+  }
+  const CPlayer* player = mgr.GetPlayer();
+  if (player == nullptr) {
+    return;
+  }
+  // Each shot Samus fires (a projectile of hers seen for the first time) heats the cannon.
+  for (int i = 0; i < sSeenCount; ++i) {
+    sSeen[i].seen = false;
+  }
+  const CObjectList& actors = mgr.GetObjectListById(kOL_Actor);
+  for (int idx = actors.GetFirstObjectIndex(); idx != -1; idx = actors.GetNextObjectIndex(idx)) {
+    const CGameProjectile* proj = TCastToConstPtr< CGameProjectile >(actors.GetObjectByIndex(idx));
+    if (proj == nullptr || !proj->GetActive() || proj->GetOwnerId() != player->GetUniqueId()) {
+      continue;
+    }
+    bool known = false;
+    for (int i = 0; i < sSeenCount; ++i) {
+      if (sSeen[i].uid == proj->GetUniqueId()) {
+        sSeen[i].seen = known = true;
+        break;
+      }
+    }
+    if (known) {
+      continue;
+    }
+    if (sSeenCount < 32) {
+      sSeen[sSeenCount].uid = proj->GetUniqueId();
+      sSeen[sSeenCount++].seen = true;
+    }
+    float add = 0.1f;
+    switch (proj->GetType()) {
+    case kWT_Ice:
+      add = 0.05f;
+      break;
+    case kWT_Wave:
+      add = 0.12f;
+      break;
+    case kWT_Plasma:
+      add = 0.2f;
+      break;
+    case kWT_Missile:
+      add = 0.22f;
+      break;
+    default:
+      break;
+    }
+    sHeat = std::min(1.f, sHeat + add);
+    sSinceShot = 0.f;
+  }
+  for (int i = sSeenCount - 1; i >= 0; --i) {
+    if (!sSeen[i].seen) {
+      sSeen[i] = sSeen[--sSeenCount];
+    }
+  }
+  // It cools once the firing stops: slowly at first, as metal does.
+  sSinceShot += dt;
+  if (sSinceShot > 0.6f) {
+    sHeat = std::max(0.f, sHeat - dt * (0.12f + 0.1f * sHeat));
+  }
+  // Smoke while it's hot.
+  if (sSmokeDesc == nullptr) {
+    sSmokeDesc = new TToken< CGenDescription >(gpSimplePool->GetObj("ShotSmoke"));
+    sSmokeDesc->Lock();
+  }
+  if (sSmoke == nullptr && sSmokeDesc->IsLoaded()) {
+    sSmoke = rs_new CElementGen(*sSmokeDesc);
+  }
+  if (sSmoke != nullptr) {
+    const bool smoking = sHeat > 0.25f;
+    sSmoke->SetParticleEmission(smoking);
+    sSmoke->SetGeneratorRate(0.4f + sHeat * 1.6f);
+    if (dt > 0.f) {
+      sSmoke->Update(dt);
+    }
+  }
+  // The hot muzzle lights what's around it.
+  if (sHeat > 0.15f && player->GetPlayerGun() != nullptr &&
+      player->GetMorphballTransitionState() == CPlayer::kMS_Unmorphed) {
+    const float k = (sHeat - 0.15f) * 0.9f;
+    CLight light = CLight::BuildPoint(player->GetPlayerGun()->PortMuzzleWorld(), CColor(1.f * k, 0.35f * k, 0.08f * k, 1.f));
+    light.SetAttenuation(1.f, 0.f, 0.6f);
+    light.SetId(0x48454154); // 'HEAT'
+    lights.push_back(light);
+  }
+}
+
+void SetGunHeatAt(const CVector3f& muzzleWorld) {
+  if (!PortDebug::CinematicLook() || sHeat <= 0.02f) {
+    return;
+  }
+  const CTransform4f& view = CGraphics::GetViewMatrix();
+  const CVector3f d = muzzleWorld - view.GetTranslation();
+  // GX's view space: right, up, backward.
+  const f32 pos[3] = {CVector3f::Dot(d, view.GetRight()), CVector3f::Dot(d, view.GetUp()),
+                      -CVector3f::Dot(d, view.GetForward())};
+  // Hottest at the muzzle; the colour follows the heat (smoothstep: it glows only past a point).
+  const float t = std::clamp((sHeat - 0.15f) / 0.85f, 0.f, 1.f);
+  GXPortSetGunHeat(t * t * (3.f - 2.f * t), pos, 0.55f);
+}
+
+void RenderGunSmoke(const CVector3f& muzzleLocal) {
+  if (sSmoke == nullptr || !PortDebug::CinematicLook()) {
+    return;
+  }
+  sSmoke->SetGlobalTranslation(muzzleLocal);
+  sSmoke->Render();
+}
+
 GunShine::GunShine() : on(PortDebug::CinematicLook()) {
   if (on) {
     GXPortSetSpecular(0.85f);
@@ -139,6 +282,7 @@ GunShine::GunShine() : on(PortDebug::CinematicLook()) {
 GunShine::~GunShine() {
   if (on) {
     GXPortSetSpecular(0.f);
+    GXPortSetGunHeat(0.f, nullptr, 0.f);
   }
 }
 } // namespace PortCinematic

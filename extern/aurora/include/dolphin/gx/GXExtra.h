@@ -313,6 +313,14 @@ void GXPortSetClusterLights(const f32 (*lights)[12], u32 count);
 // light they're lit by, GX and clustered, added over their colour at `strength` (0: off). For
 // metal (the arm cannon). Stays until changed.
 void GXPortSetSpecular(f32 strength);
+// Port extension: on the specular draws (GXPortSetSpecular), metal glowing with heat around
+// `pos` (view space) out to `radius`: dull red to yellow-white as `heat` goes 0 to 1. Stays
+// until changed; heat 0: none.
+void GXPortSetGunHeat(f32 heat, const f32 pos[3], f32 radius);
+// Port extension: the following draws are falling water: shots' impacts among the foliage
+// pushers (GXPortSetFoliagePushers, those with params w = 1) ripple it, warp its texture and
+// whiten it with foam. Stays until changed.
+void GXPortSetWaterfall(GXBool on);
 // Lights the following lit TEV draws per pixel instead of per vertex (retail GX).
 void GXPortSetPerPixelLighting(GXBool on);
 // Port extension: blended particle draws (GXPortSetParticleFog) fade out where they come near the

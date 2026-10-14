@@ -675,6 +675,57 @@ bool CCubeMaterial::PortNeedsModelMatrix() const {
   }
   return false;
 }
+
+bool CCubeMaterial::PortIsFallingWater() const {
+  const uint* words = reinterpret_cast< const uint* >(GetData());
+  const uint matFlags = SBig(words[0]);
+  if ((matFlags & kStateFlag_DepthSorting) == 0 ||
+      (matFlags & (kStateFlag_Reflection | kStateFlag_ReflectionSurfaceEye | kStateFlag_PortPBR)) != 0) {
+    return false;
+  }
+  words += 2 + SBig(words[1]) + 2;
+  if ((matFlags & kStateFlag_KonstValues) != 0) {
+    words += SBig(words[0]) + 1;
+  }
+  words += 1;
+  if ((matFlags & kStateFlag_ReflectionIndirectTexture) != 0) {
+    words += 1;
+  }
+  words += SBig(words[0]) + 1;
+  const uint tevCount = SBig(*words++);
+  words += tevCount * 6;
+  words += SBig(words[0]) + 1;
+  const uint animCount = SBig(words[1]);
+  words += 2;
+  for (uint i = 0; i < animCount; ++i) {
+    const uint type = SBig(*words);
+    if (type == 2) {
+      return true; // a texture scrolling: the water's fall
+    }
+    switch (type) {
+    case 0:
+    case 1:
+      words += 1;
+      break;
+    case 7:
+      words += 3;
+      break;
+    case 4:
+    case 5:
+      words += 5;
+      break;
+    case 3:
+      words += 3;
+      break;
+    case 0x50:
+      words += PortUvAnimSize(words);
+      break;
+    default:
+      return false;
+    }
+  }
+  return false;
+}
 #endif
 
 #ifdef TARGET_PC
@@ -683,6 +734,8 @@ static int sPortGlass = -1;
 
 // Interactive foliage (port_debug.h InteractiveFoliage): whether GXPortSetFoliage is on.
 static bool sPortFoliage = false;
+// Falling water (PortIsFallingWater): whether GXPortSetWaterfall is on.
+static bool sPortWaterfall = false;
 
 void CCubeMaterial::PortEndGlass() {
   if (sPortGlass > 0) {
@@ -692,6 +745,10 @@ void CCubeMaterial::PortEndGlass() {
   if (sPortFoliage) {
     sPortFoliage = false;
     GXPortSetFoliage(GX_FALSE);
+  }
+  if (sPortWaterfall) {
+    sPortWaterfall = false;
+    GXPortSetWaterfall(GX_FALSE);
   }
 }
 #endif
@@ -726,8 +783,14 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
         }
       }
     }
-    if (foliage) {
-      PortFoliage::NoteSurface(surface, model);
+    // Falling water ripples where shots go through it.
+    const bool water = !foliage && PortDebug::EnhancedWater() && PortIsFallingWater();
+    if (foliage || water) {
+      PortFoliage::NoteSurface(surface, model, water);
+    }
+    if (water != sPortWaterfall) {
+      sPortWaterfall = water;
+      GXPortSetWaterfall(water ? GX_TRUE : GX_FALSE);
     }
     if (foliage != sPortFoliage) {
       sPortFoliage = foliage;

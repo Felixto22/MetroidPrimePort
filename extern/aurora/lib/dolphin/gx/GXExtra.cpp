@@ -318,6 +318,22 @@ void GXPortSetSpecular(f32 strength) {
   GX_WRITE_U32(word);
 }
 
+void GXPortSetGunHeat(f32 heat, const f32 pos[3], f32 radius) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_GUN_HEAT);
+  const f32 v[5] = {heat, pos != nullptr ? pos[0] : 0.f, pos != nullptr ? pos[1] : 0.f, pos != nullptr ? pos[2] : 0.f,
+                    radius};
+  for (f32 f : v) {
+    u32 word;
+    std::memcpy(&word, &f, sizeof(word));
+    GX_WRITE_U32(word);
+  }
+}
+
+void GXPortSetWaterfall(GXBool on) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_WATERFALL);
+  GX_WRITE_U8(on ? 1 : 0);
+}
+
 void GXPortSetClusterLights(const f32 (*lights)[12], u32 count) {
   if (count > 256) {
     count = 256;

@@ -472,6 +472,11 @@ struct GXState {
   bool clusterActive = false;
   // GX_AURORA_PORT_SPECULAR: the strength of lit draws' highlights (ShaderConfig::specular), 0: none.
   float specular = 0.f;
+  // GX_AURORA_PORT_GUN_HEAT: heat (x) and radius (y), and where (xyz, view space).
+  Vec4<float> gunHeat{};
+  Vec4<float> gunHeatPos{};
+  // GX_AURORA_PORT_WATERFALL: the draws are falling water (ShaderConfig::waterfall).
+  bool waterfall = false;
   Vec4<float> clusterInfo{};
   // GX_AURORA_PORT_FOLIAGE: triangle draws bend away from the pushers (ShaderConfig::foliage).
   bool foliage = false;
@@ -655,7 +660,9 @@ struct ShaderConfig {
   u8 clustered : 1 = 0;
   // GX_AURORA_PORT_SPECULAR on a TEV draw: lit per pixel, with highlights (ShaderInfo::usesSpecular).
   u8 specular : 1 = 0;
-  u8 pad2 : 2 = 0; // keeps the struct free of padding (memcmp and hash)
+  // GX_AURORA_PORT_WATERFALL: falling water rippling at the impact pushers (the foliage uniform).
+  u8 waterfall : 1 = 0;
+  u8 pad2 : 1 = 0; // keeps the struct free of padding (memcmp and hash)
   std::array<AttrConfig, MaxVtxAttr> attrs;
   std::array<TevSwap, MaxTevSwap> tevSwapTable;
   std::array<TevStage, MaxTevStages> tevStages;

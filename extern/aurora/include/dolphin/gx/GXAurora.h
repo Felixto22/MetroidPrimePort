@@ -356,6 +356,10 @@ extern "C" {
 #define GX_AURORA_PORT_CLUSTER_LIGHTS 0x0077
 // Port extension: specular highlights on the following lit draws (GXPortSetSpecular). Payload: f32 strength.
 #define GX_AURORA_PORT_SPECULAR 0x0078
+// Port extension: the following draws are falling water that ripples where shots hit (GXPortSetWaterfall). Payload: u8 on.
+#define GX_AURORA_PORT_WATERFALL 0x0079
+// Port extension: the specular draws' heat glow (GXPortSetGunHeat). Payload: 5 f32.
+#define GX_AURORA_PORT_GUN_HEAT 0x007A
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

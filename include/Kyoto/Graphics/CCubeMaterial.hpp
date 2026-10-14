@@ -91,6 +91,9 @@ public:
   // world space and drawn with an identity model matrix (port_room_geo.cpp's merged props):
   // reflections and UV animation mode 6 place the texture by the model matrix itself.
   bool PortNeedsModelMatrix() const;
+  // Port: a depth-sorted material whose texture scrolls (no reflection): falling water, for the
+  // shots to ripple (GXPortSetWaterfall).
+  bool PortIsFallingWater() const;
   // Port: how many TEV konst colours the material loads (0 without kStateFlag_KonstValues).
   uint PortKonstCount() const;
 #endif

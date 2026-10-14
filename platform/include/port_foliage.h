@@ -17,7 +17,9 @@ bool IsFoliageTexture(unsigned int assetId);
 bool Active();
 // A foliage surface about to draw, with the model matrix it draws under: remembered (its world
 // bounds and some of its vertices) for the rain to splash on and the shots to set alight.
-void NoteSurface(const CCubeSurface& surface, const CCubeModel& model);
+// `water`: falling water (CCubeMaterial::PortIsFallingWater), which shots ripple and splash
+// instead of setting alight.
+void NoteSurface(const CCubeSurface& surface, const CCubeModel& model, bool water);
 // Updates the pushers, fires and rain splashes and sends this pass's foliage state, in its view
 // space. Call once the pass's view matrix is set.
 void Upload(const CStateManager& mgr);

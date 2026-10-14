@@ -663,6 +663,10 @@ void CPlayerGun::Render(const CStateManager& mgr, const CVector3f& pos,
   }
 
   const CGunMorph::EGunState gunState = x678_morph.GetGunState();
+#ifdef TARGET_PC
+  // The cinematic look: the muzzle glows with the heat of the shots.
+  PortCinematic::SetGunHeatAt(offsetWorldXf * x418_beamLocalXf.GetTranslation());
+#endif
   CTransform4f oldViewMtx(CGraphics::GetViewMatrix());
   CGraphics::SetViewPointMatrix(offsetWorldXf.GetInverse() * oldViewMtx);
   gpRender->SetModelMatrix(CTransform4f::Identity());
@@ -747,6 +751,10 @@ void CPlayerGun::Render(const CStateManager& mgr, const CVector3f& pos,
   CGraphics::SetViewPointMatrix(offsetWorldXf.GetInverse() * oldViewMtx2);
   gpRender->SetModelMatrix(CTransform4f::Identity());
   x72c_currentBeam->PostRenderGunFx(mgr, offsetWorldXf);
+#ifdef TARGET_PC
+  // The cinematic look: smoke rising off the hot muzzle.
+  PortCinematic::RenderGunSmoke(x418_beamLocalXf.GetTranslation());
+#endif
   if (x832_26_comboFiring && x77c_comboXferGen.get()) {
     x77c_comboXferGen->Render();
   }

@@ -235,6 +235,10 @@ public:
   bool IsCharging() const { return x834_24_charging; }
   void SetTransform(CTransform4f xf) { x3e8_xf = xf; }
   CTransform4f GetGunMotionTransform() const { return x4a8_gunWorldXf; }
+#ifdef TARGET_PC
+  // Port: the beam's muzzle in the world (where shots leave), for its heat and smoke.
+  CVector3f PortMuzzleWorld() const { return x4a8_gunWorldXf * x418_beamLocalXf.GetTranslation(); }
+#endif
   CGrappleArm& GrappleArm() { return *x740_grappleArm.get(); }
   CGrappleArm& GetGrappleArm() const { return *x740_grappleArm.get(); }
   bool IsFidgeting() const { return x833_24_notFidgeting; }

@@ -2916,7 +2916,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   // (position, normal, vertex colours) leave room under the 16 inter-stage locations.
   // Foliage (ShaderConfig::foliage) takes one more. Clustered lights need it (ShaderConfig::clustered).
   const bool ppl = config.perPixel && config.pbr == 0 && config.lineMode == 0 &&
-                   info.sampledTexCoords.count() <= (config.foliage ? 5u : 6u);
+                   info.sampledTexCoords.count() <= (config.waterfall ? 4u : config.foliage ? 5u : 6u);
   if (EnableDebugPrints && !s_seenShaders.contains(hash)) {
     s_seenShaders.insert(hash);
 
@@ -3161,7 +3161,37 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
       vtxXfrAttrsPre += bumpCode(windPos, vtx_attr(config, GX_VA_CLR0), vtx_attr(config, GX_VA_NRM));
       windPos = "bump_pos";
     }
-    if (config.foliage) {
+    if (config.waterfall) {
+      // Port extension: falling water. Each impact pusher (params w = 1) sends a ring out over
+      // the surface from where the shot went in: the vertices around it heave towards and away
+      // from it, dying away in a second or so.
+      vtxXfrAttrsPre += fmt::format(
+          "\n    let mv_pos_rest = vec4f({}, 1.0) * ubuf.postex_mtx[in_pnmtxidx];", windPos);
+      vtxXfrAttrsPre += R"""(
+    var fol_d = vec3f(0.0);
+    {
+        let fol_n = min(u32(ubuf.fol_up.w), 16u);
+        for (var fi = 0u; fi < fol_n; fi++) {
+            let fp = ubuf.fol_pos[fi];
+            let fs = ubuf.fol_par[fi];
+            if (fs.w < 0.5) { continue; }
+            let rel = mv_pos_rest - fp.xyz;
+            let d = length(rel);
+            let x = d - fs.y * 3.0;
+            let wave = sin(x * 7.0) * exp(-x * x * 1.5) * exp(-fs.y * 2.0) * fs.x;
+            let crater = -exp(-d * d * 4.0) * exp(-fs.y * 6.0) * fs.x;
+            fol_d = fol_d + select(vec3f(0.0), rel / d, d > 1e-3) * (wave * 0.12 + crater * 0.25);
+        }
+    }
+    let fol_world = vec3f(dot(ubuf.fol_iv[0], vec4f(mv_pos_rest, 1.0)), dot(ubuf.fol_iv[1], vec4f(mv_pos_rest, 1.0)),
+                          dot(ubuf.fol_iv[2], vec4f(mv_pos_rest, 1.0)));
+    let mv_pos = mv_pos_rest + fol_d;
+    out.pos = vec4f(mv_pos, 1.0) * ubuf.proj;
+    out.fol_w = fol_world;
+    out.fol_v = mv_pos_rest;)""";
+      vtxOutAttrs += fmt::format("\n    @location({}) fol_w: vec3f,", vtxOutIdx++);
+      vtxOutAttrs += fmt::format("\n    @location({}) fol_v: vec3f,", vtxOutIdx++);
+    } else if (config.foliage) {
       // Port extension: interactive foliage. Each pusher (Samus, a shot) bends the vertices within
       // its radius and height away from its axis, more the higher they are over its feet (a stem's
       // base stays put); one that has let go sways the foliage back in a damped swing.
@@ -3175,6 +3205,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
         for (var fi = 0u; fi < fol_n; fi++) {
             let fp = ubuf.fol_pos[fi];
             let fs = ubuf.fol_par[fi];
+            if (fs.w > 0.5) { continue; } // a shot's impact on water
             let rel = mv_pos_rest - fp.xyz;
             let h = dot(rel, fol_up);
             let hz = rel - fol_up * h;
@@ -3251,6 +3282,28 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   uniBufAttrs += fmt::format("\n    nrm_mtx: array<mat3x4f, {}>,", MaxPnMtx);
   std::string fragmentFnPre;
   std::string fragmentFn;
+  if (config.waterfall) {
+    // Port extension: falling water: the texture warps on the rings spreading from the impacts.
+    fragmentFn += R"""(
+    var wf_warp = vec2f(0.0);
+    {
+        let fol_n = min(u32(ubuf.fol_up.w), 16u);
+        for (var fi = 0u; fi < fol_n; fi++) {
+            let fs = ubuf.fol_par[fi];
+            if (fs.w < 0.5) { continue; }
+            let rel = in.fol_v - ubuf.fol_pos[fi].xyz;
+            let d = length(rel);
+            let x = d - fs.y * 3.0;
+            let w = cos(x * 7.0) * exp(-x * x * 1.5) * exp(-fs.y * 2.0) * fs.x;
+            wf_warp += select(vec2f(0.0), rel.xy / d, d > 1e-3) * w * 0.05;
+        }
+    })""";
+    for (u32 i = 0; i < MaxTexCoord; ++i) {
+      if (info.sampledTexCoords.test(i)) {
+        fragmentFn += fmt::format("\n    tex{0}_uv = tex{0}_uv + wf_warp;", i);
+      }
+    }
+  }
 
   static std::array regName{"prev"sv, "tevreg0"sv, "tevreg1"sv, "tevreg2"sv};
   std::array<bool, MaxTevRegs> colorNormalized{};
@@ -4216,6 +4269,8 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   }
   if (info.usesSpecular) {
     uniBufAttrs += "\n    spec: vec4f,";
+    uniBufAttrs += "\n    gun_heat: vec4f,";
+    uniBufAttrs += "\n    gun_heat_pos: vec4f,";
   }
   if (!prevColorNormalized && !prevAlphaNormalized) {
     fragmentFn += "\n    prev = tev_overflow_vec4f(prev);";
@@ -4275,8 +4330,39 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   }
   if (info.usesSpecular && ppl) {
     fragmentFn += "\n    prev = vec4f(prev.rgb + port_spec * ubuf.spec.x, prev.a);";
+    // Port extension: metal glowing with heat around a point (GXPortSetGunHeat): dull red,
+    // orange, then yellow-white at the hottest, shimmering a little.
+    fragmentFn += R"""(
+    if (ubuf.gun_heat.x > 0.0) {
+        let hd = distance(in.mv_pos, ubuf.gun_heat_pos.xyz);
+        let reach = ubuf.gun_heat.y;
+        let t = clamp(ubuf.gun_heat.x * (1.0 - smoothstep(reach * 0.15, reach, hd)), 0.0, 1.0);
+        if (t > 0.0) {
+            var hc = mix(vec3f(0.55, 0.04, 0.0), vec3f(1.0, 0.42, 0.04), smoothstep(0.25, 0.7, t));
+            hc = mix(hc, vec3f(1.0, 0.9, 0.62), smoothstep(0.78, 1.0, t));
+            let shimmer = 0.9 + 0.1 * sin(dot(in.mv_pos, vec3f(91.0, 57.0, 73.0)) + ubuf.gun_heat.x * 40.0);
+            prev = vec4f(prev.rgb * (1.0 - 0.6 * t) + hc * (t * 1.8 * shimmer), prev.a);
+        }
+    })""";
   }
-  if (info.usesFoliage) {
+  if (config.waterfall) {
+    // Port extension: falling water: white foam on the rings spreading from the impacts.
+    fragmentFn += R"""(
+    {
+        var foam = 0.0;
+        let fol_n = min(u32(ubuf.fol_up.w), 16u);
+        for (var fi = 0u; fi < fol_n; fi++) {
+            let fs = ubuf.fol_par[fi];
+            if (fs.w < 0.5) { continue; }
+            let d = length(in.fol_v - ubuf.fol_pos[fi].xyz);
+            let x = d - fs.y * 3.0;
+            foam += (exp(-x * x * 6.0) * 0.8 + exp(-d * d * 3.0) * exp(-fs.y * 5.0)) * exp(-fs.y * 1.8) * fs.x;
+        }
+        foam = clamp(foam, 0.0, 1.0);
+        prev = vec4f(mix(prev.rgb, vec3f(0.95, 0.97, 1.0), foam * 0.7), max(prev.a, foam * 0.85));
+    })""";
+  }
+  if (config.foliage) {
     // Port extension: foliage surface effects. Burns char the leaves black within their radius
     // and glow with flickering embers while they burn; rain darkens them wet and splashes on them:
     // a drop lands in a random spot of each 14 cm cell of the world now and then, a bright point
@@ -4287,6 +4373,8 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
         let fw = in.fol_w;
         var fchar = 0.0;
         var fglow = 0.0;
+        var fgone = 0.0;
+        var fburnRim = 0.0;
         let nb = min(u32(ubuf.fol_rain.z), 8u);
         for (var bi = 0u; bi < nb; bi++) {
             let bp = ubuf.fol_bpos[bi];
@@ -4294,6 +4382,25 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
             let bf = 1.0 - smoothstep(bp.w * 0.55, bp.w, length(fw - bp.xyz));
             fchar = max(fchar, bf * bq.y);
             fglow = max(fglow, bf * bq.x);
+            fgone = max(fgone, bf * bq.z);
+        }
+        // What the fire consumed: gone, in a ragged edge that glows while it burns.
+        if (fgone > 0.0) {
+            let q = fw * 4.0;
+            let qi = floor(q);
+            let qf = q - qi;
+            let qs = qf * qf * (3.0 - 2.0 * qf);
+            var nv = 0.0;
+            for (var c = 0; c < 8; c++) {
+                let o = vec3f(f32(c & 1), f32((c >> 1) & 1), f32((c >> 2) & 1));
+                let hv = fract(sin(dot(qi + o, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);
+                let wv = mix(1.0 - qs, qs, o);
+                nv += hv * wv.x * wv.y * wv.z;
+            }
+            let cut = fgone * 1.05;
+            if (nv < cut) { discard; }
+            let rim = 1.0 - smoothstep(0.0, 0.08, nv - cut);
+            fburnRim = rim * clamp(fglow * 1.5, 0.0, 1.0);
         }
         if (fchar > 0.0 || fglow > 0.0) {
             let cell = floor(fw * 9.0);
@@ -4302,6 +4409,7 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
             fc = mix(fc, fc * vec3f(0.07, 0.06, 0.05), clamp(fchar, 0.0, 1.0));
             let ember = smoothstep(0.55, 0.95, hn) * flick;
             fc = fc + fglow * vec3f(1.0, 0.35, 0.06) * (0.3 + 1.6 * ember);
+            fc = fc + fburnRim * vec3f(1.0, 0.5, 0.1) * 2.0;
         }
         let rain = ubuf.fol_rain.x;
         if (rain > 0.0) {

@@ -1346,6 +1346,21 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.foliage = on;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_GUN_HEAT) {
+    float v[5];
+    for (float& f : v) {
+      const u32 word = reader.read<u32>();
+      std::memcpy(&f, &word, sizeof(f));
+    }
+    g_gxState.gunHeat = Vec4<float>{v[0], v[4], 0.f, 0.f};
+    g_gxState.gunHeatPos = Vec4<float>{v[1], v[2], v[3], 0.f};
+    g_gxState.dirty |= DirtyUniform;
+  } else if (subCmd == GX_AURORA_PORT_WATERFALL) {
+    const bool on = reader.read<u8>() != 0;
+    if (g_gxState.waterfall != on) {
+      g_gxState.waterfall = on;
+      g_gxState.dirty |= DirtyPipeline;
+    }
   } else if (subCmd == GX_AURORA_PORT_SPECULAR) {
     const u32 word = reader.read<u32>();
     float strength;
