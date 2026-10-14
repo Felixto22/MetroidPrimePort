@@ -329,6 +329,8 @@ fn brdf(nv: f32, rough: f32) -> vec2f {
 var<private> g_vpos: vec3f;
 // How far the waves bend the traced reflection's lookup (uv).
 var<private> g_rtOff: vec2f;
+// Whether this pixel's reflection came from the trace (it then reflects as a mirror would).
+var<private> g_rtHit: bool;
 
 // Port extension: the ray-traced reflection (gfx/rt refl_view) of this point of the water, traced
 // after the previous frame: the point taken to that frame's view and screen. a: 1 a hit, 0.5 the
@@ -359,11 +361,20 @@ fn scene_exposed(uv: vec2f) -> vec3f {
   return min(vec3f(untone(y.r), untone(y.g), untone(y.b)), vec3f(4.0));
 }
 
-fn ssr(r: vec3f) -> vec3f {
+fn traced_env() -> vec4f {
   let traced = rt_refl();
   if (traced.a > 0.75) {
     let ty = srgb_dec(clamp(traced.rgb, vec3f(0.0), vec3f(1.0)));
-    return min(vec3f(untone(ty.r), untone(ty.g), untone(ty.b)), vec3f(4.0));
+    g_rtHit = true;
+    return vec4f(min(vec3f(untone(ty.r), untone(ty.g), untone(ty.b)), vec3f(4.0)), 1.0);
+  }
+  return vec4f(0.0);
+}
+
+fn ssr(r: vec3f) -> vec3f {
+  let traced = traced_env();
+  if (traced.a > 0.5) {
+    return traced.rgb;
   }
   let size = vec2f(textureDimensions(sceneDepth));
   var p = g_vpos;
@@ -400,6 +411,11 @@ fn env_at(r: vec3f, lod: f32) -> vec3f {
   if (u.misc.w < 0.5) {
     if (u.pad.x > 0.5) { return ssr(normalize(r)); }
     return vec3f(0.0);
+  }
+  // Port extension: the traced reflection where there is one, the probe's cube elsewhere.
+  let traced = traced_env();
+  if (traced.a > 0.5) {
+    return traced.rgb;
   }
   let rb = vec3f(dot(u.cube0.xyz, r), dot(u.cube1.xyz, r), dot(u.cube2.xyz, r));
   return textureSampleLevel(cube, cubeSamp, rb, lod).rgb * u.cubeP.x;
@@ -560,11 +576,15 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
     R = R + clamp(dot(R, -Ng), 0.0, 1.0) * Ng;
     let lod = u.cubeP.y * (1.0 - u.S[1].w);
     var env = env_at(R, lod) * (in.light.w * u.S[3].y);
+    // A traced reflection is the world as lit already, not the probe's light to scale.
+    if (g_rtHit) {
+      env = env / max(in.light.w, 1e-3);
+    }
     let fr = pow(1.0 - min(abs(nv), 1.0), u.S[3].x);
     let lut = brdf(clamp(nv, 0.0, 1.0), max(1.0 - u.S[1].w, 0.02));
     // Remastered's split sum takes F0 0.05; the retail surface's screen reflections (pad.x) its
     // own, stronger reflectance, so the room shows in the water facing the camera too.
-    env = env * (lut.x * select(0.05, max(u.S[2].w, 0.05), u.pad.x > 0.5) + lut.y);
+    env = env * (lut.x * select(select(0.05, max(u.S[2].w, 0.05), u.pad.x > 0.5), 0.4, g_rtHit) + lut.y);
     let F = mix(u.S[2].w, 1.0, fr);
     let lit = F * in.light.rgb;
     var col = env + lit * u.S[2].xyz * 0.3183098733;

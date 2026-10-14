@@ -2,6 +2,7 @@
 // draw. See port_room_liquid.h.
 #include "port_env.h"
 #include "port_room_liquid.h"
+#include "port_debug.h"
 #include "port_strings.h"
 #include "port_bytes.h"
 
@@ -28,6 +29,7 @@
 #include "MetaRender/CCubeRenderer.hpp"
 
 #include "aurora/water.hpp"
+#include <dolphin/gx/GXExtra.h>
 
 #include <algorithm>
 #include <cmath>
@@ -366,6 +368,14 @@ bool DrawWater(Placed& item, const CStateManager& mgr, uint32_t mrea, const CTra
   d.zMin = 0.125f;
   d.zMax = 1.f;
 
+  // The ray-traced reflections trace this surface's mirror image of the world (aurora::gfx::rt).
+  if (PortDebug::RayTracedReflections()) {
+    const CAABox box = CAABox(CVector3f(w.boundsMin[0], w.boundsMin[1], w.boundsMin[2]),
+                              CVector3f(w.boundsMax[0], w.boundsMax[1], w.boundsMax[2]))
+                           .GetTransformedAABox(xf);
+    GXPortRtReflectPlane(box.GetMaxPoint().GetZ(), box.GetMinPoint().GetX(), box.GetMinPoint().GetY(),
+                         box.GetMaxPoint().GetX(), box.GetMaxPoint().GetY());
+  }
   gpRender->SetModelMatrix(xf);
   aurora::gfx::water::draw(d, item.verts.data(), uint32_t(item.verts.size()), w.indices.data(),
                            uint32_t(w.indices.size()));
