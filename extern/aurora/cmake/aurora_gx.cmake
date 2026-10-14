@@ -3,6 +3,7 @@ add_library(aurora_gx STATIC
         lib/gfx/volfog.cpp
         lib/gfx/ssao.cpp
         lib/gfx/scenecap.cpp
+        lib/gfx/cluster.cpp
         lib/gfx/thermal.cpp
         lib/gfx/xray.cpp
         lib/gfx/shadow.cpp

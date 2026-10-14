@@ -299,6 +299,11 @@ void GXPortSetGlass(GXBool on, f32 strength);
 // Port extension: opaque TEV draws whose texture has a replacement normal map (<pack>/normals/<the
 // replacement's name>) are reshaded by it at `strength` (0..1; 0: off). Stays until changed.
 void GXPortSetBump(f32 strength);
+// Port extension: clustered lighting. Lit TEV draws after this (lit per pixel) also sum these
+// lights, as many as reach each pixel, besides the GX lights they were given (a light among
+// those is not counted twice). Each: view position xyz, radius; colour rgb, unused; GX distance
+// attenuation k0, k1, k2, unused. At most 256; count 0 turns it off. Stays until changed.
+void GXPortSetClusterLights(const f32 (*lights)[12], u32 count);
 // Lights the following lit TEV draws per pixel instead of per vertex (retail GX).
 void GXPortSetPerPixelLighting(GXBool on);
 // Port extension: blended particle draws (GXPortSetParticleFog) fade out where they come near the

@@ -366,6 +366,11 @@ void SetRainDetails(bool enabled);
 // smoke (sooner in the rain). Off in the original experience.
 bool BurnableFoliage();
 void SetBurnableFoliage(bool enabled);
+// Clustered lighting: every dynamic light (shots, explosions, glowing creatures, fires) lights the
+// world and the actors per pixel, as many as reach a surface, instead of the few the game picks
+// per model. Off in the original experience.
+bool ClusteredLighting();
+void SetClusteredLighting(bool enabled);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

@@ -1,3 +1,4 @@
+#include "../gfx/cluster.hpp"
 #include "../gfx/hash.hpp"
 #include "../gfx/probe.hpp"
 #include "../gfx/types.hpp"
@@ -925,9 +926,51 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
       lightDiffFn = "max(0.0, dot(ldir, mv_nrm))"sv;
     }
   }
+  // Port extension: clustered lights (ShaderConfig::clustered). The scene's dynamic lights beyond
+  // the few GX ones the game picked for this draw, read from the cell of the view-space grid the
+  // pixel falls in (gfx/cluster.hpp's layout in the storage buffer), with GX's own distance
+  // attenuation, faded out at each light's radius. Lights already among the draw's GX lights are
+  // skipped.
+  std::string clusterFn;
+  if (ppl && config.clustered && i == 0 && !alpha && diffFn != GX_DF_NONE) {
+    clusterFn = fmt::format(R"""(
+      {{
+        let cl_base = bitcast<u32>(ubuf.cluster.x);
+        let cl_count = u32(ubuf.cluster.y);
+        let cl_cell = vec3i(floor((in.mv_pos - vec3f({0:.1f}, {1:.1f}, {2:.1f})) / {3:.2f}));
+        if (cl_count > 0u && all(cl_cell >= vec3i(0)) && all(cl_cell < vec3i({4}, {5}, {6}))) {{
+          let cl_packed = abuf[cl_base + u32(cl_cell.x + {4} * (cl_cell.y + {5} * cl_cell.z))];
+          let cl_lights = cl_base + {7}u;
+          let cl_index = cl_lights + cl_count * 12u + (cl_packed & 0xffffu);
+          let cl_n = normalize(in.mv_nrm);
+          for (var ck = 0u; ck < (cl_packed >> 16u); ck++) {{
+            let lb = cl_lights + abuf[cl_index + ck] * 12u;
+            let r0 = bitcast<vec4f>(vec4u(abuf[lb], abuf[lb + 1u], abuf[lb + 2u], abuf[lb + 3u]));
+            let r1 = bitcast<vec4f>(vec4u(abuf[lb + 4u], abuf[lb + 5u], abuf[lb + 6u], abuf[lb + 7u]));
+            let r2 = bitcast<vec4f>(vec4u(abuf[lb + 8u], abuf[lb + 9u], abuf[lb + 10u], abuf[lb + 11u]));
+            var dup = false;
+            for (var gi = 0u; gi < {8}u; gi++) {{
+              if ((ubuf.lightState0 & (1u << gi)) != 0u && distance(ubuf.lights[gi].pos, r0.xyz) < 0.05) {{ dup = true; }}
+            }}
+            if (dup) {{ continue; }}
+            var cdir = r0.xyz - in.mv_pos;
+            let cd2 = dot(cdir, cdir);
+            if (cd2 >= r0.w * r0.w) {{ continue; }}
+            let cd = sqrt(cd2);
+            cdir = cdir / max(cd, 1e-4);
+            let catt = 1.0 / max(r2.x + r2.y * cd + r2.z * cd2, 1e-3) * (1.0 - smoothstep(r0.w * 0.7, r0.w, cd));
+            let cdiff = {9};
+            lighting = lighting + vec4f(r1.rgb * (catt * cdiff), 0.0);
+          }}
+        }}
+      }})""",
+        gfx::cluster::GridMin[0], gfx::cluster::GridMin[1], gfx::cluster::GridMin[2], gfx::cluster::CellSize,
+        gfx::cluster::GridX, gfx::cluster::GridY, gfx::cluster::GridZ, gfx::cluster::CellCount, GX::MaxLights,
+        diffFn == GX_DF_SIGN ? "dot(cdir, cl_n)" : "max(0.0, dot(cdir, cl_n))");
+  }
   return fmt::format(R"""(
     {{
-      var lighting = {5};
+      var lighting = {5};{10}
       for (var i = 0u; i < {1}u; i++) {{
           if ((ubuf.lightState{0}{9} & (1u << i)) == 0u) {{ continue; }}
           var light = ubuf.lights[i];
@@ -942,7 +985,7 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
       {7}{8} = ({4} * clamp(lighting, vec4f(0.0), vec4f(1.0))){8};
     }})""",
                      i, GX::MaxLights, lightAttnFn, lightDiffFn, matSrc, ambSrc, posVar, outVar, swizzle,
-                     alpha ? "a"sv : ""sv);
+                     alpha ? "a"sv : ""sv, clusterFn);
 }
 
 // GX_AURORA_SET_PBR: replaces the TEV colour result with a metal/roughness evaluation of
@@ -2861,7 +2904,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   const auto info = build_shader_info(config);
   // Port: per-pixel GX lighting (ShaderConfig::perPixel) on TEV draws, when the varyings it adds
   // (position, normal, vertex colours) leave room under the 16 inter-stage locations.
-  // Foliage (ShaderConfig::foliage) takes one more.
+  // Foliage (ShaderConfig::foliage) takes one more. Clustered lights need it (ShaderConfig::clustered).
   const bool ppl = config.perPixel && config.pbr == 0 && config.lineMode == 0 &&
                    info.sampledTexCoords.count() <= (config.foliage ? 5u : 6u);
   if (EnableDebugPrints && !s_seenShaders.contains(hash)) {
@@ -4154,6 +4197,9 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    fol_iv: array<vec4f, 3>,";
     uniBufAttrs += "\n    fol_bpos: array<vec4f, 8>,";
     uniBufAttrs += "\n    fol_bpar: array<vec4f, 8>,";
+  }
+  if (info.usesClustered) {
+    uniBufAttrs += "\n    cluster: vec4f,";
   }
   if (!prevColorNormalized && !prevAlphaNormalized) {
     fragmentFn += "\n    prev = tev_overflow_vec4f(prev);";

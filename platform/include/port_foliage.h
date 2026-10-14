@@ -3,6 +3,9 @@
 // Interactive foliage (port_debug.h InteractiveFoliage, RainDetails, BurnableFoliage): plants bend
 // away from Samus and from shots passing through them and sway back after; rain wets them and
 // splashes on them; a beam shot into one sets it alight.
+#include "Kyoto/Graphics/CLight.hpp"
+#include "rstl/vector.hpp"
+
 class CCubeModel;
 class CCubeSurface;
 class CStateManager;
@@ -20,6 +23,8 @@ void NoteSurface(const CCubeSurface& surface, const CCubeModel& model);
 void Upload(const CStateManager& mgr);
 // Draws the fires, smoke and rain splashes, after the world's transparent draws.
 void DrawEffects(const CStateManager& mgr);
+// Adds a flickering point light per burning plant (for the game's dynamic light list).
+void AppendFireLights(rstl::vector< CLight >& lights);
 // Forgets every plant and fire (a world change).
 void Reset();
 } // namespace PortFoliage

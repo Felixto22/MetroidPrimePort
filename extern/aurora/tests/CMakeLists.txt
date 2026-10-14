@@ -87,6 +87,7 @@ if (AURORA_ENABLE_GX)
     # FIFO/command processor (encoder + decoder)
     ../lib/gx/fifo.cpp
     ../lib/gx/command_processor.cpp
+    ../lib/gfx/cluster.cpp
     ../lib/gx/regs.cpp
     ../lib/gx/resident.cpp
     ../lib/thread.cpp

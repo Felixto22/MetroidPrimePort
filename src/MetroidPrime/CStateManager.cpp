@@ -3,6 +3,9 @@
 #include "port_apclient.h"
 #include "port_collision_view.h"
 #include "port_debug.h"
+#include <vector>
+#include <cstring>
+#include <algorithm>
 #include "port_foliage.h"
 #include "port_env.h"
 #include "port_freecam.h"
@@ -2949,6 +2952,78 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
 
 // Screen-space ambient occlusion over the opaque world (port_debug.h AmbientOcclusion), before
 // the volumetric fog so the fog lies over it. Not in the thermal or X-ray visors.
+// Clustered lighting (port_debug.h ClusteredLighting): the frame's dynamic lights in this pass's
+// view space, nearest the camera first, for the per-pixel lighting to sum as many as reach a
+// surface (GXPortSetClusterLights).
+static void PortUploadClusterLights(const CStateManager& mgr) {
+  static bool sSentOff = false;
+  const rstl::vector< CLight >& lights = mgr.GetDynamicLightList();
+  if (!PortDebug::ClusteredLighting()) {
+    if (!sSentOff) {
+      GXPortSetClusterLights(nullptr, 0);
+      sSentOff = true;
+    }
+    return;
+  }
+  sSentOff = false;
+  const CTransform4f& view = CGraphics::GetViewMatrix();
+  const CVector3f eye = view.GetTranslation();
+  const float axes[3][3] = {
+      {view.Get00(), view.Get10(), view.Get20()},
+      {view.Get02(), view.Get12(), view.Get22()},
+      {-view.Get01(), -view.Get11(), -view.Get21()},
+  };
+  struct Entry {
+    float dist;
+    f32 rec[12];
+  };
+  static std::vector< Entry > entries;
+  entries.clear();
+  for (int i = 0; i < lights.size(); ++i) {
+    const CLight& l = lights[i];
+    if (l.GetType() != kLT_Point && l.GetType() != kLT_Custom && l.GetType() != kLT_LocalAmbient) {
+      continue;
+    }
+    const float radius = l.GetRadius();
+    const CVector3f d = l.GetPosition() - eye;
+    const float dist = d.Magnitude();
+    if (radius <= 0.01f || dist - radius > 80.f) {
+      continue;
+    }
+    Entry e;
+    e.dist = dist;
+    for (int r = 0; r < 3; ++r) {
+      e.rec[r] = axes[r][0] * d.GetX() + axes[r][1] * d.GetY() + axes[r][2] * d.GetZ();
+    }
+    e.rec[3] = radius;
+    const CColor& c = l.GetColor();
+    e.rec[4] = c.GetRed();
+    e.rec[5] = c.GetGreen();
+    e.rec[6] = c.GetBlue();
+    e.rec[7] = 0.f;
+    e.rec[8] = l.GetAttenuationConstant();
+    e.rec[9] = l.GetAttenuationLinear();
+    e.rec[10] = l.GetAttenuationQuadratic();
+    e.rec[11] = 0.f;
+    entries.push_back(e);
+  }
+  std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return a.dist < b.dist; });
+  // With no light about, one that reaches nothing: the draws keep their clustered shaders, so the
+  // first shot doesn't make every material compile another variant.
+  if (entries.empty()) {
+    Entry e{};
+    e.rec[2] = 1e6f;
+    entries.push_back(e);
+  }
+  static std::vector< f32 > packed;
+  const size_t n = std::min< size_t >(entries.size(), 256);
+  packed.resize(n * 12);
+  for (size_t i = 0; i < n; ++i) {
+    std::memcpy(&packed[i * 12], entries[i].rec, sizeof(entries[i].rec));
+  }
+  GXPortSetClusterLights(reinterpret_cast< const f32(*)[12] >(packed.data()), static_cast< u32 >(n));
+}
+
 static void PortDrawAmbientOcclusion(const CStateManager& mgr) {
   const int strength = PortDebug::AmbientOcclusion();
   const CPlayerState::EPlayerVisor visor = mgr.GetPlayerState()->GetActiveVisor(mgr);
@@ -3308,6 +3383,8 @@ void CStateManager::DrawWorld() const {
 #ifdef TARGET_PC
   // What bends the foliage this pass (Samus, shots), in this pass's view space.
   PortFoliage::Upload(*this);
+  // The pass's dynamic lights for the clustered per-pixel lighting.
+  PortUploadClusterLights(*this);
 #endif
   const TAreaId visAreaId = GetVisAreaId();
   const rstl::reserved_vector< TUniqueId, 20 >& renderLast =
@@ -3822,6 +3899,14 @@ void CStateManager::BuildDynamicLightListForWorld() {
   const CObjectList& list = GetObjectListById(kOL_GameLight);
   int listSize = list.size();
   if (listSize == 0) {
+#ifdef TARGET_PC
+    // Burning plants light the room even where the game has no light of its own.
+    rstl::vector< CLight > portFires;
+    PortFoliage::AppendFireLights(portFires);
+    if (!portFires.empty()) {
+      x8e0_dynamicLights = portFires;
+    }
+#endif
     return;
   }
 
@@ -3855,6 +3940,9 @@ void CStateManager::BuildDynamicLightListForWorld() {
       }
     }
   }
+#ifdef TARGET_PC
+  PortFoliage::AppendFireLights(x8e0_dynamicLights);
+#endif
   rstl::sort(x8e0_dynamicLights.begin(), x8e0_dynamicLights.end(), CLightPredicate());
 }
 

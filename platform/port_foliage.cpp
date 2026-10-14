@@ -719,6 +719,26 @@ void DrawEffects(const CStateManager& mgr) {
   }
 }
 
+void AppendFireLights(rstl::vector< CLight >& lights) {
+  if (!PortDebug::BurnableFoliage()) {
+    return;
+  }
+  int id = 0x46495245; // 'FIRE': apart from the game's light ids
+  for (const auto& f : Fires()) {
+    const float glow = f->Glow();
+    if (glow <= 0.02f) {
+      continue;
+    }
+    // A fire's flicker: two beating sines, each fire its own.
+    const float flick = 0.8f + 0.12f * std::sin(sSeconds * 13.f + float(id)) + 0.08f * std::sin(sSeconds * 29.f + 1.7f * float(id));
+    const float k = glow * flick;
+    CLight light = CLight::BuildPoint(f->origin + CVector3f(0.f, 0.f, 0.4f), CColor(1.f * k, 0.55f * k, 0.18f * k, 1.f));
+    light.SetAttenuation(1.f, 0.f, 0.09f);
+    light.SetId(id++);
+    lights.push_back(light);
+  }
+}
+
 void Reset() {
   ClearFires();
   Plants().clear();

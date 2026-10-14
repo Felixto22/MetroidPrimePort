@@ -390,6 +390,10 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
   if (config.soft != 0) {
     info.usesSoft = true;
   }
+  if (config.clustered) {
+    info.usesClustered = true;
+    info.uniformSize += sizeof(Vec4<float>); // GXState::clusterInfo
+  }
   if (config.foliage) {
     info.usesFoliage = true;
     info.uniformSize += sizeof(g_gxState.foliageUniform);
@@ -617,6 +621,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     for (const auto& v : g_gxState.foliageUniform) {
       buf.append(v);
     }
+  }
+  if (info.usesClustered) {
+    buf.append(g_gxState.clusterInfo);
   }
 }
 

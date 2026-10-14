@@ -1,5 +1,6 @@
 #include "command_processor.hpp"
 
+#include "../gfx/cluster.hpp"
 #include "../gfx/bloom.hpp"
 #include "../gfx/volfog.hpp"
 #include "../gfx/ssao.hpp"
@@ -1344,6 +1345,38 @@ void handle_aurora(ByteReader& reader) noexcept {
     if (g_gxState.foliage != on) {
       g_gxState.foliage = on;
       g_gxState.dirty |= DirtyPipeline;
+    }
+  } else if (subCmd == GX_AURORA_PORT_CLUSTER_LIGHTS) {
+    const u32 count = reader.read<u32>();
+    static std::vector<gfx::cluster::Light> lights;
+    static std::vector<u32> words;
+    lights.resize(count);
+    for (auto& l : lights) {
+      float* f = &l.pos[0];
+      for (int k = 0; k < 12; ++k) {
+        const u32 word = reader.read<u32>();
+        std::memcpy(&f[k], &word, sizeof(float));
+      }
+    }
+    Vec4<float> value{};
+    bool active = false;
+    if (count != 0) {
+      gfx::cluster::build(lights.data(), count, words);
+      const auto range = gfx::push_storage(reinterpret_cast<const uint8_t*>(words.data()), words.size() * sizeof(u32));
+      if (!gfx::overflowed(range)) {
+        const u32 base = range.offset / sizeof(u32);
+        std::memcpy(&value.x(), &base, sizeof(base));
+        value.y() = static_cast<f32>(std::min<u32>(count, gfx::cluster::MaxLights));
+        active = true;
+      }
+    }
+    if (g_gxState.clusterActive != active) {
+      g_gxState.clusterActive = active;
+      g_gxState.dirty |= DirtyPipeline;
+    }
+    if (std::memcmp(&g_gxState.clusterInfo, &value, sizeof(value)) != 0) {
+      g_gxState.clusterInfo = value;
+      g_gxState.dirty |= DirtyUniform;
     }
   } else if (subCmd == GX_AURORA_PORT_FOLIAGE_SURFACE) {
     for (size_t i = 33; i < g_gxState.foliageUniform.size(); ++i) {

@@ -285,6 +285,21 @@ void GXPortSetFoliageSurface(f32 rain, f32 seconds, const f32 viewToWorld[3][4],
   }
 }
 
+void GXPortSetClusterLights(const f32 (*lights)[12], u32 count) {
+  if (count > 256) {
+    count = 256;
+  }
+  GX_WRITE_AURORA(GX_AURORA_PORT_CLUSTER_LIGHTS);
+  GX_WRITE_U32(count);
+  for (u32 i = 0; i < count; ++i) {
+    for (int k = 0; k < 12; ++k) {
+      u32 word;
+      std::memcpy(&word, &lights[i][k], sizeof(word));
+      GX_WRITE_U32(word);
+    }
+  }
+}
+
 void GXPortSetBump(f32 strength) {
   GX_WRITE_AURORA(GX_AURORA_PORT_BUMP);
   u32 word;

@@ -352,6 +352,8 @@ extern "C" {
 #define GX_AURORA_PORT_FOLIAGE_PUSHERS 0x0075
 // Port extension: rain, burns and the view's world frame for foliage (GXPortSetFoliageSurface). Payload: 80 u32 words.
 #define GX_AURORA_PORT_FOLIAGE_SURFACE 0x0076
+// Port extension: the dynamic lights for clustered per-pixel lighting (GXPortSetClusterLights). Payload: u32 count, 12 f32 each.
+#define GX_AURORA_PORT_CLUSTER_LIGHTS 0x0077
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 
