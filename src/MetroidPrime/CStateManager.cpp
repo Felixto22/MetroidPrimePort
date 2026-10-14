@@ -7,6 +7,7 @@
 #include <cstring>
 #include <algorithm>
 #include "port_foliage.h"
+#include "port_dynamic_lights.h"
 #include "port_env.h"
 #include "port_freecam.h"
 #include "port_photo.h"
@@ -3901,10 +3902,11 @@ void CStateManager::BuildDynamicLightListForWorld() {
   if (listSize == 0) {
 #ifdef TARGET_PC
     // Burning plants light the room even where the game has no light of its own.
-    rstl::vector< CLight > portFires;
-    PortFoliage::AppendFireLights(portFires);
-    if (!portFires.empty()) {
-      x8e0_dynamicLights = portFires;
+    rstl::vector< CLight > portLights;
+    PortFoliage::AppendFireLights(portLights);
+    PortDynamicLights::Append(*this, portLights);
+    if (!portLights.empty() || !x8e0_dynamicLights.empty()) {
+      x8e0_dynamicLights = portLights;
     }
 #endif
     return;
@@ -3942,6 +3944,7 @@ void CStateManager::BuildDynamicLightListForWorld() {
   }
 #ifdef TARGET_PC
   PortFoliage::AppendFireLights(x8e0_dynamicLights);
+  PortDynamicLights::Append(*this, x8e0_dynamicLights);
 #endif
   rstl::sort(x8e0_dynamicLights.begin(), x8e0_dynamicLights.end(), CLightPredicate());
 }
