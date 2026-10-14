@@ -2986,6 +2986,34 @@ std::string rt_shadow_lookup(std::string_view pos) {
         }})""", pos);
 }
 
+bool relief_pick(const ShaderConfig& config, const ShaderInfo& info, u32& texCoord, u32& texMap) noexcept {
+  if (config.pbr != 0 || config.lineMode != 0 || config.waterfall || config.foliage || config.glass ||
+      config.specular || !info.lightingEnabled) {
+    return false;
+  }
+  int best = -1;
+  for (int i = 0; i < config.tevStageCount; ++i) {
+    const auto& stage = config.tevStages[i];
+    if (!uses_texture_sample(stage) || stage.texCoordId == GX_TEXCOORD_NULL || stage.texMapId == GX_TEXMAP_NULL ||
+        stage.indTexMtxId != GX_ITM_OFF) {
+      continue;
+    }
+    const auto& tcg = config.tcgs[stage.texCoordId];
+    if (tcg.src < GX_TG_TEX0 || tcg.src > GX_TG_TEX7 || (tcg.type != GX_TG_MTX2x4 && tcg.type != GX_TG_MTX3x4)) {
+      continue;
+    }
+    if (best == -1 || stage.texCoordId > config.tevStages[best].texCoordId) {
+      best = i;
+    }
+  }
+  if (best == -1) {
+    return false;
+  }
+  texCoord = underlying(config.tevStages[best].texCoordId);
+  texMap = underlying(config.tevStages[best].texMapId);
+  return true;
+}
+
 bool shadow_cutout(const ShaderConfig& sc, u32& texMap, u32& texCoord) noexcept {
   if (!sc.alphaCompare || sc.lineMode != 0) {
     return false;
@@ -3735,6 +3763,47 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
     }})""", coord);
     }
   }
+  // The same on a lit retail surface (relief_pick), its view position from a varying of its own.
+  {
+    u32 rCoord = 0;
+    u32 rMap = 0;
+    if (info.usesRelief && relief_pick(config, info, rCoord, rMap) && vtxOutIdx < 15) {
+      vtxOutAttrs += fmt::format("\n    @location({}) rf_view: vec3f,", vtxOutIdx++);
+      vtxXfrAttrs += "\n    out.rf_view = mv_pos;";
+      uvPre += fmt::format(R"""(
+    if (ubuf.relief.x > 0.0) {{
+        let rf_p = in.rf_view;
+        // Not on what is near the eye (the helmet, the HUD's models).
+        let rf_fade = ubuf.relief.x * (1.0 - smoothstep(ubuf.relief.y, ubuf.relief.z, -rf_p.z)) *
+                      smoothstep(1.0, 2.5, -rf_p.z);
+        let rf_dp1 = dpdx(rf_p);
+        let rf_dp2 = -dpdy(rf_p);
+        let rf_duv1 = dpdx(tex{0}_uv);
+        let rf_duv2 = -dpdy(tex{0}_uv);
+        var rf_n = normalize(cross(rf_dp1, rf_dp2));
+        rf_n = select(rf_n, -rf_n, dot(rf_n, -rf_p) < 0.0);
+        let rf_p2p = cross(rf_dp2, rf_n);
+        let rf_p1p = cross(rf_n, rf_dp1);
+        let rf_t = rf_p2p * rf_duv1.x + rf_p1p * rf_duv2.x;
+        let rf_b = rf_p2p * rf_duv1.y + rf_p1p * rf_duv2.y;
+        let rf_inv = inverseSqrt(max(max(dot(rf_t, rf_t), dot(rf_b, rf_b)), 1e-20));
+        let rf_v = normalize(-rf_p);
+        let rf_vt = vec2f(dot(rf_v, rf_t), dot(rf_v, rf_b)) * rf_inv;
+        let rf_vz = max(dot(rf_v, rf_n), 0.2);
+        let rf_g1 = dpdx(tex{0}_uv);
+        let rf_g2 = dpdy(tex{0}_uv);
+        if (rf_fade > 0.001) {{
+            var rf_uv = tex{0}_uv;
+            for (var rf_k = 0; rf_k < 4; rf_k++) {{
+                let rf_c = textureSampleGrad(tex{1}, tex{1}_samp, rf_uv, rf_g1, rf_g2).rgb;
+                let rf_h = dot(rf_c, vec3f(0.299, 0.587, 0.114)) - 0.5;
+                rf_uv = tex{0}_uv + rf_vt / rf_vz * (rf_h * 0.035 * rf_fade);
+            }}
+            tex{0}_uv = rf_uv;
+        }}
+    }})""", rCoord, rMap);
+    }
+  }
   fragmentFnPre += uvPre;
   // Multiple TEV stages may reference the same indirect stage,
   // so we sample each indirect texture only once.
@@ -4468,6 +4537,9 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    fol_iv: array<vec4f, 3>,";
     uniBufAttrs += "\n    fol_bpos: array<vec4f, 8>,";
     uniBufAttrs += "\n    fol_bpar: array<vec4f, 8>,";
+  }
+  if (info.usesRelief) {
+    uniBufAttrs += "\n    relief: vec4f,";
   }
   if (info.usesClustered) {
     uniBufAttrs += "\n    cluster: vec4f,";

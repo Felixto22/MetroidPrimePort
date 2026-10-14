@@ -396,6 +396,14 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     info.usesSpecular = true;
     info.uniformSize += 3 * sizeof(Vec4<float>); // GXState::specular, gunHeat, gunHeatPos
   }
+  {
+    u32 reliefCoord = 0;
+    u32 reliefMap = 0;
+    if (relief_pick(config, info, reliefCoord, reliefMap)) {
+      info.usesRelief = true;
+      info.uniformSize += sizeof(Vec4<float>); // GXState::pbrRelief
+    }
+  }
   if (config.clustered) {
     info.usesClustered = true;
     info.uniformSize += sizeof(Vec4<float>); // GXState::clusterInfo
@@ -630,6 +638,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     for (const auto& v : g_gxState.foliageUniform) {
       buf.append(v);
     }
+  }
+  if (info.usesRelief) {
+    buf.append(g_gxState.pbrRelief);
   }
   if (info.usesClustered) {
     buf.append(g_gxState.clusterInfo);

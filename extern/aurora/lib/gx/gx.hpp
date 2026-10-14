@@ -690,6 +690,10 @@ static_assert(std::has_unique_object_representations_v<ShaderConfig>);
 // texture, read through a plain texture coordinate (an attribute, a texture matrix or none, no
 // post matrix), gives the alpha the shadow pass tests. False when there's none or the test never
 // passes.
+// Port extension: relief (parallax) on a lit retail (TEV) surface: the texcoord and texture map
+// whose brightness stands for height (its last plain uv set's texture: the diffuse, past the
+// lightmap's). False for what takes none (UI, the gun, glass, foliage, falling water, PBR).
+bool relief_pick(const ShaderConfig& config, const ShaderInfo& info, u32& texCoord, u32& texMap) noexcept;
 bool shadow_cutout(const ShaderConfig& sc, u32& texMap, u32& texCoord) noexcept;
 inline bool shadow_receives(const ShaderConfig& sc) noexcept {
   // Retail (TEV) surfaces receive too (shader.cpp, shadow_fade.z).
@@ -726,6 +730,7 @@ struct ShaderInfo {
   bool usesFoliage : 1 = false;   // ShaderConfig::foliage: the pusher uniform
   bool usesClustered : 1 = false; // ShaderConfig::clustered: the cluster uniform
   bool usesRtMask : 1 = false;    // clustered, with the ray-traced lights' mask bound (kRtMaskBinding)
+  bool usesRelief : 1 = false;    // a lit retail surface with relief (relief_pick): the relief uniform
   bool usesSpecular : 1 = false;  // ShaderConfig::specular: the specular uniform      // ShaderConfig::soft: the scene copy
   bool usesGlass : 1 = false;     // ShaderConfig::glass: the glass uniform and the scene copy
   u8 bumpSlot = 0;                // ShaderConfig::bumpSlot: 1 + the normal map's texmap slot, 0 for none
