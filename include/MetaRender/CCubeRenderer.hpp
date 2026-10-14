@@ -1,6 +1,10 @@
 #ifndef _CCUBERENDERER
 #define _CCUBERENDERER
 
+#ifdef TARGET_PC
+#include <vector>
+#endif
+
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Math/CPlane.hpp"
 #include "MetroidPrime/CGameArea.hpp"
@@ -163,6 +167,12 @@ public:
 
   bool GetThermal() const { return x318_29_thermalVisor; }
   bool GetInAreaDraw() const { return x318_30_inAreaDraw; }
+#ifdef TARGET_PC
+  // Port: the opaque triangles of area areaIdx's world models as the normal visor draws them, in
+  // world space (xyz per corner, three corners a triangle), for the ray-traced shadows (alpha-tested
+  // and depth-sorted surfaces left out). False when the area's geometry isn't loaded here.
+  bool PortAreaTriangles(int areaIdx, std::vector< float >& out) const;
+#endif
 
   void AllocatePhazonSuitMaskTexture();
   void DrawPhazonSuitIndirectEffect(const CColor&,

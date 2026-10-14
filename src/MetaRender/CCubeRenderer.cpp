@@ -2984,3 +2984,118 @@ void CCubeRenderer::DrawXRayOutline(const CAABox& bounds, const float*, const fl
 void CCubeRenderer::DrawString(const char* string, int x, int y) {
   x10_font.DrawString(string, x, y, CColor::White());
 }
+
+#ifdef TARGET_PC
+// The opaque world triangles for the ray-traced shadows (aurora::gfx::rt): each model the normal
+// visor draws, each of its unsorted surfaces that is neither alpha-tested nor depth-sorted, its
+// display list walked as DrawSurfaceWireframe walks it (big-endian indices after each primitive's
+// opcode and count, the position's first), positions read big-endian.
+bool CCubeRenderer::PortAreaTriangles(int areaIdx, std::vector< float >& out) const {
+  out.clear();
+  for (AUTO(it, x1c_areaListItems.begin()); it != x1c_areaListItems.end(); ++it) {
+    const CAreaListItem& item = *it;
+    if (item.GetAreaId() != areaIdx || item.GetModelList().get() == nullptr) {
+      continue;
+    }
+    AUTO_REF(models, *item.GetModelList());
+    for (AUTO(modelIt, models.begin()); modelIt != models.end(); ++modelIt) {
+      const CCubeModel& model = **modelIt;
+      // X-ray-only geometry (visor flag 2) isn't there for the normal visor.
+      if ((model.GetModelFlags() & 2) != 0) {
+        continue;
+      }
+      const uchar* positions = static_cast< const uchar* >(model.GetPositions());
+      const uint vertexCount = model.GetModelInstance().GetVertexSize() / 12;
+      if (positions == nullptr || vertexCount == 0) {
+        continue;
+      }
+      const auto readPos = [&](uint index, float* xyz) {
+        for (int c = 0; c < 3; ++c) {
+          const uchar* b = positions + (index * 3 + c) * 4;
+          const uint bits = (uint(b[0]) << 24) | (uint(b[1]) << 16) | (uint(b[2]) << 8) | uint(b[3]);
+          memcpy(&xyz[c], &bits, sizeof(float));
+        }
+      };
+      for (CCubeSurface surface = model.GetNormalSurfaces(); surface.IsValid();
+           surface = surface.GetNextSurface()) {
+        const CCubeMaterial material = model.GetMaterialByIndex(surface.GetMaterialIndex());
+        if (material.IsFlagSet(kStateFlag_AlphaTest) || material.IsFlagSet(kStateFlag_DepthSorting)) {
+          continue;
+        }
+        // Bytes per vertex in the display list, and the position index's size.
+        const uint desc = material.GetVertexDesc();
+        uint stride = 0;
+        uint posSize = 0;
+        bool direct = false;
+        for (int i = 0; i < 16; ++i) {
+          const uint type = (desc >> (i * 2)) & 3;
+          const uint size = type == 3 ? 2 : type == 2 ? 1 : 0;
+          if (type == 1) {
+            direct = true;
+          }
+          if (i == 0) {
+            posSize = size;
+          }
+          stride += size;
+        }
+        if (direct || posSize == 0) {
+          continue;
+        }
+        uint bases[CCubeSurface::kPB_Count];
+        const uint posBase = surface.PortBaseIndices(bases) ? bases[CCubeSurface::kPB_Pos] : 0;
+        const uchar* dl = static_cast< const uchar* >(surface.GetDisplayList());
+        const uchar* end = dl + surface.GetDisplayListSize();
+        const auto readIndex = [&](const uchar* v) -> uint {
+          return posBase + (posSize == 2 ? (uint(v[0]) << 8) | uint(v[1]) : uint(v[0]));
+        };
+        float tri[3][3];
+        while (dl + 3 <= end) {
+          const uchar op = *dl & 0xf8;
+          if (op == 0) {
+            break;
+          }
+          const uint count = (uint(dl[1]) << 8) | uint(dl[2]);
+          dl += 3;
+          const uchar* verts = dl;
+          dl += count * stride;
+          if (dl > end) {
+            break;
+          }
+          const auto emit = [&](uint a, uint b, uint c) {
+            const uint ia = readIndex(verts + a * stride);
+            const uint ib = readIndex(verts + b * stride);
+            const uint ic = readIndex(verts + c * stride);
+            if (ia >= vertexCount || ib >= vertexCount || ic >= vertexCount || ia == ib || ib == ic || ia == ic) {
+              return;
+            }
+            readPos(ia, tri[0]);
+            readPos(ib, tri[1]);
+            readPos(ic, tri[2]);
+            out.insert(out.end(), &tri[0][0], &tri[0][0] + 9);
+          };
+          if (op == GX_TRIANGLES) {
+            for (uint v = 0; v + 2 < count; v += 3) {
+              emit(v, v + 1, v + 2);
+            }
+          } else if (op == GX_TRIANGLESTRIP) {
+            for (uint v = 0; v + 2 < count; ++v) {
+              emit(v, v + 1, v + 2);
+            }
+          } else if (op == GX_TRIANGLEFAN) {
+            for (uint v = 1; v + 1 < count; ++v) {
+              emit(0, v, v + 1);
+            }
+          } else if (op == GX_QUADS) {
+            for (uint v = 0; v + 3 < count; v += 4) {
+              emit(v, v + 1, v + 2);
+              emit(v, v + 2, v + 3);
+            }
+          }
+        }
+      }
+    }
+    return true;
+  }
+  return false;
+}
+#endif

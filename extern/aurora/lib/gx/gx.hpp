@@ -487,8 +487,10 @@ struct GXState {
   std::array<Vec4<float>, 53> foliageUniform{};
   bool shadowCaster = false;
   bool shadowCasterOnly = false; // they cast but aren't drawn (GXPortSetShadowCasterOnly)
+  bool shadowCutoutsOnly = false; // only alpha-tested draws cast (GXPortSetShadowCasterCutouts)
   bool shadowActive = false;
-  std::array<Vec4<float>, 36> shadowUniform{};
+  // gfx::shadow::Uniform, then gfx::rt::Uniform (the ray-traced shadow).
+  std::array<Vec4<float>, 41> shadowUniform{};
 
   // GX2 polygon offset state
   f32 frontOffset = 0.0f;

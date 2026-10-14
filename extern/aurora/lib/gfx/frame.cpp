@@ -7,6 +7,7 @@
 #include "volfog.hpp"
 #include "ssao.hpp"
 #include "ssgi.hpp"
+#include "rt.hpp"
 #include "scenecap.hpp"
 #include "thermal.hpp"
 #include "xray.hpp"
@@ -608,6 +609,7 @@ void shutdown() {
   volfog::shutdown();
   ssao::shutdown();
   ssgi::shutdown();
+  rt::shutdown();
   scenecap::shutdown();
   xray::shutdown();
   thermal::shutdown();

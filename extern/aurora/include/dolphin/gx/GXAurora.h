@@ -362,6 +362,8 @@ extern "C" {
 #define GX_AURORA_PORT_GUN_HEAT 0x007A
 // Port extension: screen-space global illumination over the world drawn so far (GXPortSSGI). Payload: 16 u32 words.
 #define GX_AURORA_PORT_SSGI 0x007B
+// Port extension: ray-traced sun shadows, a frame's phase (GXPortRtShadows). Payload: 28 u32 words.
+#define GX_AURORA_PORT_RT_SHADOWS 0x007C
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

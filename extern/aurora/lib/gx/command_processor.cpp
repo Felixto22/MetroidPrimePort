@@ -5,6 +5,7 @@
 #include "../gfx/volfog.hpp"
 #include "../gfx/ssao.hpp"
 #include "../gfx/ssgi.hpp"
+#include "../gfx/rt.hpp"
 #include "../gfx/scenecap.hpp"
 #include "../gfx/thermal.hpp"
 #include "../gfx/xray.hpp"
@@ -613,7 +614,8 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
   if (!state.shadowCasterOnly) {
     gfx::push_draw_command(draw);
   }
-  if (cache.shadowCaster) {
+  // GXPortSetShadowCasterCutouts: the ray-traced shadow covers the opaque world.
+  if (cache.shadowCaster && (!state.shadowCutoutsOnly || cache.config.shaderConfig.alphaCompare)) {
     DrawData caster = draw;
     caster.pipeline = cache.shadowPipelineRef;
     // A cut-out caster reads its texture; the others need no group.
@@ -1351,6 +1353,26 @@ void handle_aurora(ByteReader& reader) noexcept {
     }
     std::memcpy(&params, words, sizeof(params));
     gfx::ssgi::record(params);
+  } else if (subCmd == GX_AURORA_PORT_RT_SHADOWS) {
+    gfx::rt::Params params;
+    u32 words[sizeof(params) / sizeof(u32)];
+    for (u32& word : words) {
+      word = reader.read<u32>();
+    }
+    std::memcpy(&params, words, sizeof(params));
+    gfx::rt::Uniform uniform{};
+    const bool begin = params.misc[0] == 0;
+    const bool on = gfx::rt::record(params, uniform);
+    if (begin && g_gxState.shadowActive) {
+      std::array<Vec4<float>, 5> values{};
+      if (on) {
+        std::memcpy(values.data(), &uniform, sizeof(uniform));
+      }
+      if (!std::equal(values.begin(), values.end(), g_gxState.shadowUniform.begin() + 36)) {
+        std::copy(values.begin(), values.end(), g_gxState.shadowUniform.begin() + 36);
+        g_gxState.dirty |= DirtyUniform;
+      }
+    }
   } else if (subCmd == GX_AURORA_PORT_SCENE_CAPTURE) {
     gfx::scenecap::Params params;
     for (float& f : params.depth) {
@@ -1482,6 +1504,7 @@ void handle_aurora(ByteReader& reader) noexcept {
     const u8 mode = reader.read<u8>();
     const bool on = mode != 0;
     g_gxState.shadowCasterOnly = mode == 2;
+    g_gxState.shadowCutoutsOnly = mode == 3;
     if (g_gxState.shadowCaster != on) {
       g_gxState.shadowCaster = on;
       g_gxState.dirty |= DirtyPipeline;
@@ -1513,8 +1536,9 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.dirty |= DirtyPipeline;
     }
     if (active) {
-      static_assert(sizeof(uniform) == sizeof(g_gxState.shadowUniform));
-      std::array<Vec4<float>, 36> values;
+      // The ray-traced shadow's tail stays off until this frame's GX_AURORA_PORT_RT_SHADOWS begin.
+      static_assert(sizeof(uniform) + sizeof(gfx::rt::Uniform) == sizeof(g_gxState.shadowUniform));
+      std::array<Vec4<float>, 41> values{};
       std::memcpy(values.data(), &uniform, sizeof(uniform));
       if (g_gxState.shadowUniform != values) {
         g_gxState.shadowUniform = values;

@@ -8,6 +8,7 @@
 #include "../../gfx/volfog.hpp"
 #include "../../gfx/ssao.hpp"
 #include "../../gfx/ssgi.hpp"
+#include "../../gfx/rt.hpp"
 #include "../../gfx/scenecap.hpp"
 #include "../../gfx/thermal.hpp"
 #include "../../gfx/xray.hpp"
@@ -230,6 +231,38 @@ GXBool GXPortSSGI(const GXPortSsgiParams* ssgi) {
     GX_WRITE_U32(word);
   }
   return true;
+}
+
+GXBool GXPortRtAvailable() { return aurora::gfx::rt::available() ? GX_TRUE : GX_FALSE; }
+
+void GXPortRtMesh(u64 key, const f32* positions, u32 triangleCount) {
+  aurora::gfx::rt::set_mesh(key, positions, triangleCount);
+}
+
+u32 GXPortRtScene(const u64* keys, u32 count) {
+  return aurora::gfx::rt::set_scene(keys, keys != nullptr ? count : 0);
+}
+
+GXBool GXPortRtShadows(const GXPortRtParams* rt) {
+  if (rt == nullptr || sDrawIdMode) {
+    return GX_FALSE;
+  }
+  if (!aurora::gfx::rt::available() || !aurora::gfx::rt::ensure_task()) {
+    return GX_FALSE;
+  }
+  static_assert(sizeof(GXPortRtParams) == sizeof(aurora::gfx::rt::Params));
+  u32 words[sizeof(GXPortRtParams) / sizeof(u32)];
+  std::memcpy(words, rt, sizeof(words));
+  GX_WRITE_AURORA(GX_AURORA_PORT_RT_SHADOWS);
+  for (const u32 word : words) {
+    GX_WRITE_U32(word);
+  }
+  return GX_TRUE;
+}
+
+void GXPortSetShadowCasterCutouts() {
+  GX_WRITE_AURORA(GX_AURORA_PORT_SHADOW_CASTER);
+  GX_WRITE_U8(3);
 }
 
 GXBool GXPortSceneCapture(const f32 depth[4]) {

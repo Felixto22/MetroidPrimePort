@@ -117,6 +117,7 @@
 {"Video", "Display", "HUD and view", "Rain details", "rain drops visor runoff leaves splash wet weather"},
 {"Video", "Display", "HUD and view", "Burnable vegetation", "fire burn plants bushes beam smoke char"},
 {"Video", "Display", "HUD and view", "Clustered lighting", "clustered forward plus dynamic lights shots explosions lighting"},
+{"Video", "Display", "HUD and view", "Ray-traced shadows", "ray tracing raytraced rtx dxr shadows sun directx 12"},
 {"Video", "Display", "HUD and view", "Cinematic look", "cinematic bloom glow color grade contrast filmic"},
 {"Video", "Display", "HUD and view", "Global illumination", "global illumination ssgi bounce light compute shader indirect"},
 {"Video", "Display", "HUD and view", "Fast doors", "fast doors loading streaming rooms wait memory"},

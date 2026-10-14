@@ -375,6 +375,11 @@ void SetClusteredLighting(bool enabled);
 // (port_cinematic.h). Off in the original experience.
 bool CinematicLook();
 void SetCinematicLook(bool enabled);
+// Ray-traced shadows: the sun's shadow of the world's static geometry traced with DirectX
+// Raytracing (aurora::gfx::rt; Windows, D3D12, a DXR 1.1 GPU), instead of its shadow map.
+// Off in the original experience, and where the GPU can't.
+bool RayTracedShadows();
+void SetRayTracedShadows(bool enabled);
 // Global illumination: screen-space bounce light traced by a compute shader (aurora::gfx::ssgi),
 // as a percentage (0: off, up to 200). Off in the original experience.
 const int kGlobalIlluminationDefault = 100;

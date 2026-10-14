@@ -9,6 +9,7 @@
 #include "port_cinematic.h"
 #include "port_foliage.h"
 #include "port_dynamic_lights.h"
+#include "port_rt_shadows.h"
 #include "port_env.h"
 #include "port_freecam.h"
 #include "port_photo.h"
@@ -2875,6 +2876,9 @@ static bool PortRoomSun(const CGameArea& area, CScriptLayerManager* layers, bool
       &l, cinematic, dir, color);
 }
 
+// The way the frame's sun light travels (world space; zero without a sun), for the ray-traced shadows.
+static float sPortSunTravel[3] = {0.f, 0.f, 0.f};
+
 static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CScriptLayerManager* layers,
                             bool cinematic, bool enabled, bool roomLights) {
   static const bool sOn = port::EnvFlag("MP_SHADOWS", true);
@@ -2916,6 +2920,9 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
   }
   // The cinematic look's light shafts stream from this sun.
   PortCinematic::SetSun(dir);
+  for (int i = 0; i < 3; ++i) {
+    sPortSunTravel[i] = distance > 0.f ? dir[i] : 0.f;
+  }
   // GX's view matrix: the camera's rows (right, up, towards the camera) and their eye offset.
   const CVector3f eye = view.GetTranslation();
   const float axes[3][3] = {
@@ -3479,7 +3486,15 @@ void CStateManager::DrawWorld() const {
       PortSetupShadow(backupViewMatrix, portVisArea, x8c8_worldLayerState.GetPtr(),
                       x870_cameraManager->IsInCinematicCamera(), !thermal && visor != CPlayerState::kPV_XRay && !portCollisionOnly,
                       !thermal && visor != CPlayerState::kPV_XRay);
-  GXPortSetShadowCaster(portShadow);
+  // Ray-traced shadows: the opaque world's shadow is traced, so only its cut-outs (and, after the
+  // areas, the actors) cast into the shadow map.
+  const bool portRtShadows =
+      portShadow && PortRtShadows::Begin(areas.begin(), areas.size(), backupViewMatrix, sPortSunTravel);
+  if (portRtShadows) {
+    GXPortSetShadowCasterCutouts();
+  } else {
+    GXPortSetShadowCaster(portShadow);
+  }
 #endif
   for (int i = areas.size() - 1; i >= 0; --i) {
     const CGameArea& area = *areas[i];
@@ -3535,6 +3550,8 @@ void CStateManager::DrawWorld() const {
 #ifdef TARGET_PC
   // Remastered fogs the opaque world and sky full-screen, then the actors and transparents as
   // they draw (up to GXPortVolumetricFogEnd).
+  // The opaque world's depth, traced for the sun's shadow after the frame (port_rt_shadows.h).
+  PortRtShadows::Trace();
   PortDrawAmbientOcclusion(*this);
   PortDrawGlobalIllumination(*this);
   // The opaque frame for glass to reflect (GXPortSetGlass) and soft particles to fade against.

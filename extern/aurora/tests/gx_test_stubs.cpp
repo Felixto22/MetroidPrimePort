@@ -7,6 +7,7 @@
 #include "gfx/volfog.hpp"
 #include "gfx/ssao.hpp"
 #include "gfx/ssgi.hpp"
+#include "gfx/rt.hpp"
 #include "gfx/scenecap.hpp"
 #include "gfx/thermal.hpp"
 #include "gfx/xray.hpp"
@@ -312,6 +313,18 @@ bool ensure_task() { return false; }
 bool record(const Params& params) { return false; }
 void shutdown() {}
 } // namespace aurora::gfx::ssgi
+
+namespace aurora::gfx::rt {
+bool available() { return false; }
+void set_mesh(uint64_t key, const float* positions, uint32_t triangles) {}
+uint32_t set_scene(const uint64_t* keys, uint32_t count) { return 0; }
+bool ensure_task() { return false; }
+bool record(Params params, Uniform& out) {
+  out = {};
+  return false;
+}
+void shutdown() {}
+} // namespace aurora::gfx::rt
 
 namespace aurora::gfx::ssao {
 bool ensure_task() { return false; }

@@ -267,6 +267,7 @@ bool sInteractiveFoliage = true;
 bool sRainDetails = true;
 bool sBurnableFoliage = true;
 bool sClusteredLighting = true;
+bool sRayTracedShadows = true;
 bool sCinematicLook = true;
 int sGlobalIllumination = PortDebug::kGlobalIlluminationDefault;
 float sGunOffset[3] = {};
@@ -702,6 +703,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sBurnableFoliage = ParseBool(value);
   } else if (key == "clustered_lighting") {
     sClusteredLighting = ParseBool(value);
+  } else if (key == "ray_traced_shadows") {
+    sRayTracedShadows = ParseBool(value);
   } else if (key == "cinematic_look") {
     sCinematicLook = ParseBool(value);
   } else if (key == "global_illumination") {
@@ -907,6 +910,7 @@ std::string SettingsText() {
   file << "rain_details=" << (sRainDetails ? 1 : 0) << '\n';
   file << "burnable_foliage=" << (sBurnableFoliage ? 1 : 0) << '\n';
   file << "clustered_lighting=" << (sClusteredLighting ? 1 : 0) << '\n';
+  file << "ray_traced_shadows=" << (sRayTracedShadows ? 1 : 0) << '\n';
   file << "cinematic_look=" << (sCinematicLook ? 1 : 0) << '\n';
   file << "global_illumination=" << sGlobalIllumination << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
@@ -1934,6 +1938,17 @@ bool ClusteredLighting() {
 void SetClusteredLighting(bool enabled) {
   EnsureInitialized();
   sClusteredLighting = enabled;
+  MarkDirty();
+}
+
+bool RayTracedShadows() {
+  EnsureInitialized();
+  return sRayTracedShadows && !sOriginalExperience;
+}
+
+void SetRayTracedShadows(bool enabled) {
+  EnsureInitialized();
+  sRayTracedShadows = enabled;
   MarkDirty();
 }
 
@@ -6802,6 +6817,12 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Every dynamic light (shots, explosions, glowing creatures, fires) lights the\n"
                         "world per pixel, as many as reach a surface, not only the few the game picks.");
+  bool rayTracedShadows = sRayTracedShadows;
+  if (ImGui::Checkbox("Ray-traced shadows", &rayTracedShadows)) {
+    SetRayTracedShadows(rayTracedShadows);
+  }
+  ImGui::SetItemTooltip("The sun's shadow of the world traced with DirectX Raytracing (D3D12, a GPU\n"
+                        "with DXR 1.1): exact to the smallest railing, at any distance, with soft edges.");
   bool cinematicLook = sCinematicLook;
   if (ImGui::Checkbox("Cinematic look", &cinematicLook)) {
     SetCinematicLook(cinematicLook);

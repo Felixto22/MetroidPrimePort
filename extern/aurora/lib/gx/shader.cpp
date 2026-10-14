@@ -2904,6 +2904,46 @@ auto pbr_func(const ShaderConfig& config, const ShaderInfo& info, std::string& v
 absl::flat_hash_set<gfx::ShaderRef> s_seenShaders;
 } // namespace
 
+// Port extension: the ray-traced sun shadow (gfx/rt) at view point `pos`: the shadow map's layer
+// after the cascades holds the trace of the previous frame, a texel packing its depth (16 bits,
+// 1/64 units) over its visibility (8 bits). The point is taken to that frame's view and screen,
+// and the four texels around it that saw about the same depth are blended. 1 (lit) where none did.
+std::string rt_shadow_lookup(std::string_view pos) {
+  return fmt::format(R"""(
+        var rt_vis = 1.0;
+        if (ubuf.shadow_rt_info.x > 0.5) {{
+            let rt_p = vec4f({0}, 1.0);
+            let rt_v = vec3f(dot(ubuf.shadow_rt[0], rt_p), dot(ubuf.shadow_rt[1], rt_p), dot(ubuf.shadow_rt[2], rt_p));
+            let rt_z = -rt_v.z;
+            if (rt_z > 1e-3) {{
+                let rt_f = ubuf.shadow_rt_frustum;
+                let rt_s = (rt_v.xy / rt_z - rt_f.xz) / (rt_f.yw - rt_f.xz);
+                let rt_uv = vec2f(rt_s.x, 1.0 - rt_s.y);
+                if (all(rt_uv >= vec2f(0.0)) && all(rt_uv <= vec2f(1.0))) {{
+                    let rt_dim = ubuf.shadow_rt_info.yz;
+                    let rt_t = rt_uv * rt_dim - 0.5;
+                    let rt_b = floor(rt_t);
+                    let rt_fr = rt_t - rt_b;
+                    var rt_acc = 0.0;
+                    var rt_w = 0.0;
+                    for (var rt_k = 0u; rt_k < 4u; rt_k++) {{
+                        let rt_o = vec2f(f32(rt_k & 1u), f32(rt_k >> 1u));
+                        let rt_q = vec2i(clamp(rt_b + rt_o, vec2f(0.0), rt_dim - 1.0));
+                        let rt_code = u32(textureLoad(shadow_map, rt_q, 4, 0) * 16777216.0 + 0.5);
+                        let rt_d = f32(rt_code >> 8u) / 64.0;
+                        let rt_bw = select(1.0 - rt_fr.x, rt_fr.x, rt_o.x > 0.5) * select(1.0 - rt_fr.y, rt_fr.y, rt_o.y > 0.5);
+                        let rt_ww = select(0.0, rt_bw + 1e-3, rt_code != 0u && abs(rt_d - rt_z) < 0.04 * rt_z + 0.1);
+                        rt_acc += rt_ww * f32(rt_code & 255u) / 255.0;
+                        rt_w += rt_ww;
+                    }}
+                    if (rt_w > 1e-4) {{
+                        rt_vis = rt_acc / rt_w;
+                    }}
+                }}
+            }}
+        }})""", pos);
+}
+
 bool shadow_cutout(const ShaderConfig& sc, u32& texMap, u32& texCoord) noexcept {
   if (!sc.alphaCompare || sc.lineMode != 0) {
     return false;
@@ -4063,7 +4103,8 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
               }
           }
           let f = saturate((depth - ubuf.shadow_fade.x) / (ubuf.shadow_fade.y - ubuf.shadow_fade.x));
-          sun_vis = max(sum, f * f * (3.0 - 2.0 * f));
+          sun_vis = max(sum, f * f * (3.0 - 2.0 * f));)""" + rt_shadow_lookup("in.pbr_pos") + R"""(
+          sun_vis *= rt_vis;
       })""");
       if (pbr.find("// pbr-sun-view") != std::string::npos) {
         put("// pbr-sun-view", "pbr_dc = vec3f(sun_vis);");
@@ -4209,8 +4250,9 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
                                                     c, sref);
             }
         }
-        let f = saturate((depth - ubuf.shadow_fade.x) / (ubuf.shadow_fade.y - ubuf.shadow_fade.x));
-        let sun_vis = max(sum, f * f * (3.0 - 2.0 * f));
+        let f = saturate((depth - ubuf.shadow_fade.x) / (ubuf.shadow_fade.y - ubuf.shadow_fade.x));)""" +
+                  rt_shadow_lookup("in.shd_pos") + R"""(
+        let sun_vis = max(sum, f * f * (3.0 - 2.0 * f)) * rt_vis;
         // Surfaces facing away from the sun are already dark in the bake: shadow those less.
         var shd_n = normalize(cross(dpdx(in.shd_pos), -dpdy(in.shd_pos)));
         shd_n = select(shd_n, -shd_n, dot(shd_n, -in.shd_pos) < 0.0);
@@ -4304,6 +4346,10 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    shadow_color: vec4f,";
     uniBufAttrs += "\n    shadow_splits: vec4f,";
     uniBufAttrs += "\n    shadow_fade: vec4f,";
+    // gfx::rt::Uniform: this view to the ray-traced frame's view, its frustum, and (on, width, height).
+    uniBufAttrs += "\n    shadow_rt: array<vec4f, 3>,";
+    uniBufAttrs += "\n    shadow_rt_frustum: vec4f,";
+    uniBufAttrs += "\n    shadow_rt_info: vec4f,";
   }
   if (info.usesGlass) {
     uniBufAttrs += "\n    glass: vec4f,";

@@ -305,6 +305,29 @@ typedef struct {
   u32 misc[4];    // rays per texel (2..16), steps per ray (4..24), 0, 0
 } GXPortSsgiParams;
 GXBool GXPortSSGI(const GXPortSsgiParams* params);
+// Port extension: ray-traced sun shadows (aurora::gfx::rt), with DirectX Raytracing on Dawn's
+// D3D12 device (Windows, a DXR 1.1 GPU). Whether this device can: the first call sets it up.
+GXBool GXPortRtAvailable(void);
+// The world's static opaque triangles under `key` (xyz of each corner, 3 corners a triangle, world
+// space); null or 0 forgets the key.
+void GXPortRtMesh(u64 key, const f32* positions, u32 triangleCount);
+// The meshes this frame's shadow is traced against. Returns 1 + the index of the first key that
+// has no mesh (send it with GXPortRtMesh), 0 when all have one.
+u32 GXPortRtScene(const u64* keys, u32 count);
+// A frame's phase: 0 (begin) before the world draws, after GXPortSetShadowFrame: this frame's
+// shadow receivers read the shadow traced after the previous frame; 1 (trace) once the opaque
+// world is drawn: its depth is traced after the frame. False when there is nothing to trace with.
+typedef struct {
+  f32 viewToWorld[3][4]; // GX's view space to world, as rows
+  f32 frustum[4];        // left, right, bottom, top at a view depth of 1
+  f32 depth[4];          // near, far, and the GX z range the world draws in (min, max)
+  f32 sun[4];            // world direction to the sun (xyz); w: tan of the sun disc's radius
+  u32 misc[4];           // phase (0, 1), 0, 0, 0
+} GXPortRtParams;
+GXBool GXPortRtShadows(const GXPortRtParams* params);
+// Port extension: until GXPortSetShadowCaster, only the alpha-tested draws (cut-outs) cast into
+// the sun's shadow map: the ray-traced shadow covers the opaque world.
+void GXPortSetShadowCasterCutouts(void);
 // Port extension: a copy of the opaque frame as drawn so far, with the world's linear depth, that
 // glass draws reflect (aurora::gfx::scenecap). depth: near, far, and the GX z range the world draws in.
 GXBool GXPortSceneCapture(const f32 depth[4]);

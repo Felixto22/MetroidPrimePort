@@ -42,6 +42,7 @@ struct State {
   wgpu::Texture map;
   wgpu::TextureView mapView;                              // the array, for the receivers
   std::array<wgpu::TextureView, cascade::Count> layerViews; // a cascade each, for the casters
+  wgpu::TextureView rtView;                                 // the ray-traced shadow's layer (gfx/rt)
   wgpu::Sampler sampler;
   // The cascades' light clip spaces (world -> map) and far ends, of the frame being drawn and of
   // the map drawn last.
@@ -94,14 +95,15 @@ void ensure_map() {
       .label = "Shadow Map",
       .usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding,
       .dimension = wgpu::TextureDimension::e2D,
-      .size = {g_state.size, g_state.size, cascade::Count},
+      // One more layer past the cascades: the ray-traced shadow (gfx/rt), packed with its depth.
+      .size = {g_state.size, g_state.size, cascade::Count + 1},
       .format = MapFormat,
   };
   g_state.map = g_device.CreateTexture(&descriptor);
   const wgpu::TextureViewDescriptor arrayView{
       .label = "Shadow Map",
       .dimension = wgpu::TextureViewDimension::e2DArray,
-      .arrayLayerCount = cascade::Count,
+      .arrayLayerCount = cascade::Count + 1,
   };
   g_state.mapView = g_state.map.CreateView(&arrayView);
   for (uint32_t c = 0; c < cascade::Count; ++c) {
@@ -113,6 +115,13 @@ void ensure_map() {
     };
     g_state.layerViews[c] = g_state.map.CreateView(&layerView);
   }
+  const wgpu::TextureViewDescriptor rtView{
+      .label = "Ray-Traced Shadow",
+      .dimension = wgpu::TextureViewDimension::e2D,
+      .baseArrayLayer = cascade::Count,
+      .arrayLayerCount = 1,
+  };
+  g_state.rtView = g_state.map.CreateView(&rtView);
 }
 
 Matrix multiply(const Matrix& a, const Matrix& b) {
@@ -337,6 +346,13 @@ const wgpu::TextureView& map_view() {
   ensure_map();
   return g_state.mapView;
 }
+
+const wgpu::TextureView& rt_layer_view() {
+  ensure_map();
+  return g_state.rtView;
+}
+
+uint32_t layer_size() { return map_size(); }
 
 const wgpu::Sampler& sampler() {
   if (!g_state.sampler) {

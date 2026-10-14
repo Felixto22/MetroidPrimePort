@@ -1059,6 +1059,11 @@ static bool initialize_once(AuroraBackend auroraBackend, bool allowCpu) {
       if (feature == wgpu::FeatureName::TimestampQuery) {
         requiredFeatures.push_back(feature);
       }
+      // The ray-traced shadows (gfx/rt) share textures with their D3D12 compute pass.
+      if (feature == wgpu::FeatureName::SharedTextureMemoryD3D12Resource ||
+          feature == wgpu::FeatureName::SharedFenceDXGISharedHandle) {
+        requiredFeatures.push_back(feature);
+      }
     }
     std::string featureList;
     for (auto featureName : requiredFeatures) {
