@@ -390,6 +390,10 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
   if (config.soft != 0) {
     info.usesSoft = true;
   }
+  if (config.specular) {
+    info.usesSpecular = true;
+    info.uniformSize += sizeof(Vec4<float>); // GXState::specular
+  }
   if (config.clustered) {
     info.usesClustered = true;
     info.uniformSize += sizeof(Vec4<float>); // GXState::clusterInfo
@@ -624,6 +628,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
   }
   if (info.usesClustered) {
     buf.append(g_gxState.clusterInfo);
+  }
+  if (info.usesSpecular) {
+    buf.append(Vec4<float>{g_gxState.specular, 0.f, 0.f, 0.f});
   }
 }
 

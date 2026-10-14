@@ -3,6 +3,10 @@
 
 #include "port_debug.h"
 
+#include "Kyoto/Graphics/CGraphics.hpp"
+#include "Kyoto/Math/CTransform4f.hpp"
+#include "Kyoto/Math/CVector3f.hpp"
+
 #include <dolphin/gx/GXExtra.h>
 
 #include <algorithm>
@@ -14,6 +18,7 @@ namespace PortCinematic {
 namespace {
 constexpr uint32_t kGradeId = 0x43494e45; // 'CINE'
 constexpr int kLut = 33;
+float sSun[3] = {};
 
 float SrgbEnc(float x) { return x <= 0.0031308f ? 12.92f * x : 1.055f * std::pow(x, 1.f / 2.4f) - 0.055f; }
 float SrgbDec(float x) { return x <= 0.04045f ? x / 12.92f : std::pow((x + 0.055f) / 1.055f, 2.4f); }
@@ -92,6 +97,48 @@ bool Retail(float& threshold, float tints[5][3], float tone[3][4], uint32_t& gra
     }
   }
   grade = kGradeId;
+
+  // Extras: the lens star always; light shafts when the room has a sun in front of the camera.
+  float sunUv[2] = {0.f, 0.f};
+  bool inFront = false;
+  if (sSun[0] != 0.f || sSun[1] != 0.f || sSun[2] != 0.f) {
+    const CTransform4f& view = CGraphics::GetViewMatrix();
+    // Towards the sun, in the camera's frame: right, forward, up.
+    const CVector3f toSun(-sSun[0], -sSun[1], -sSun[2]);
+    const float vx = CVector3f::Dot(toSun, view.GetRight());
+    const float vy = CVector3f::Dot(toSun, view.GetForward());
+    const float vz = CVector3f::Dot(toSun, view.GetUp());
+    const CGraphics::CProjectionState& proj = CGraphics::GetProjectionState();
+    if (vy > 0.05f && proj.IsPerspective()) {
+      const float n = proj.GetNear();
+      const float x = n * vx / vy, y = n * vz / vy;
+      const float ndcX = (2.f * x - (proj.GetRight() + proj.GetLeft())) / (proj.GetRight() - proj.GetLeft());
+      const float ndcY = (2.f * y - (proj.GetTop() + proj.GetBottom())) / (proj.GetTop() - proj.GetBottom());
+      sunUv[0] = ndcX * 0.5f + 0.5f;
+      sunUv[1] = 0.5f - ndcY * 0.5f;
+      inFront = true;
+    }
+  }
+  GXPortPostProcessExtras(0.7f, inFront ? 0.6f : 0.f, sunUv, inFront ? GX_TRUE : GX_FALSE);
   return true;
+}
+
+void SetSun(const float dir[3]) {
+  const float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+  for (int i = 0; i < 3; ++i) {
+    sSun[i] = len > 1e-4f ? dir[i] / len : 0.f;
+  }
+}
+
+GunShine::GunShine() : on(PortDebug::CinematicLook()) {
+  if (on) {
+    GXPortSetSpecular(0.85f);
+  }
+}
+
+GunShine::~GunShine() {
+  if (on) {
+    GXPortSetSpecular(0.f);
+  }
 }
 } // namespace PortCinematic

@@ -354,6 +354,8 @@ extern "C" {
 #define GX_AURORA_PORT_FOLIAGE_SURFACE 0x0076
 // Port extension: the dynamic lights for clustered per-pixel lighting (GXPortSetClusterLights). Payload: u32 count, 12 f32 each.
 #define GX_AURORA_PORT_CLUSTER_LIGHTS 0x0077
+// Port extension: specular highlights on the following lit draws (GXPortSetSpecular). Payload: f32 strength.
+#define GX_AURORA_PORT_SPECULAR 0x0078
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

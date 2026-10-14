@@ -57,6 +57,8 @@ struct Uniform {
   float tint[4]; // w: the threshold
   float tone[3][4];
   float grade[4]; // x: B's weight, y: A is a LUT, z: B is a LUT, w: bloom on
+  float fx[4];    // x: star streaks, y: light shafts (Params::Extras)
+  float sun[4];   // xy: the sun on screen (uv), z: 1 when it's in front
 };
 static_assert(sizeof(Uniform) <= SlotSize);
 
@@ -66,6 +68,8 @@ struct Params {
   tint: vec4f,
   tone: array<vec4f, 3>,
   grade: vec4f,
+  fx: vec4f,
+  sun: vec4f,
 };
 @group(0) @binding(0) var samp: sampler;
 @group(0) @binding(1) var src: texture_2d<f32>;
@@ -248,7 +252,43 @@ fn fs_composite(in: VertexOutput) -> @location(0) vec4f {
   // Remastered's bloom composite runs after the tonemap pass has graded the frame: the bloom's
   // b / (1 + b) added to the graded colour, clamped.
   if (p.grade.w > 0.5) {
-    let b = max(textureSampleLevel(bloomTex, samp, in.uv, 0.0).rgb, vec3f(0.0));
+    var b = max(textureSampleLevel(bloomTex, samp, in.uv, 0.0).rgb, vec3f(0.0));
+    let bsize = vec2f(textureDimensions(bloomTex));
+    // Port extension (Params::Extras): a lens's star around the brightest light, the bloom
+    // smeared along four directions, fading with distance; and light shafts, the bloom gathered
+    // along the way to the sun and fading with it.
+    if (p.fx.x > 0.0) {
+      let aspect = bsize.y / bsize.x;
+      var star = vec3f(0.0);
+      for (var d = 0; d < 4; d++) {
+        let ang = f32(d) * 0.7853982 + 0.2;
+        let dir = vec2f(cos(ang) * aspect, sin(ang)) * 0.006;
+        for (var k = 1; k <= 10; k++) {
+          let w = exp(-f32(k) * 0.32);
+          star += max(textureSampleLevel(bloomTex, samp, in.uv + dir * f32(k), 0.0).rgb, vec3f(0.0)) * w;
+          star += max(textureSampleLevel(bloomTex, samp, in.uv - dir * f32(k), 0.0).rgb, vec3f(0.0)) * w;
+        }
+      }
+      // Only the light that is bright enough to streak: the brightest part of the bloom.
+      let sl = max(star - vec3f(1.5), vec3f(0.0));
+      b += sl * (p.fx.x * 0.12);
+    }
+    if (p.fx.y > 0.0 && p.sun.z > 0.5) {
+      let toSun = p.sun.xy - in.uv;
+      let steps = 40;
+      let stepUv = toSun / f32(steps) * 0.9;
+      var at = in.uv;
+      var shafts = vec3f(0.0);
+      var decay = 1.0;
+      for (var s = 0; s < steps; s++) {
+        at += stepUv;
+        if (any(at < vec2f(0.0)) || any(at > vec2f(1.0))) { break; }
+        shafts += max(textureSampleLevel(bloomTex, samp, at, 0.0).rgb, vec3f(0.0)) * decay;
+        decay *= 0.965;
+      }
+      let falloff = 1.0 / (1.0 + dot(toSun, toSun) * 3.0);
+      b += shafts / f32(steps) * (p.fx.y * 6.0 * falloff) * vec3f(1.0, 0.95, 0.85);
+    }
     graded += b / (1.0 + b);
   }
   return vec4f(srgb_enc(graded), f.a);
@@ -765,6 +805,14 @@ void encode(const EncoderTaskContext& ctx, const wgpu::CommandEncoder& cmd, cons
   // tone[0][3] carries the exposure to measure at; the curve has no use for it.
   const float exposure = params.tone[0][3];
   params.tone[0][3] = 0.f;
+  // With the extras, row 0 (the toe, which the curve then doesn't have) carries the sun.
+  float sunUv[3] = {};
+  if ((params.bloom & Extras) != 0) {
+    for (int i = 0; i < 3; ++i) {
+      sunUv[i] = params.tone[0][i];
+      params.tone[0][i] = 0.f;
+    }
+  }
   const bool measure = exposure > 0.f && params.tone[1][0] > 0.f;
   // The pass after an in-pass composite clears the frame, so it must be drawn even before a
   // LUT has been uploaded.
@@ -793,6 +841,13 @@ void encode(const EncoderTaskContext& ctx, const wgpu::CommandEncoder& cmd, cons
     u.grade[1] = lutA ? 1.f : 0.f;
     u.grade[2] = lutB ? 1.f : 0.f;
     u.grade[3] = bloom ? 1.f : 0.f;
+    if ((params.bloom & Extras) != 0) {
+      u.fx[0] = float((params.bloom >> 8) & 0xff) / 255.f;
+      u.fx[1] = float((params.bloom >> 16) & 0xff) / 255.f;
+      u.sun[0] = sunUv[0];
+      u.sun[1] = sunUv[1];
+      u.sun[2] = sunUv[2];
+    }
     std::memcpy(slots[slot].data(), &u, sizeof(u));
   };
   uint32_t slot = 0;
@@ -878,7 +933,7 @@ void record(const Params& params) {
     return;
   }
   Params task = params;
-  task.bloom &= BloomOn | CostNoFrameCopy | CostNoDepthReload | CostKeepDepth;
+  task.bloom &= BloomOn | CostNoFrameCopy | CostNoDepthReload | CostKeepDepth | Extras | 0xffff00u;
   // A frame that is composited draws it as the first thing in the pass that resumes the EFB: on a
   // tile-based GPU a pass of its own stores the frame only for that pass to load it again. That pass
   // clears depth instead of loading it when nothing after the bloom (the HUD) tests against the world's.

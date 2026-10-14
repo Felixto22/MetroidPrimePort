@@ -592,7 +592,10 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   // Clustered lights: a lit TEV draw, which they light per pixel.
   config.shaderConfig.clustered =
       g_gxState.clusterActive && !drawId && !depthOnly && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0;
-  config.shaderConfig.perPixel = (g_gxState.perPixelLighting || config.shaderConfig.clustered) && !drawId &&
+  config.shaderConfig.specular =
+      g_gxState.specular > 0.f && !drawId && !depthOnly && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0;
+  config.shaderConfig.perPixel = (g_gxState.perPixelLighting || config.shaderConfig.clustered ||
+                                  config.shaderConfig.specular) && !drawId &&
                                  !depthOnly && config.shaderConfig.lineMode == 0;
   if (g_gxState.bumpStrength > 0.f && !drawId && !depthOnly && g_gxState.pbr == 0 &&
       config.shaderConfig.lineMode == 0 &&

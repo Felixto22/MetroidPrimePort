@@ -1,4 +1,5 @@
 #include "MetroidPrime/Player/CPlayerGun.hpp"
+#include "port_cinematic.h"
 #include "port_debug.h"
 #include "port_room_env.h"
 #include "port_synthetic_effect.h"
@@ -624,6 +625,8 @@ void CPlayerGun::Render(const CStateManager& mgr, const CVector3f& pos,
   const CVector3f probePos = mgr.GetPlayer()->GetTranslation();
   const float probeXyz[3] = {probePos.GetX(), probePos.GetY(), probePos.GetZ()};
   const PortRoomEnv::ProbeOverrideScope probeScope(probeXyz);
+  // The cinematic look: the cannon's metal catches the light.
+  const PortCinematic::GunShine gunShine;
 #endif
   const CTransform4f worldView = CGraphics::GetViewMatrix();
 #ifdef TARGET_PC

@@ -960,13 +960,23 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
             cdir = cdir / max(cd, 1e-4);
             let catt = 1.0 / max(r2.x + r2.y * cd + r2.z * cd2, 1e-3) * (1.0 - smoothstep(r0.w * 0.7, r0.w, cd));
             let cdiff = {9};
-            lighting = lighting + vec4f(r1.rgb * (catt * cdiff), 0.0);
+            lighting = lighting + vec4f(r1.rgb * (catt * cdiff), 0.0);{10}
           }}
         }}
       }})""",
         gfx::cluster::GridMin[0], gfx::cluster::GridMin[1], gfx::cluster::GridMin[2], gfx::cluster::CellSize,
         gfx::cluster::GridX, gfx::cluster::GridY, gfx::cluster::GridZ, gfx::cluster::CellCount, GX::MaxLights,
-        diffFn == GX_DF_SIGN ? "dot(cdir, cl_n)" : "max(0.0, dot(cdir, cl_n))");
+        diffFn == GX_DF_SIGN ? "dot(cdir, cl_n)" : "max(0.0, dot(cdir, cl_n))",
+        config.specular ? "\n            port_spec = port_spec + r1.rgb * (catt * select(0.0, pow(max(dot(cl_n, "
+                          "normalize(cdir + normalize(-in.mv_pos))), 0.0), 40.0), cdiff > 0.0));"
+                        : "");
+  }
+  // Port extension: specular highlights (ShaderConfig::specular), Blinn-Phong, into port_spec,
+  // which the fragment adds over its colour at the end.
+  std::string specFn;
+  if (ppl && config.specular && i == 0 && !alpha && diffFn != GX_DF_NONE) {
+    specFn = "\n          port_spec = port_spec + light.color.rgb * (attn * select(0.0, pow(max(dot(normalize(in.mv_nrm), "
+             "normalize(ldir + normalize(-in.mv_pos))), 0.0), 40.0), diff > 0.0));";
   }
   return fmt::format(R"""(
     {{
@@ -980,12 +990,12 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
           ldir = ldir / dist;
           var attn: f32;{2}
           var diff = {3};
-          lighting = lighting + (attn * diff * light.color);
+          lighting = lighting + (attn * diff * light.color);{11}
       }}
       {7}{8} = ({4} * clamp(lighting, vec4f(0.0), vec4f(1.0))){8};
     }})""",
                      i, GX::MaxLights, lightAttnFn, lightDiffFn, matSrc, ambSrc, posVar, outVar, swizzle,
-                     alpha ? "a"sv : ""sv, clusterFn);
+                     alpha ? "a"sv : ""sv, clusterFn, specFn);
 }
 
 // GX_AURORA_SET_PBR: replaces the TEV colour result with a metal/roughness evaluation of
@@ -3330,6 +3340,9 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
     }
   }
 
+  if (ppl && config.specular) {
+    fragmentFnPre += "\n    var port_spec = vec3f(0.0);";
+  }
   for (int i = 0; i < info.sampledColorChannels.size(); ++i) {
     if (!info.sampledColorChannels.test(i)) {
       continue;
@@ -4201,6 +4214,9 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   if (info.usesClustered) {
     uniBufAttrs += "\n    cluster: vec4f,";
   }
+  if (info.usesSpecular) {
+    uniBufAttrs += "\n    spec: vec4f,";
+  }
   if (!prevColorNormalized && !prevAlphaNormalized) {
     fragmentFn += "\n    prev = tev_overflow_vec4f(prev);";
   } else if (!prevColorNormalized) {
@@ -4256,6 +4272,9 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
                                "@group(2) @binding({})\n"
                                "var glass_samp: sampler;",
                                kVolFogFroxelBinding, kVolFogSamplerBinding);
+  }
+  if (info.usesSpecular && ppl) {
+    fragmentFn += "\n    prev = vec4f(prev.rgb + port_spec * ubuf.spec.x, prev.a);";
   }
   if (info.usesFoliage) {
     // Port extension: foliage surface effects. Burns char the leaves black within their radius

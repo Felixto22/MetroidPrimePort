@@ -24,6 +24,11 @@ static_assert(sizeof(Params) <= 128);
 constexpr uint32_t CostNoFrameCopy = 4;
 constexpr uint32_t CostNoDepthReload = 8;
 constexpr uint32_t CostKeepDepth = 16;
+// Port extension (GXPortPostProcessExtras), for a tone curve without a toe (tone[1][2] == 0),
+// whose row 0 is then free: star streaks around the bloom's brightest light (bits 8-15, the
+// strength / 255) and light shafts from the sun through the bright parts of the frame (bits
+// 16-23); tone[0] xyz: the sun's place on screen (uv) and 1 when it is in front of the camera.
+constexpr uint32_t Extras = 32;
 
 static_assert(sizeof(Params) % 4 == 0);
 

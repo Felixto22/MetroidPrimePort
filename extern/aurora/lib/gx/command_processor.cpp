@@ -1346,6 +1346,15 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.foliage = on;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_SPECULAR) {
+    const u32 word = reader.read<u32>();
+    float strength;
+    std::memcpy(&strength, &word, sizeof(strength));
+    if ((g_gxState.specular > 0.f) != (strength > 0.f)) {
+      g_gxState.dirty |= DirtyPipeline;
+    }
+    g_gxState.specular = strength;
+    g_gxState.dirty |= DirtyUniform;
   } else if (subCmd == GX_AURORA_PORT_CLUSTER_LIGHTS) {
     const u32 count = reader.read<u32>();
     static std::vector<gfx::cluster::Light> lights;

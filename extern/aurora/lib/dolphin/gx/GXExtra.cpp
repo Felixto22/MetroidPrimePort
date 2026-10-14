@@ -14,6 +14,7 @@
 
 #include <atomic>
 #include <bit>
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -96,8 +97,26 @@ struct PBRMaterialWrite {
 } // namespace
 
 extern "C" {
+static struct {
+  bool set = false;
+  f32 star = 0.f;
+  f32 shafts = 0.f;
+  f32 sun[3] = {};
+} sPostExtras;
+
+void GXPortPostProcessExtras(f32 star, f32 shafts, const f32 sunUv[2], GXBool sunInFront) {
+  sPostExtras.set = true;
+  sPostExtras.star = star;
+  sPostExtras.shafts = shafts;
+  sPostExtras.sun[0] = sunUv != nullptr ? sunUv[0] : 0.f;
+  sPostExtras.sun[1] = sunUv != nullptr ? sunUv[1] : 0.f;
+  sPostExtras.sun[2] = sunUv != nullptr && sunInFront ? 1.f : 0.f;
+}
+
 GXBool GXPortPostProcess(GXBool bloom, f32 threshold, const f32 tints[5][3], const f32 tone[3][4], u32 gradeA,
                          u32 gradeB, f32 gradeWeight, f32 exposure) {
+  const auto extras = sPostExtras;
+  sPostExtras.set = false;
   if (GXGetPBRCostTest() == 10 || sDrawIdMode) {
     return true;
   }
@@ -125,6 +144,13 @@ GXBool GXPortPostProcess(GXBool bloom, f32 threshold, const f32 tints[5][3], con
   params.gradeWeight = gradeWeight;
   // The curve's toe has no use for row 0's w; it carries the exposure (see bloom.hpp).
   params.tone[0][3] = tone != nullptr && exposure > 0.f ? exposure : 0.f;
+  if (extras.set && (params.bloom & 1) != 0 && params.tone[1][2] == 0.f) {
+    const auto byte = [](f32 v) { return static_cast<u32>(std::clamp(v, 0.f, 1.f) * 255.f + 0.5f); };
+    params.bloom |= aurora::gfx::bloom::Extras | (byte(extras.star) << 8) | (byte(extras.shafts) << 16);
+    params.tone[0][0] = extras.sun[0];
+    params.tone[0][1] = extras.sun[1];
+    params.tone[0][2] = extras.sun[2];
+  }
   if (!params.bloom && gradeA == 0 && gradeB == 0 && params.tone[0][3] == 0.f) {
     return true;
   }
@@ -283,6 +309,13 @@ void GXPortSetFoliageSurface(f32 rain, f32 seconds, const f32 viewToWorld[3][4],
       put(i < count ? params[i][k] : 0.f);
     }
   }
+}
+
+void GXPortSetSpecular(f32 strength) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_SPECULAR);
+  u32 word;
+  std::memcpy(&word, &strength, sizeof(word));
+  GX_WRITE_U32(word);
 }
 
 void GXPortSetClusterLights(const f32 (*lights)[12], u32 count) {

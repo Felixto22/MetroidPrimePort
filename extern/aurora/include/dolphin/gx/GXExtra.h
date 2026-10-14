@@ -251,6 +251,11 @@ void GXSetPBRModelModulation(const f32 diffuse[4], const f32 incan[4], f32 cover
 // back through GXPortFrameRadiance a few frames later.
 GXBool GXPortPostProcess(GXBool bloom, f32 threshold, const f32 tints[5][3], const f32 tone[3][4], u32 gradeA,
                          u32 gradeB, f32 gradeWeight, f32 exposure);
+// Port extension: for the next GXPortPostProcess with bloom and a tone curve without a toe
+// (tone[1][2] == 0): star streaks (lens flare) around the bloom's brightest light at `star`
+// (0..1), and light shafts at `shafts` (0..1) streaming from the sun at `sunUv` (screen uv), when
+// `sunInFront`.
+void GXPortPostProcessExtras(f32 star, f32 shafts, const f32 sunUv[2], GXBool sunInFront);
 // Port extension: Remastered's volumetric fog over the EFB as drawn so far: a froxel grid
 // (16x16 pixels by 64 slices out to `fog[0]`) of height and noise shaped density, lit by the
 // ambient volume's mean light, integrated front to back and applied to every pixel at the
@@ -304,6 +309,10 @@ void GXPortSetBump(f32 strength);
 // those is not counted twice). Each: view position xyz, radius; colour rgb, unused; GX distance
 // attenuation k0, k1, k2, unused. At most 256; count 0 turns it off. Stays until changed.
 void GXPortSetClusterLights(const f32 (*lights)[12], u32 count);
+// Port extension: the following lit TEV draws (lit per pixel) shine: a glossy highlight of each
+// light they're lit by, GX and clustered, added over their colour at `strength` (0: off). For
+// metal (the arm cannon). Stays until changed.
+void GXPortSetSpecular(f32 strength);
 // Lights the following lit TEV draws per pixel instead of per vertex (retail GX).
 void GXPortSetPerPixelLighting(GXBool on);
 // Port extension: blended particle draws (GXPortSetParticleFog) fade out where they come near the

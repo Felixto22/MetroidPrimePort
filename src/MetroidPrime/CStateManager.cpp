@@ -6,6 +6,7 @@
 #include <vector>
 #include <cstring>
 #include <algorithm>
+#include "port_cinematic.h"
 #include "port_foliage.h"
 #include "port_dynamic_lights.h"
 #include "port_env.h"
@@ -2913,6 +2914,8 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
       distance = sDistance;
     }
   }
+  // The cinematic look's light shafts stream from this sun.
+  PortCinematic::SetSun(dir);
   // GX's view matrix: the camera's rows (right, up, towards the camera) and their eye offset.
   const CVector3f eye = view.GetTranslation();
   const float axes[3][3] = {
