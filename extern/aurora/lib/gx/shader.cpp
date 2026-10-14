@@ -4328,7 +4328,8 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
                                "var glass_samp: sampler;",
                                kVolFogFroxelBinding, kVolFogSamplerBinding);
   }
-  if (info.usesSpecular && ppl) {
+  // The view position is a varying only for a lit draw (an unlit part of the cannon has neither).
+  if (info.usesSpecular && ppl && info.lightingEnabled) {
     fragmentFn += "\n    prev = vec4f(prev.rgb + port_spec * ubuf.spec.x, prev.a);";
     // Port extension: metal glowing with heat around a point (GXPortSetGunHeat): dull red,
     // orange, then yellow-white at the hottest, shimmering a little.
