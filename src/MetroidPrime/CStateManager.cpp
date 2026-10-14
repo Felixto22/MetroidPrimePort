@@ -3489,7 +3489,7 @@ void CStateManager::DrawWorld() const {
   // Ray-traced shadows: the opaque world's shadow is traced, so only its cut-outs (and, after the
   // areas, the actors) cast into the shadow map.
   const bool portRtShadows =
-      portShadow && PortRtShadows::Begin(areas.begin(), areas.size(), backupViewMatrix, sPortSunTravel);
+      PortRtShadows::Begin(areas.begin(), areas.size(), backupViewMatrix, sPortSunTravel, portShadow);
   if (portRtShadows) {
     GXPortSetShadowCasterCutouts();
   } else {

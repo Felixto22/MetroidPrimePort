@@ -3,6 +3,7 @@
 
 #include "port_debug.h"
 #include "port_env.h"
+#include "port_log.h"
 
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
@@ -22,6 +23,15 @@ GXPortRtParams sParams;
 // Areas whose geometry had no opaque triangle (nothing to send, nothing to ask again).
 std::unordered_set< u64 > sEmpty;
 std::vector< float > sTriangles;
+// Why the trace is (or isn't) on, logged when it changes.
+const char* sLastState = nullptr;
+
+void Note(const char* state) {
+  if (state != sLastState) {
+    sLastState = state;
+    PortLog::Write("port: ray-traced shadows: %s\n", state);
+  }
+}
 
 u64 AreaKey(const CGameArea& area) {
   // The area's MREA: the same geometry whenever it's loaded, in whichever world.
@@ -29,10 +39,20 @@ u64 AreaKey(const CGameArea& area) {
 }
 } // namespace
 
-bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& view, const float sunTravel[3]) {
+bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& view, const float sunTravel[3],
+           bool sunShadow) {
   sActive = false;
   const float len = std::sqrt(sunTravel[0] * sunTravel[0] + sunTravel[1] * sunTravel[1] + sunTravel[2] * sunTravel[2]);
-  if (!PortDebug::RayTracedShadows() || !(len > 0.f) || areaCount <= 0 || !GXPortRtAvailable()) {
+  if (!PortDebug::RayTracedShadows()) {
+    Note("off (setting)");
+    return false;
+  }
+  if (!sunShadow || !(len > 0.f) || areaCount <= 0) {
+    Note("idle (no sun shadow in this room)");
+    return false;
+  }
+  if (!GXPortRtAvailable()) {
+    Note("unavailable (see aurora::gfx::rt above)");
     return false;
   }
   u64 keys[16];
@@ -59,8 +79,12 @@ bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& vie
     if (gpRender != nullptr && gpRender->PortAreaTriangles(area.GetId().Value(), sTriangles) &&
         sTriangles.size() >= 9) {
       GXPortRtMesh(keys[missing - 1], sTriangles.data(), static_cast< u32 >(sTriangles.size() / 9));
+      PortLog::Write("port: ray-traced shadows: area %08X sent, %u triangles\n", unsigned(area.GetAreaAssetId()),
+                     unsigned(sTriangles.size() / 9));
     } else {
       sEmpty.insert(keys[missing - 1]);
+      PortLog::Write("port: ray-traced shadows: area %08X has no opaque triangles\n",
+                     unsigned(area.GetAreaAssetId()));
     }
     sTriangles.clear();
     sTriangles.shrink_to_fit();
@@ -94,8 +118,10 @@ bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& vie
   sParams.sun[3] = sSoftness;
   sParams.misc[0] = 0;
   if (!GXPortRtShadows(&sParams)) {
+    Note("could not record this frame");
     return false;
   }
+  Note("on");
   sActive = true;
   return true;
 }

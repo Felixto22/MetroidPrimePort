@@ -11,7 +11,9 @@ namespace PortRtShadows {
 // Before the world draws, after the frame's shadow setup: the areas drawn this frame, the camera
 // and the way the sun's light travels (world space). True when the opaque world's shadow is traced
 // this frame (it then leaves the shadow map to the rest).
-bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& view, const float sunTravel[3]);
+// sunShadow: whether the room has a sun shadow at all.
+bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& view, const float sunTravel[3],
+           bool sunShadow);
 // Once the opaque world is drawn: its depth is traced after the frame.
 void Trace();
 } // namespace PortRtShadows

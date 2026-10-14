@@ -1153,14 +1153,18 @@ bool available() {
   if (g_failed.load()) {
     return false;
   }
-  static std::once_flag once;
-  std::call_once(once, [] {
+  // Once, when the device is there (an earlier call doesn't use the attempt up).
+  static std::mutex mutex;
+  static bool attempted = false;
+  std::scoped_lock lock{mutex};
+  if (attempted || !g_device) {
+    return g_ready.load();
+  }
+  attempted = true;
+  [] {
     if (const char* env = std::getenv("MP_RT_SHADOWS"); env != nullptr && std::atoi(env) == 0) {
       Log.info("ray-traced shadows off (MP_RT_SHADOWS=0)");
       g_failed.store(true);
-      return;
-    }
-    if (!g_device) {
       return;
     }
     if (init_d3d12()) {
@@ -1168,7 +1172,7 @@ bool available() {
     } else {
       g_failed.store(true);
     }
-  });
+  }();
   return g_ready.load();
 }
 
