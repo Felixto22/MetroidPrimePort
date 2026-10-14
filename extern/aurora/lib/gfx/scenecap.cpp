@@ -7,6 +7,7 @@
 
 #include <aurora/gfx.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <string>
@@ -44,8 +45,9 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+  // The copy may be smaller than the frame (3D textures are capped at 2048 a side): read by uv.
   let size = vec2i(textureDimensions(src));
-  let px = min(vec2i(floor(in.pos.xy)), size - vec2i(1));
+  let px = min(vec2i(in.uv * vec2f(size)), size - vec2i(1));
   let c = textureLoad(src, px, 0);
   let dsize = vec2i(textureDimensions(depthTex));
   let at = min(vec2i(in.uv * vec2f(dsize)), dsize - vec2i(1));
@@ -142,6 +144,16 @@ void ensure_pipeline(uint32_t samples) {
 }
 
 void ensure_copy(uint32_t width, uint32_t height) {
+  // A 3D texture's sides are capped by the device (2048 on D3D12's baseline): scale the copy down
+  // to fit, keeping the frame's aspect; the reflections it feeds need no more.
+  wgpu::Limits limits{};
+  g_device.GetLimits(&limits);
+  const uint32_t cap = std::max<uint32_t>(limits.maxTextureDimension3D, 256);
+  if (width > cap || height > cap) {
+    const double s = double(cap) / double(std::max(width, height));
+    width = std::max<uint32_t>(1, uint32_t(double(width) * s));
+    height = std::max<uint32_t>(1, uint32_t(double(height) * s));
+  }
   if (g_state.copy && g_state.width == width && g_state.height == height) {
     return;
   }
