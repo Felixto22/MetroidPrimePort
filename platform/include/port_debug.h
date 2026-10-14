@@ -384,6 +384,24 @@ void SetRayTracedShadows(bool enabled);
 // what's off screen included, instead of screen space alone. Off in the original experience.
 bool RayTracedReflections();
 void SetRayTracedReflections(bool enabled);
+// GPU grass: blades the GPU builds over grassy ground (aurora::gfx::geo), as a percentage of the
+// default density (0: off, up to 300). Off in the original experience.
+const int kGpuGrassDefault = 100;
+const int kGpuGrassMin = 0;
+const int kGpuGrassMax = 300;
+int GpuGrass();
+void SetGpuGrass(int percent);
+// Relief: parallax displacement of the Remastered surfaces with normal maps, as a percentage (0:
+// off, up to 200). Off in the original experience.
+const int kReliefDefault = 100;
+const int kReliefMin = 0;
+const int kReliefMax = 200;
+int Relief();
+void SetRelief(int percent);
+// Debris: shots that hit the world knock loose chunks of rock that bounce and settle. Off in the
+// original experience.
+bool Debris();
+void SetDebris(bool enabled);
 // Global illumination: screen-space bounce light traced by a compute shader (aurora::gfx::ssgi),
 // as a percentage (0: off, up to 200). Off in the original experience.
 const int kGlobalIlluminationDefault = 100;

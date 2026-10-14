@@ -8,6 +8,7 @@
 #include "ssao.hpp"
 #include "ssgi.hpp"
 #include "rt.hpp"
+#include <aurora/geo.hpp>
 #include "scenecap.hpp"
 #include "thermal.hpp"
 #include "xray.hpp"
@@ -610,6 +611,7 @@ void shutdown() {
   ssao::shutdown();
   ssgi::shutdown();
   rt::shutdown();
+  geo::shutdown();
   scenecap::shutdown();
   xray::shutdown();
   thermal::shutdown();

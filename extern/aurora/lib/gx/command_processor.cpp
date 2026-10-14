@@ -1353,6 +1353,12 @@ void handle_aurora(ByteReader& reader) noexcept {
     }
     std::memcpy(&params, words, sizeof(params));
     gfx::ssgi::record(params);
+  } else if (subCmd == GX_AURORA_PORT_RELIEF) {
+    const f32 strength = std::clamp(reader.read<f32>(), 0.f, 2.f);
+    if (g_gxState.pbrRelief.x() != strength) {
+      g_gxState.pbrRelief.x() = strength;
+      g_gxState.dirty |= DirtyUniform;
+    }
   } else if (subCmd == GX_AURORA_PORT_RT_SHADOWS) {
     gfx::rt::Params params;
     u32 words[sizeof(params) / sizeof(u32)];

@@ -446,6 +446,8 @@ struct GXState {
   Vec4<float> pbrModelDiffuse{1.f, 1.f, 1.f, 1.f};
   Vec4<float> pbrModelIncan{0.f, 0.f, 0.f, 1.f};
   Vec4<float> pbrModelCoverage{1.f, 0.f, 0.f, 0.f};
+  // GX_AURORA_PORT_RELIEF: parallax strength (0: off), its fade's start and end (view depth).
+  Vec4<float> pbrRelief{0.f, 18.f, 35.f, 0.f};
   std::array<Vec4<float>, 8> pbrShield{}; // GX_AURORA_SET_PBR_SHIELD: CCH0..6, then AUVI xyz + DIFC.w
   // GX_AURORA_SET_PBR_LIGHT_HDR, per light: colour (rgb, falloff + 1; w 0 = off), then
   // (view position, r0), then (r1, -, -, -).

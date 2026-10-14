@@ -269,6 +269,9 @@ bool sBurnableFoliage = true;
 bool sClusteredLighting = true;
 bool sRayTracedShadows = true;
 bool sRayTracedReflections = true;
+int sGpuGrass = PortDebug::kGpuGrassDefault;
+int sRelief = PortDebug::kReliefDefault;
+bool sDebris = true;
 bool sCinematicLook = true;
 int sGlobalIllumination = PortDebug::kGlobalIlluminationDefault;
 float sGunOffset[3] = {};
@@ -708,6 +711,12 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sRayTracedShadows = ParseBool(value);
   } else if (key == "ray_traced_reflections") {
     sRayTracedReflections = ParseBool(value);
+  } else if (key == "gpu_grass") {
+    sGpuGrass = std::clamp(std::atoi(value.c_str()), PortDebug::kGpuGrassMin, PortDebug::kGpuGrassMax);
+  } else if (key == "relief") {
+    sRelief = std::clamp(std::atoi(value.c_str()), PortDebug::kReliefMin, PortDebug::kReliefMax);
+  } else if (key == "debris") {
+    sDebris = ParseBool(value);
   } else if (key == "cinematic_look") {
     sCinematicLook = ParseBool(value);
   } else if (key == "global_illumination") {
@@ -915,6 +924,9 @@ std::string SettingsText() {
   file << "clustered_lighting=" << (sClusteredLighting ? 1 : 0) << '\n';
   file << "ray_traced_shadows=" << (sRayTracedShadows ? 1 : 0) << '\n';
   file << "ray_traced_reflections=" << (sRayTracedReflections ? 1 : 0) << '\n';
+  file << "gpu_grass=" << sGpuGrass << '\n';
+  file << "relief=" << sRelief << '\n';
+  file << "debris=" << (sDebris ? 1 : 0) << '\n';
   file << "cinematic_look=" << (sCinematicLook ? 1 : 0) << '\n';
   file << "global_illumination=" << sGlobalIllumination << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
@@ -1964,6 +1976,39 @@ bool RayTracedReflections() {
 void SetRayTracedReflections(bool enabled) {
   EnsureInitialized();
   sRayTracedReflections = enabled;
+  MarkDirty();
+}
+
+int GpuGrass() {
+  EnsureInitialized();
+  return sOriginalExperience ? 0 : sGpuGrass;
+}
+
+void SetGpuGrass(int percent) {
+  EnsureInitialized();
+  sGpuGrass = std::clamp(percent, kGpuGrassMin, kGpuGrassMax);
+  MarkDirty();
+}
+
+int Relief() {
+  EnsureInitialized();
+  return sOriginalExperience ? 0 : sRelief;
+}
+
+void SetRelief(int percent) {
+  EnsureInitialized();
+  sRelief = std::clamp(percent, kReliefMin, kReliefMax);
+  MarkDirty();
+}
+
+bool Debris() {
+  EnsureInitialized();
+  return sDebris && !sOriginalExperience;
+}
+
+void SetDebris(bool enabled) {
+  EnsureInitialized();
+  sDebris = enabled;
   MarkDirty();
 }
 
@@ -6844,6 +6889,23 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Water mirrors the world traced with DirectX Raytracing (D3D12, a GPU with\n"
                         "DXR 1.1): what's off screen or hidden shows in it too.");
+  int gpuGrass = sGpuGrass;
+  if (ImGui::SliderInt("GPU grass", &gpuGrass, kGpuGrassMin, kGpuGrassMax, gpuGrass == 0 ? "Off" : "%d%%")) {
+    SetGpuGrass(gpuGrass);
+  }
+  ImGui::SetItemTooltip("Dense grass the GPU builds over grassy ground: it sways in the wind and parts\n"
+                        "around Samus and shots. 0 turns it off.");
+  int relief = sRelief;
+  if (ImGui::SliderInt("Relief", &relief, kReliefMin, kReliefMax, relief == 0 ? "Off" : "%d%%")) {
+    SetRelief(relief);
+  }
+  ImGui::SetItemTooltip("Parallax relief on the Remastered surfaces with normal maps: rock and ground\n"
+                        "look displaced as the view moves. 0 turns it off.");
+  bool debris = sDebris;
+  if (ImGui::Checkbox("Debris", &debris)) {
+    SetDebris(debris);
+  }
+  ImGui::SetItemTooltip("Shots that hit the world knock loose chunks of rock that bounce and settle.");
   bool cinematicLook = sCinematicLook;
   if (ImGui::Checkbox("Cinematic look", &cinematicLook)) {
     SetCinematicLook(cinematicLook);

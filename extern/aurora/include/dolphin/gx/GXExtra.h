@@ -334,6 +334,10 @@ GXBool GXPortRtShadows(const GXPortRtParams* params);
 // Port extension: until GXPortSetShadowCaster, only the alpha-tested draws (cut-outs) cast into
 // the sun's shadow map: the ray-traced shadow covers the opaque world.
 void GXPortSetShadowCasterCutouts(void);
+// Port extension: relief on the Remastered surfaces with normal maps: their texture shifts over its
+// bright (high) places as the view moves across them, as if displaced (parallax mapping), at
+// `strength` (0: off, 1 the default depth, up to 2). Stays until changed.
+void GXPortSetRelief(f32 strength);
 // Port extension: a copy of the opaque frame as drawn so far, with the world's linear depth, that
 // glass draws reflect (aurora::gfx::scenecap). depth: near, far, and the GX z range the world draws in.
 GXBool GXPortSceneCapture(const f32 depth[4]);

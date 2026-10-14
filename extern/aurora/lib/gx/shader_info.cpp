@@ -354,7 +354,8 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     // The probe, 7 single + ambient 6 + volume 6 + tone 3 + backlight 3 + light skip + light scale, then the
     // linear light colours, then 3 HDR rows per light, then shield 8, the lightmap 4, the room lights and the model
     // modulation (diffuse, incandescence, coverage)
-    info.uniformSize += sizeof(Mat3x4<float>) + sizeof(Vec4<float>) * (27 + GX::MaxLights * 4 + 8 + 4 + 1 + 3);
+    // ... and the relief (GXPortSetRelief).
+    info.uniformSize += sizeof(Mat3x4<float>) + sizeof(Vec4<float>) * (27 + GX::MaxLights * 4 + 8 + 4 + 1 + 3 + 1);
   }
   if (config.hudSample >= 2) {
     info.usesHudDyin = true;
@@ -560,6 +561,7 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     buf.append(g_gxState.pbrModelDiffuse);
     buf.append(g_gxState.pbrModelIncan);
     buf.append(g_gxState.pbrModelCoverage);
+    buf.append(g_gxState.pbrRelief);
   }
   if (info.usesHudDyin) {
     buf.append(g_gxState.hudDyin);

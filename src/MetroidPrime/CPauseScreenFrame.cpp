@@ -223,6 +223,9 @@ enum EPortOption {
   kPO_GlobalIllumination,
   kPO_RayTracedShadows,
   kPO_RayTracedReflections,
+  kPO_GpuGrass,
+  kPO_Relief,
+  kPO_Debris,
 };
 #define PORT_OPTION(opt) static_cast< EGameOption >(opt)
 
@@ -281,6 +284,11 @@ static const SGameOption skPortDisplayOptions[] = {
     {PORT_OPTION(kPO_ClusteredLighting), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_RayTracedShadows), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_RayTracedReflections), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_GpuGrass), -1, static_cast< float >(PortDebug::kGpuGrassMin),
+     static_cast< float >(PortDebug::kGpuGrassMax), 25.f, kOT_Float},
+    {PORT_OPTION(kPO_Relief), -1, static_cast< float >(PortDebug::kReliefMin),
+     static_cast< float >(PortDebug::kReliefMax), 10.f, kOT_Float},
+    {PORT_OPTION(kPO_Debris), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_CinematicLook), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_GlobalIllumination), -1, static_cast< float >(PortDebug::kGlobalIlluminationMin),
      static_cast< float >(PortDebug::kGlobalIlluminationMax), 10.f, kOT_Float},
@@ -319,7 +327,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {28, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {31, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -373,6 +381,12 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     return L"Ray-Traced Shadows";
   case kPO_RayTracedReflections:
     return L"Ray-Traced Reflections";
+  case kPO_GpuGrass:
+    return L"GPU Grass";
+  case kPO_Relief:
+    return L"Relief";
+  case kPO_Debris:
+    return L"Debris";
   case kPO_CinematicLook:
     return L"Cinematic Look";
   case kPO_GlobalIllumination:
@@ -454,6 +468,12 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::RayTracedShadows() ? 1 : 0;
   case kPO_RayTracedReflections:
     return PortDebug::RayTracedReflections() ? 1 : 0;
+  case kPO_GpuGrass:
+    return PortDebug::GpuGrass();
+  case kPO_Relief:
+    return PortDebug::Relief();
+  case kPO_Debris:
+    return PortDebug::Debris() ? 1 : 0;
   case kPO_CinematicLook:
     return PortDebug::CinematicLook() ? 1 : 0;
   case kPO_GlobalIllumination:
@@ -515,6 +535,9 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_ClusteredLighting:
   case kPO_RayTracedShadows:
   case kPO_RayTracedReflections:
+  case kPO_GpuGrass:
+  case kPO_Relief:
+  case kPO_Debris:
   case kPO_CinematicLook:
   case kPO_GlobalIllumination:
   case kPO_AntiAliasing:
@@ -605,6 +628,15 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_RayTracedReflections:
     PortDebug::SetRayTracedReflections(value > 0);
+    break;
+  case kPO_GpuGrass:
+    PortDebug::SetGpuGrass(value);
+    break;
+  case kPO_Relief:
+    PortDebug::SetRelief(value);
+    break;
+  case kPO_Debris:
+    PortDebug::SetDebris(value > 0);
     break;
   case kPO_CinematicLook:
     PortDebug::SetCinematicLook(value > 0);

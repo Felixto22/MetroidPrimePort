@@ -364,6 +364,8 @@ extern "C" {
 #define GX_AURORA_PORT_SSGI 0x007B
 // Port extension: ray-traced sun shadows, a frame's phase (GXPortRtShadows). Payload: 28 u32 words.
 #define GX_AURORA_PORT_RT_SHADOWS 0x007C
+// Port extension: relief (parallax) on the Remastered surfaces with normal maps (GXPortSetRelief). Payload: f32 strength.
+#define GX_AURORA_PORT_RELIEF 0x007D
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

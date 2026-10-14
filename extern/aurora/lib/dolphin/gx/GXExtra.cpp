@@ -266,6 +266,11 @@ GXBool GXPortRtShadows(const GXPortRtParams* rt) {
   return GX_TRUE;
 }
 
+void GXPortSetRelief(f32 strength) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_RELIEF);
+  GX_WRITE_F32(strength);
+}
+
 void GXPortSetShadowCasterCutouts() {
   GX_WRITE_AURORA(GX_AURORA_PORT_SHADOW_CASTER);
   GX_WRITE_U8(3);

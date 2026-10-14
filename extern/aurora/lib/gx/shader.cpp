@@ -3420,9 +3420,12 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   uniBufAttrs += fmt::format("\n    nrm_mtx: array<mat3x4f, {}>,", MaxPnMtx);
   std::string fragmentFnPre;
   std::string fragmentFn;
+  // Texture coordinate changes made before the TEV stages sample (the waterfall's warp, the
+  // relief's parallax): fragmentFnPre, after the coordinates are read.
+  std::string uvPre;
   if (config.waterfall) {
     // Port extension: falling water: the texture warps on the rings spreading from the impacts.
-    fragmentFn += R"""(
+    uvPre += R"""(
     var wf_warp = vec2f(0.0);
     {
         let fol_n = min(u32(ubuf.fol_up.w), 16u);
@@ -3438,7 +3441,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
     })""";
     for (u32 i = 0; i < MaxTexCoord; ++i) {
       if (info.sampledTexCoords.test(i)) {
-        fragmentFn += fmt::format("\n    tex{0}_uv = tex{0}_uv + wf_warp;", i);
+        uvPre += fmt::format("\n    tex{0}_uv = tex{0}_uv + wf_warp;", i);
       }
     }
   }
@@ -3676,6 +3679,63 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
       fragmentFnPre += fmt::format("\n    var tex{0}_uv = in.tex{0}_uv.xy;", i);
     }
   }
+  // Port extension: relief (GXPortSetRelief) on a Remastered surface with a normal map: parallax
+  // mapping, the GPU's stand-in for tessellated displacement. The base colour's brightness is
+  // the height; its coordinates (and every map read through the same set) shift toward the eye
+  // over the high places, refined over four steps, in the tangent frame the screen derivatives
+  // give; it fades out with distance.
+  // (Only where pbr_func shades: it gives the view position, in.pbr_pos.)
+  if (config.pbr != 0 && config.pbr - 1 != 5 && config.pbrKind != 8 && config.lineMode == 0 &&
+      info.sampledColorChannels.test(0)) {
+    int baseStage = -1;
+    int normalStage = -1;
+    for (int i = 0; i < config.tevStageCount; ++i) {
+      const auto& stage = config.tevStages[i];
+      if (!uses_texture_sample(stage) || stage.texCoordId == GX_TEXCOORD_NULL || stage.indTexMtxId != GX_ITM_OFF) {
+        continue;
+      }
+      if (stage.texMapId == GX_TEXMAP0 && baseStage == -1) {
+        baseStage = i;
+      } else if (stage.texMapId == GX_TEXMAP2 && normalStage == -1) {
+        normalStage = i;
+      }
+    }
+    if (baseStage != -1 && normalStage != -1 &&
+        config.tevStages[baseStage].texCoordId == config.tevStages[normalStage].texCoordId) {
+      const u32 coord = underlying(config.tevStages[baseStage].texCoordId);
+      uvPre += fmt::format(R"""(
+    if (ubuf.pbr_relief.x > 0.0) {{
+        let rf_p = in.pbr_pos;
+        let rf_fade = ubuf.pbr_relief.x * (1.0 - smoothstep(ubuf.pbr_relief.y, ubuf.pbr_relief.z, -rf_p.z));
+        let rf_dp1 = dpdx(rf_p);
+        let rf_dp2 = -dpdy(rf_p);
+        let rf_duv1 = dpdx(tex{0}_uv);
+        let rf_duv2 = -dpdy(tex{0}_uv);
+        var rf_n = normalize(cross(rf_dp1, rf_dp2));
+        rf_n = select(rf_n, -rf_n, dot(rf_n, -rf_p) < 0.0);
+        let rf_p2p = cross(rf_dp2, rf_n);
+        let rf_p1p = cross(rf_n, rf_dp1);
+        let rf_t = rf_p2p * rf_duv1.x + rf_p1p * rf_duv2.x;
+        let rf_b = rf_p2p * rf_duv1.y + rf_p1p * rf_duv2.y;
+        let rf_inv = inverseSqrt(max(max(dot(rf_t, rf_t), dot(rf_b, rf_b)), 1e-20));
+        let rf_v = normalize(-rf_p);
+        let rf_vt = vec2f(dot(rf_v, rf_t), dot(rf_v, rf_b)) * rf_inv;
+        let rf_vz = max(dot(rf_v, rf_n), 0.2);
+        let rf_g1 = dpdx(tex{0}_uv);
+        let rf_g2 = dpdy(tex{0}_uv);
+        if (rf_fade > 0.001) {{
+            var rf_uv = tex{0}_uv;
+            for (var rf_k = 0; rf_k < 4; rf_k++) {{
+                let rf_c = textureSampleGrad(tex0, tex0_samp, rf_uv, rf_g1, rf_g2).rgb;
+                let rf_h = dot(rf_c, vec3f(0.299, 0.587, 0.114)) - 0.5;
+                rf_uv = tex{0}_uv + rf_vt / rf_vz * (rf_h * 0.035 * rf_fade);
+            }}
+            tex{0}_uv = rf_uv;
+        }}
+    }})""", coord);
+    }
+  }
+  fragmentFnPre += uvPre;
   // Multiple TEV stages may reference the same indirect stage,
   // so we sample each indirect texture only once.
   const auto ind_scale = [](const GXIndTexScale s) -> std::string_view {
@@ -4107,6 +4167,7 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    pbr_model_diffuse: vec4f,";
     uniBufAttrs += "\n    pbr_model_incan: vec4f,";
     uniBufAttrs += "\n    pbr_model_coverage: vec4f,";
+    uniBufAttrs += "\n    pbr_relief: vec4f,";
     auto pbr = pbr_func(config, info, vtxOutAttrs, vtxXfrAttrs, vtxOutIdx, vidxAttr);
     // An unlit surface (baked room light: pbr_func drops its light loop) has no room light to
     // shadow, but takes the sun's own colour.

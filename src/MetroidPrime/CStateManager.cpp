@@ -10,6 +10,7 @@
 #include "port_foliage.h"
 #include "port_dynamic_lights.h"
 #include "port_rt_shadows.h"
+#include "port_gpu_geo.h"
 #include "port_env.h"
 #include "port_freecam.h"
 #include "port_photo.h"
@@ -755,6 +756,7 @@ CStateManager::~CStateManager() {
   PortRoomLiquid::SetLoadedAreas(nullptr, 0);
   PortRetailWater::Reset();
   PortFoliage::Reset();
+  PortGpuGeo::Reset();
   CMemory::OffsetFakeStatics(
       -(x808_objectLists.size() * sizeof(CObjectList) + 0x11c)); // TODO what is this 11c?
   x88c_rumbleManager->HardStopAll();
@@ -3538,6 +3540,13 @@ void CStateManager::DrawWorld() const {
     gpRender->DrawUnsortedGeometry(id.Value(), mask, targetMask);
   }
 
+#ifdef TARGET_PC
+  // The grass the GPU builds over the areas' grassy ground, and the debris of shots (in the
+  // world's fog, before the sky).
+  if (!thermal && visor != CPlayerState::kPV_XRay && !portCollisionOnly) {
+    PortGpuGeo::DrawWorld(*this, areas.begin(), areas.size(), backupViewMatrix);
+  }
+#endif
   if (!SetupFogForDraw()) {
     gpRender->SetWorldFog(kRFM_None, 0.f, 1.f, CColor::Black());
   }

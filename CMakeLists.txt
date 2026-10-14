@@ -233,6 +233,7 @@ set(MP_PORT_SOURCES
     platform/port_foliage.cpp
     platform/port_dynamic_lights.cpp
     platform/port_rt_shadows.cpp
+    platform/port_gpu_geo.cpp
     platform/port_cinematic.cpp
     platform/port_collision_view.cpp
     platform/port_remastered_cmdl.cpp
