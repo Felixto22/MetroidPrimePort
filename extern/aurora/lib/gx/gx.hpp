@@ -470,8 +470,10 @@ struct GXState {
   // GX_AURORA_PORT_FOLIAGE: triangle draws bend away from the pushers (ShaderConfig::foliage).
   bool foliage = false;
   // GX_AURORA_PORT_FOLIAGE_PUSHERS: up (xyz) and count (w), then 16 positions (xyz, w radius) and
-  // 16 parameters (strength, release age, height), all in view space.
-  std::array<Vec4<float>, 33> foliageUniform{};
+  // 16 parameters (strength, release age, height), all in view space. GX_AURORA_PORT_FOLIAGE_SURFACE:
+  // rain, clock and burn count; the view-to-world rows; 8 burn centres (world, w radius) and their
+  // glow and char.
+  std::array<Vec4<float>, 53> foliageUniform{};
   bool shadowCaster = false;
   bool shadowCasterOnly = false; // they cast but aren't drawn (GXPortSetShadowCasterOnly)
   bool shadowActive = false;

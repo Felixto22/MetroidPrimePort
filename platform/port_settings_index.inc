@@ -114,6 +114,8 @@
 {"Video", "Display", "HUD and view", "Particle density", "particles sparks smoke snow rain weather effects more"},
 {"Video", "Display", "HUD and view", "Soft particles", "soft particles smoke fade walls depth edges"},
 {"Video", "Display", "HUD and view", "Interactive vegetation", "vegetation plants foliage grass leaves vines bend sway interactive"},
+{"Video", "Display", "HUD and view", "Rain details", "rain drops visor runoff leaves splash wet weather"},
+{"Video", "Display", "HUD and view", "Burnable vegetation", "fire burn plants bushes beam smoke char"},
 {"Video", "Display", "HUD and view", "Fast doors", "fast doors loading streaming rooms wait memory"},
 {"Video", "Display", "HUD and view", "Enhanced lighting", "per pixel lighting dynamic lights shots explosions"},
 {"Video", "Display", "HUD and view", "Shadow resolution", "shadow quality map size 4096 2048 sharp"},

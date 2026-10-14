@@ -264,6 +264,8 @@ int sBumpMapping = PortDebug::kBumpMappingDefault;
 int sParticleDensity = PortDebug::kParticleDensityDefault;
 bool sSoftParticles = true;
 bool sInteractiveFoliage = true;
+bool sRainDetails = true;
+bool sBurnableFoliage = true;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
@@ -691,6 +693,10 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sSoftParticles = ParseBool(value);
   } else if (key == "interactive_foliage") {
     sInteractiveFoliage = ParseBool(value);
+  } else if (key == "rain_details") {
+    sRainDetails = ParseBool(value);
+  } else if (key == "burnable_foliage") {
+    sBurnableFoliage = ParseBool(value);
   } else if (key == "glass_reflections") {
     sGlassReflections = std::clamp(std::atoi(value.c_str()), PortDebug::kGlassReflectionsMin,
                                    PortDebug::kGlassReflectionsMax);
@@ -888,6 +894,8 @@ std::string SettingsText() {
   file << "particle_density=" << sParticleDensity << '\n';
   file << "soft_particles=" << (sSoftParticles ? 1 : 0) << '\n';
   file << "interactive_foliage=" << (sInteractiveFoliage ? 1 : 0) << '\n';
+  file << "rain_details=" << (sRainDetails ? 1 : 0) << '\n';
+  file << "burnable_foliage=" << (sBurnableFoliage ? 1 : 0) << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
@@ -1880,6 +1888,28 @@ bool InteractiveFoliage() {
 void SetInteractiveFoliage(bool enabled) {
   EnsureInitialized();
   sInteractiveFoliage = enabled;
+  MarkDirty();
+}
+
+bool RainDetails() {
+  EnsureInitialized();
+  return sRainDetails && !sOriginalExperience;
+}
+
+void SetRainDetails(bool enabled) {
+  EnsureInitialized();
+  sRainDetails = enabled;
+  MarkDirty();
+}
+
+bool BurnableFoliage() {
+  EnsureInitialized();
+  return sBurnableFoliage && !sOriginalExperience;
+}
+
+void SetBurnableFoliage(bool enabled) {
+  EnsureInitialized();
+  sBurnableFoliage = enabled;
   MarkDirty();
 }
 
@@ -6709,6 +6739,17 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Leaves, ferns, grass and hanging vines bend away from Samus and from\n"
                         "shots passing through them, and sway back after.");
+  bool rainDetails = sRainDetails;
+  if (ImGui::Checkbox("Rain details", &rainDetails)) {
+    SetRainDetails(rainDetails);
+  }
+  ImGui::SetItemTooltip("Rain splashes on leaves and wets them, its drops run down the visor,\n"
+                        "and burning plants go out in it, smoking.");
+  bool burnableFoliage = sBurnableFoliage;
+  if (ImGui::Checkbox("Burnable vegetation", &burnableFoliage)) {
+    SetBurnableFoliage(burnableFoliage);
+  }
+  ImGui::SetItemTooltip("A beam shot into a bush or fern sets it on fire; it burns to char and smoke.");
   {
     // Issue #72: PrimeHack-style arm cannon placement.
     float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};

@@ -357,6 +357,15 @@ void SetSoftParticles(bool enabled);
 // shots passing through them, and sway back after. Off in the original experience.
 bool InteractiveFoliage();
 void SetInteractiveFoliage(bool enabled);
+// Rain details: rain splashes on leaves and wets them, its drops on the visor run down the glass
+// (and reach it looking ahead too), and burning plants go out in it, smoking. Off in the original
+// experience.
+bool RainDetails();
+void SetRainDetails(bool enabled);
+// Burnable vegetation: a beam shot into a bush or fern sets it alight; it burns down to char and
+// smoke (sooner in the rain). Off in the original experience.
+bool BurnableFoliage();
+void SetBurnableFoliage(bool enabled);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

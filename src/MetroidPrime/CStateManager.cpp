@@ -748,6 +748,7 @@ CStateManager::~CStateManager() {
   PortRoomGeo::SetLoadedAreas(nullptr, 0);
   PortRoomLiquid::SetLoadedAreas(nullptr, 0);
   PortRetailWater::Reset();
+  PortFoliage::Reset();
   CMemory::OffsetFakeStatics(
       -(x808_objectLists.size() * sizeof(CObjectList) + 0x11c)); // TODO what is this 11c?
   x88c_rumbleManager->HardStopAll();
@@ -3740,6 +3741,8 @@ void CStateManager::DrawWorld() const {
   }
 
 #ifdef TARGET_PC
+  // Burning plants, their smoke and the rain splashing on them (PortFoliage).
+  PortFoliage::DrawEffects(*this);
   // The HUD, visor and the next pass's draws before its capture don't fade against this frame.
   GXPortSetSoftParticles(GX_FALSE);
 #endif

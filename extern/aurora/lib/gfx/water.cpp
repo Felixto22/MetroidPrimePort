@@ -187,8 +187,28 @@ fn source_w(uv: vec2f) -> f32 { return textureSampleLevel(sourceFlowMap, flowSam
 
 // The mesh position q lifted by the flow, moved by the two waves, and lowered by the source
 // flow's height. Note W[0].xy goes with W[2] and W[0].zw with W[1], as the game fills them.
-fn displace(q: vec3f, uv: vec2f, k: f32, r1: vec3f) -> vec3f {
+// Port extension (DrawDesc::ripples): the swell of each ring spreading from a shot or from what
+// wades through, at world point wp (x, y): its height (x) and how much of it is a crest (y).
+const RING_SPEED: f32 = 2.2;
+fn ring_h(wp: vec2f) -> vec2f {
+  let rcount = min(u32(u.rippleInfo.x), 16u);
+  var h = vec2f(0.0);
+  for (var ri = 0u; ri < rcount; ri++) {
+    let r = u.ripples[ri];
+    let d = length(wp - r.xy);
+    let x = d - r.z * RING_SPEED;
+    let env = exp(-x * x * 0.9) * r.w / (1.0 + d * 0.45);
+    let w = sin(3.9 * x + 1.2) * env;
+    h = h + vec2f(w * 0.22, max(w, 0.0));
+  }
+  return h;
+}
+
+fn displace(q: vec3f, uv: vec2f, k: f32, r1: vec3f, wp: vec2f) -> vec3f {
   var p = q + vec3f(0.0, flow_h(uv) * k, 0.0);
+  if (u.rippleInfo.x > 0.5) {
+    p.y = p.y + ring_h(wp).x * r1.y;
+  }
   let ph1 = dot(u.W[0].xy, p.xz * u.W[1].w) - u.W[1].z;
   let ph2 = dot(u.W[0].zw, p.xz * u.W[2].w) - u.W[2].z;
   let s1 = sin(ph1);
@@ -209,11 +229,14 @@ fn vs_main(in: VIn) -> VOut {
   let r1 = fade * in.color.xyz;
   let k = fade * u.S[4].w;
   let e = u.S[4].x;
-  let p = displace(in.pos, in.uv, k, r1);
-  let a = displace(in.pos + vec3f(0.0, 0.0, -e), in.uv + vec2f(0.0, -u.S[3].w), k, r1);
-  let b = displace(in.pos + vec3f(0.0, 0.0, e), in.uv + vec2f(0.0, u.S[3].w), k, r1);
-  let c = displace(in.pos + vec3f(-e, 0.0, 0.0), in.uv + vec2f(-u.S[3].z, 0.0), k, r1);
-  let d = displace(in.pos + vec3f(e, 0.0, 0.0), in.uv + vec2f(u.S[3].z, 0.0), k, r1);
+  // The world point (x, y) for the rings: the retail surface's second uv set is world / tile, and
+  // its mesh z runs against world y.
+  let wp0 = in.uv * u.rippleInfo.y;
+  let p = displace(in.pos, in.uv, k, r1, wp0);
+  let a = displace(in.pos + vec3f(0.0, 0.0, -e), in.uv + vec2f(0.0, -u.S[3].w), k, r1, wp0 + vec2f(0.0, e));
+  let b = displace(in.pos + vec3f(0.0, 0.0, e), in.uv + vec2f(0.0, u.S[3].w), k, r1, wp0 + vec2f(0.0, -e));
+  let c = displace(in.pos + vec3f(-e, 0.0, 0.0), in.uv + vec2f(-u.S[3].z, 0.0), k, r1, wp0 + vec2f(-e, 0.0));
+  let d = displace(in.pos + vec3f(e, 0.0, 0.0), in.uv + vec2f(u.S[3].z, 0.0), k, r1, wp0 + vec2f(e, 0.0));
   let dc = d - c;
   let n = normalize(cross(b - a, dc));
   let t = cross(n, cross(dc, n));
@@ -386,10 +409,9 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
       let r = u.ripples[ri];
       let dv = wp - r.xy;
       let d = length(dv);
-      let x = d - r.z * 1.8;
-      let env = exp(-x * x * 4.0) * r.w / (1.0 + d * 0.8);
-      let k = 18.0;
-      rg = rg + (dv / max(d, 1e-3)) * (cos(k * x) * env * 0.35);
+      let x = d - r.z * RING_SPEED;
+      let env = exp(-x * x * 1.5) * r.w / (1.0 + d * 0.6);
+      rg = rg + (dv / max(d, 1e-3)) * (cos(14.0 * x) * env * 0.55);
     }
     Nw = Nw - in.t * rg.x - cross(in.n, in.t) * rg.y;
   }
@@ -477,6 +499,14 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
       let foam = shore * (0.35 + 0.65 * breakup) * fade;
       o0 = o0 + foam * 0.85 * in.light.rgb / max(u.volScale.rgb, vec3f(1e-3)) * 0.8;
       o1 = min(o1 + vec3f(foam * 0.85), vec3f(1.0));
+    }
+    // Port extension (DrawDesc::ripples): white water on the rings' crests.
+    if (u.rippleInfo.x > 0.5) {
+      let crest = ring_h(in.uv.zw * u.rippleInfo.y).y;
+      let breakup2 = smoothstep(0.35, 0.7, 0.5 * (n1.y + n2.x) + 0.15);
+      let cfoam = clamp((crest - 0.25) * 1.6, 0.0, 1.0) * (0.4 + 0.6 * breakup2) * fade;
+      o0 = o0 + cfoam * 0.8 * in.light.rgb / max(u.volScale.rgb, vec3f(1e-3)) * 0.8;
+      o1 = min(o1 + vec3f(cfoam * 0.8), vec3f(1.0));
     }
   }
 

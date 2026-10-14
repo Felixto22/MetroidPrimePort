@@ -314,6 +314,13 @@ void GXPortSetFoliage(GXBool on);
 // and height (z). At most 16; count 0 leaves foliage still.
 #define GX_PORT_FOLIAGE_MAX_PUSHERS 16
 void GXPortSetFoliagePushers(const f32 up[3], const f32 (*pos)[4], const f32 (*params)[4], u32 count);
+// Port extension: how foliage looks this pass. `rain`: wetness and splash rate (0..1); `seconds`:
+// a running clock; `viewToWorld`: the pass's view space to world rows (for stable surface
+// detail). Each burn: pos[i] = centre in world space (xyz) and radius (w); params[i] = flame glow
+// (x, 0..1) and char (y, 0..1). At most 8.
+#define GX_PORT_FOLIAGE_MAX_BURNS 8
+void GXPortSetFoliageSurface(f32 rain, f32 seconds, const f32 viewToWorld[3][4], const f32 (*pos)[4],
+                             const f32 (*params)[4], u32 count);
 // The draws after GXPortVolumetricFog fog themselves as Remastered's transparents do, until this:
 // opaque ones per pixel as the full-screen pass, blended and additive ones per vertex (blended:
 // colour T + in-scatter, additive: colour T). Harmless when no fog was drawn.

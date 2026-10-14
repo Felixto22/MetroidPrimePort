@@ -7,6 +7,7 @@
 #include "Kyoto/Graphics/CTexture.hpp"
 #include "Kyoto/Math/CTransform4f.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
+#include "Kyoto/Particles/CElementGen.hpp"
 #include "Kyoto/Particles/CGenDescription.hpp"
 #include "Kyoto/Particles/CParticleGen.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
@@ -587,6 +588,12 @@ void CEnvFxManager::UpdateVisorSplash(CStateManager& mgr, float dt, const CTrans
   float splashRateFactor;
   if (x24_enableSplash) {
     splashRateFactor = x30_fxDensity * rstl::max_val(0.f, camUpness);
+#ifdef TARGET_PC
+    // Rain details (port setting): rain reaches the visor looking ahead too, not only up.
+    if (PortDebug::RainDetails()) {
+      splashRateFactor = x30_fxDensity * rstl::max_val(0.35f, camUpness + 0.35f);
+    }
+#endif
   } else {
     splashRateFactor = 0.f;
   }
@@ -620,6 +627,10 @@ void CEnvFxManager::SetSplashEffectRate(float rate, CStateManager& mgr) {
           TCastToPtr< CHUDBillboardEffect >(mgr.ObjectById(xb68_envRainSplashId))) {
     if (splashEffect->IsElementGen()) {
       splashEffect->GetParticleGen()->SetGeneratorRate(rate);
+#ifdef TARGET_PC
+      // Rain details: the drops run down the visor.
+      static_cast< CElementGen* >(splashEffect->GetParticleGen())->PortSetRunoff(PortDebug::RainDetails());
+#endif
     }
   }
 }

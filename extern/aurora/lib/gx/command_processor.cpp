@@ -1345,8 +1345,19 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.foliage = on;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_FOLIAGE_SURFACE) {
+    for (size_t i = 33; i < g_gxState.foliageUniform.size(); ++i) {
+      float f[4];
+      for (float& x : f) {
+        const u32 word = reader.read<u32>();
+        std::memcpy(&x, &word, sizeof(x));
+      }
+      g_gxState.foliageUniform[i] = Vec4<float>{f[0], f[1], f[2], f[3]};
+    }
+    g_gxState.dirty |= DirtyUniform;
   } else if (subCmd == GX_AURORA_PORT_FOLIAGE_PUSHERS) {
-    for (auto& v : g_gxState.foliageUniform) {
+    for (size_t i = 0; i < 33; ++i) {
+      auto& v = g_gxState.foliageUniform[i];
       float f[4];
       for (float& x : f) {
         const u32 word = reader.read<u32>();

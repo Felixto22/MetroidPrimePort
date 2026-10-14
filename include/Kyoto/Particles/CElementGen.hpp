@@ -212,6 +212,8 @@ public:
   // The global translation just set is already the presented one (placed from
   // the presented camera on every drawn frame): draw it as is, unblended.
   void PortGlobalIsPresented();
+  // Visor runoff (port): the particles, drops on the visor, run down it as they age.
+  void PortSetRunoff(bool enabled) { xPortRunoff = enabled; }
 #endif
 
 private:
@@ -305,6 +307,7 @@ private:
   uint xPortGlobalGeneration;
   CVector3f xPortPrevGlobalTranslation;
   bool xPortPresenting;
+  bool xPortRunoff = false;
   bool PortBeginPresent(CVector3f& savedGlobal);
   // A moving local emitter (projectile trails): the local translation at the
   // last two single-step updates, and the particles born in the last one moved

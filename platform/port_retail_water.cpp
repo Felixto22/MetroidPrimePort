@@ -12,6 +12,7 @@
 #include "MetroidPrime/CFluidPlaneManager.hpp"
 #include "MetroidPrime/CRippleManager.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 
 #include "aurora/water.hpp"
@@ -31,7 +32,7 @@ constexpr int kNormalSize = 256;
 constexpr float kRippleTile = 3.f;
 // How far in from the box's edge the waves fade out, so they don't lift off the walls.
 constexpr float kEdgeFade = 1.5f;
-constexpr int kMaxCells = 160;
+constexpr int kMaxCells = 256;
 
 struct Mesh {
   float key[5] = {};
@@ -127,7 +128,8 @@ const Mesh& BuildMesh(uint32_t uid, float minX, float minY, float maxX, float ma
   m.verts.clear();
   m.indices.clear();
   const float sx = std::max(maxX - minX, 0.1f), sy = std::max(maxY - minY, 0.1f);
-  const float cell = std::clamp(std::max(sx, sy) / 96.f, 0.5f, 3.f);
+  // Fine enough for the rings' swell (about 1.6 m from crest to crest) to show in the surface.
+  const float cell = std::clamp(std::max(sx, sy) / 160.f, 0.25f, 3.f);
   const int nx = std::clamp(int(std::ceil(sx / cell)), 1, kMaxCells);
   const int ny = std::clamp(int(std::ceil(sy / cell)), 1, kMaxCells);
   const float cx = 0.5f * (minX + maxX), cy = 0.5f * (minY + maxY);
@@ -158,6 +160,83 @@ const Mesh& BuildMesh(uint32_t uid, float minX, float minY, float maxX, float ma
   return m;
 }
 
+// Port ripples on top of the game's: Samus's wake as she wades or swims, and the splash where
+// she enters or leaves the surface. Per water body: world x, y, the clock at birth, strength.
+struct WakeRipple {
+  float x, y, born, strength;
+};
+struct Wake {
+  std::vector< WakeRipple > ripples;
+  float lastX = 0.f, lastY = 0.f;
+  bool have = false;
+  bool wasIn = false;
+};
+std::unordered_map< uint32_t, Wake >& Wakes() {
+  static auto* wakes = new std::unordered_map< uint32_t, Wake >();
+  return *wakes;
+}
+constexpr float kRippleLife = 2.6f;  // seconds a ring keeps spreading
+constexpr float kWakeStep = 0.45f;   // metres between wake rings
+
+float Age(float clock, float born) {
+  float a = clock - born;
+  return a < 0.f ? a + 900.f : a;
+}
+
+void UpdateWake(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const CVector3f& boxMax,
+                float surfaceZ, float clock) {
+  Wake& w = Wakes()[uid];
+  for (size_t i = w.ripples.size(); i-- > 0;) {
+    if (Age(clock, w.ripples[i].born) > kRippleLife) {
+      w.ripples.erase(w.ripples.begin() + std::ptrdiff_t(i));
+    }
+  }
+  const CPlayer* player = mgr.GetPlayer();
+  if (player == nullptr) {
+    return;
+  }
+  const CVector3f feet = player->GetTranslation();
+  const bool ball = player->GetMorphballTransitionState() == CPlayer::kMS_Morphed;
+  const float x = feet.GetX(), y = feet.GetY();
+  const bool overBox = x >= boxMin.GetX() && x <= boxMax.GetX() && y >= boxMin.GetY() && y <= boxMax.GetY();
+  // In the water and near enough the top for it to show: from wading to a little under.
+  const float depth = surfaceZ - feet.GetZ();
+  const bool in = overBox && depth > -0.1f && depth < (ball ? 1.5f : 3.f);
+  const auto add = [&](float strength) {
+    if (w.ripples.size() >= 12) {
+      w.ripples.erase(w.ripples.begin());
+    }
+    w.ripples.push_back({x, y, clock, strength});
+  };
+  if (in != w.wasIn && overBox && depth > -1.f && depth < 3.5f) {
+    add(1.f); // the splash in or out
+    w.lastX = x;
+    w.lastY = y;
+    w.have = true;
+  }
+  w.wasIn = in;
+  if (!in) {
+    w.have = false;
+    return;
+  }
+  if (!w.have) {
+    w.lastX = x;
+    w.lastY = y;
+    w.have = true;
+    return;
+  }
+  const float moved = std::hypot(x - w.lastX, y - w.lastY);
+  if (moved > 6.f) {
+    w.lastX = x;
+    w.lastY = y;
+  } else if (moved > kWakeStep) {
+    // Stronger the nearer the top she moves.
+    add(std::clamp(1.1f - depth * 0.25f, 0.45f, 1.f));
+    w.lastX = x;
+    w.lastY = y;
+  }
+}
+
 } // namespace
 
 bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const CVector3f& boxMax, float surfaceZ,
@@ -184,26 +263,48 @@ bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const
   d.screenReflections = true;
   d.foam = poison ? 0.35f : 0.5f;
 
-  // The game's ripples (shots landing, Samus and enemies wading) on this surface, newest first.
-  if (const CFluidPlaneManager* fluids = mgr.GetFluidPlaneManager()) {
-    const rstl::vector< CRipple >& ripples = fluids->GetRippleManager().GetRipples();
-    d.rippleTile = kRippleTile;
-    for (int i = ripples.size() - 1; i >= 0 && d.rippleCount < aurora::gfx::water::DrawDesc::MaxRipples; --i) {
-      const CRipple& r = ripples[i];
-      const float t = r.GetTime();
-      const float life = r.GetTimeFalloff();
-      const CVector3f& c = r.GetCenter();
-      if (t < 0.f || life <= 0.f || t >= life || c.GetX() < boxMin.GetX() - 1.f || c.GetX() > boxMax.GetX() + 1.f ||
-          c.GetY() < boxMin.GetY() - 1.f || c.GetY() > boxMax.GetY() + 1.f ||
-          std::fabs(c.GetZ() - surfaceZ) > 3.f) {
-        continue;
+  // The rings on this surface, newest first: the game's ripples (shots landing, enemies and
+  // Samus touching it) and Samus's own wake.
+  {
+    const float now = CGraphics::GetSecondsMod900();
+    UpdateWake(mgr, uid, boxMin, boxMax, surfaceZ, now);
+    struct Ring {
+      float x, y, t, s;
+    };
+    Ring rings[64];
+    int count = 0;
+    if (const CFluidPlaneManager* fluids = mgr.GetFluidPlaneManager()) {
+      const rstl::vector< CRipple >& ripples = fluids->GetRippleManager().GetRipples();
+      for (int i = ripples.size() - 1; i >= 0 && count < 48; --i) {
+        const CRipple& r = ripples[i];
+        const float t = r.GetTime();
+        const float life = std::max(r.GetTimeFalloff(), kRippleLife);
+        const CVector3f& c = r.GetCenter();
+        if (t < 0.f || t >= life || c.GetX() < boxMin.GetX() - 1.f || c.GetX() > boxMax.GetX() + 1.f ||
+            c.GetY() < boxMin.GetY() - 1.f || c.GetY() > boxMax.GetY() + 1.f ||
+            std::fabs(c.GetZ() - surfaceZ) > 3.f) {
+          continue;
+        }
+        // CRipple's amplitude runs 0.1..0.25 with the splash's intensity: every one shows, the
+        // strongest the most. Fades over its life.
+        const float s = std::clamp(0.45f + r.GetLookupAmplitude() * 255.f / 0.25f * 0.55f, 0.f, 1.f);
+        rings[count++] = {c.GetX(), c.GetY(), t, s * (1.f - t / life)};
       }
+    }
+    for (const WakeRipple& w : Wakes()[uid].ripples) {
+      if (count < 64) {
+        const float t = Age(now, w.born);
+        rings[count++] = {w.x, w.y, t, w.strength * (1.f - t / kRippleLife)};
+      }
+    }
+    std::sort(rings, rings + count, [](const Ring& a, const Ring& b) { return a.t < b.t; });
+    d.rippleTile = kRippleTile;
+    for (int i = 0; i < count && d.rippleCount < aurora::gfx::water::DrawDesc::MaxRipples; ++i) {
       float(&slot)[4] = d.ripples[d.rippleCount++];
-      slot[0] = c.GetX();
-      slot[1] = c.GetY();
-      slot[2] = t;
-      // CRipple's amplitude runs 0.1..0.25 with the splash's intensity; fade it over its life.
-      slot[3] = std::clamp(r.GetLookupAmplitude() * 255.f / 0.25f, 0.f, 1.f) * (1.f - t / life);
+      slot[0] = rings[i].x;
+      slot[1] = rings[i].y;
+      slot[2] = rings[i].t;
+      slot[3] = rings[i].s;
     }
   }
 
@@ -289,5 +390,8 @@ bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const
   return true;
 }
 
-void Reset() { Meshes().clear(); }
+void Reset() {
+  Meshes().clear();
+  Wakes().clear();
+}
 } // namespace PortRetailWater

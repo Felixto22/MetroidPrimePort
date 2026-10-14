@@ -899,6 +899,22 @@ void CElementGen::UpdateExistingParticles() {
       PortVfxEvalParticle(*x28_loadedGenDesc, *p, particleFrame);
     }
 #endif
+#ifdef TARGET_PC
+    if (xPortRunoff) {
+      // A drop on the visor clings for a moment, then runs down it, faster as it goes and
+      // wandering a little sideways, as water on a curved glass does.
+      const float cling = static_cast< float >(particleFrame) / 18.f - 0.6f;
+      if (cling > 0.f) {
+        const float seed = static_cast< float >(p->xPortSeed & 0xffff) / 65535.f;
+        const float size = rstl::max_val(p->x2c_lineLengthOrSize, 0.01f);
+        const float fall = size * (0.012f + 0.02f * seed) * rstl::min_val(cling, 3.f);
+        const float side = size * 0.006f * sinf(static_cast< float >(particleFrame) * (0.11f + 0.07f * seed) + seed * 40.f);
+        const CVector3f down = x22c_globalOrientation.Rotate(CVector3f(0.f, 0.f, -1.f));
+        const CVector3f right = x22c_globalOrientation.Rotate(CVector3f(1.f, 0.f, 0.f));
+        p->x4_pos += down * fall + right * side;
+      }
+    }
+#endif
     AccumulateBounds(p->x4_pos, p->x2c_lineLengthOrSize);
     ++p;
   }
@@ -1017,6 +1033,12 @@ void CElementGen::CreateNewParticles(int count) {
     }
 
     particle.x0_endFrame += x74_curFrame;
+#ifdef TARGET_PC
+    if (xPortRunoff) {
+      // Visor runoff: time to run down the glass before it fades.
+      particle.x0_endFrame += (particle.x0_endFrame - x74_curFrame) / 2 + 30;
+    }
+#endif
 
     if (CColorElement* colr = x28_loadedGenDesc->x24_COLR) {
       colr->GetValue(0, particle.x34_color);

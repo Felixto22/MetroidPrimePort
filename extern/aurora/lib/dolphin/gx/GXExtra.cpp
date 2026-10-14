@@ -253,6 +253,38 @@ void GXPortSetFoliagePushers(const f32 up[3], const f32 (*pos)[4], const f32 (*p
   }
 }
 
+void GXPortSetFoliageSurface(f32 rain, f32 seconds, const f32 viewToWorld[3][4], const f32 (*pos)[4],
+                             const f32 (*params)[4], u32 count) {
+  if (count > GX_PORT_FOLIAGE_MAX_BURNS) {
+    count = GX_PORT_FOLIAGE_MAX_BURNS;
+  }
+  const auto put = [](f32 f) {
+    u32 word;
+    std::memcpy(&word, &f, sizeof(word));
+    GX_WRITE_U32(word);
+  };
+  GX_WRITE_AURORA(GX_AURORA_PORT_FOLIAGE_SURFACE);
+  put(rain);
+  put(seconds);
+  put(static_cast<f32>(count));
+  put(0.f);
+  for (int r = 0; r < 3; ++r) {
+    for (int k = 0; k < 4; ++k) {
+      put(viewToWorld[r][k]);
+    }
+  }
+  for (u32 i = 0; i < GX_PORT_FOLIAGE_MAX_BURNS; ++i) {
+    for (int k = 0; k < 4; ++k) {
+      put(i < count ? pos[i][k] : 0.f);
+    }
+  }
+  for (u32 i = 0; i < GX_PORT_FOLIAGE_MAX_BURNS; ++i) {
+    for (int k = 0; k < 4; ++k) {
+      put(i < count ? params[i][k] : 0.f);
+    }
+  }
+}
+
 void GXPortSetBump(f32 strength) {
   GX_WRITE_AURORA(GX_AURORA_PORT_BUMP);
   u32 word;

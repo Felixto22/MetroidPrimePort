@@ -715,7 +715,7 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
     }
     // A material sampling a plant's texture bends away from Samus and shots (PortFoliage).
     bool foliage = false;
-    if (PortDebug::InteractiveFoliage() && (glassFlags & kStateFlag_PortPBR) == 0) {
+    if (PortFoliage::Active() && (glassFlags & kStateFlag_PortPBR) == 0) {
       const uint* words = reinterpret_cast< const uint* >(GetData());
       const uint count = SBig(words[1]);
       const rstl::vector< TCachedToken< CTexture > >& textures = model.GetTextures();
@@ -725,6 +725,9 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
           foliage = PortFoliage::IsFoliageTexture(textures[index].GetTag().GetId());
         }
       }
+    }
+    if (foliage) {
+      PortFoliage::NoteSurface(surface, model);
     }
     if (foliage != sPortFoliage) {
       sPortFoliage = foliage;

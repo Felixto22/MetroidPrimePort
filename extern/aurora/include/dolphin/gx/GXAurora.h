@@ -350,6 +350,8 @@ extern "C" {
 #define GX_AURORA_PORT_FOLIAGE 0x0074
 // Port extension: what pushes foliage this pass (GXPortSetFoliagePushers). Payload: 132 u32 words.
 #define GX_AURORA_PORT_FOLIAGE_PUSHERS 0x0075
+// Port extension: rain, burns and the view's world frame for foliage (GXPortSetFoliageSurface). Payload: 80 u32 words.
+#define GX_AURORA_PORT_FOLIAGE_SURFACE 0x0076
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

@@ -2861,7 +2861,9 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   const auto info = build_shader_info(config);
   // Port: per-pixel GX lighting (ShaderConfig::perPixel) on TEV draws, when the varyings it adds
   // (position, normal, vertex colours) leave room under the 16 inter-stage locations.
-  const bool ppl = config.perPixel && config.pbr == 0 && config.lineMode == 0 && info.sampledTexCoords.count() <= 6;
+  // Foliage (ShaderConfig::foliage) takes one more.
+  const bool ppl = config.perPixel && config.pbr == 0 && config.lineMode == 0 &&
+                   info.sampledTexCoords.count() <= (config.foliage ? 5u : 6u);
   if (EnableDebugPrints && !s_seenShaders.contains(hash)) {
     s_seenShaders.insert(hash);
 
@@ -3137,8 +3139,17 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
         let fl = length(fol_d);
         fol_d = select(fol_d, fol_d * (0.9 / fl), fl > 0.9);
     }
+    let fol_world = vec3f(dot(ubuf.fol_iv[0], vec4f(mv_pos_rest, 1.0)), dot(ubuf.fol_iv[1], vec4f(mv_pos_rest, 1.0)),
+                          dot(ubuf.fol_iv[2], vec4f(mv_pos_rest, 1.0)));
+    // Rain drops striking the leaves set them trembling.
+    if (ubuf.fol_rain.x > 0.0) {
+        let tq = sin(ubuf.fol_rain.y * 23.0 + dot(floor(fol_world * 3.0), vec3f(7.1, 11.3, 5.7)));
+        fol_d = fol_d + ubuf.fol_up.xyz * (tq * 0.008 * ubuf.fol_rain.x);
+    }
     let mv_pos = mv_pos_rest + fol_d;
-    out.pos = vec4f(mv_pos, 1.0) * ubuf.proj;)""";
+    out.pos = vec4f(mv_pos, 1.0) * ubuf.proj;
+    out.fol_w = fol_world;)""";
+      vtxOutAttrs += fmt::format("\n    @location({}) fol_w: vec3f,", vtxOutIdx++);
     } else {
       vtxXfrAttrsPre += fmt::format(
           "\n    let mv_pos = vec4f({}, 1.0) * ubuf.postex_mtx[in_pnmtxidx];"
@@ -4139,6 +4150,10 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    fol_up: vec4f,";
     uniBufAttrs += "\n    fol_pos: array<vec4f, 16>,";
     uniBufAttrs += "\n    fol_par: array<vec4f, 16>,";
+    uniBufAttrs += "\n    fol_rain: vec4f,";
+    uniBufAttrs += "\n    fol_iv: array<vec4f, 3>,";
+    uniBufAttrs += "\n    fol_bpos: array<vec4f, 8>,";
+    uniBufAttrs += "\n    fol_bpar: array<vec4f, 8>,";
   }
   if (!prevColorNormalized && !prevAlphaNormalized) {
     fragmentFn += "\n    prev = tev_overflow_vec4f(prev);";
@@ -4195,6 +4210,52 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
                                "@group(2) @binding({})\n"
                                "var glass_samp: sampler;",
                                kVolFogFroxelBinding, kVolFogSamplerBinding);
+  }
+  if (info.usesFoliage) {
+    // Port extension: foliage surface effects. Burns char the leaves black within their radius
+    // and glow with flickering embers while they burn; rain darkens them wet and splashes on them:
+    // a drop lands in a random spot of each 14 cm cell of the world now and then, a bright point
+    // and a ring spreading out from it.
+    fragmentFn += R"""(
+    {
+        var fc = prev.rgb;
+        let fw = in.fol_w;
+        var fchar = 0.0;
+        var fglow = 0.0;
+        let nb = min(u32(ubuf.fol_rain.z), 8u);
+        for (var bi = 0u; bi < nb; bi++) {
+            let bp = ubuf.fol_bpos[bi];
+            let bq = ubuf.fol_bpar[bi];
+            let bf = 1.0 - smoothstep(bp.w * 0.55, bp.w, length(fw - bp.xyz));
+            fchar = max(fchar, bf * bq.y);
+            fglow = max(fglow, bf * bq.x);
+        }
+        if (fchar > 0.0 || fglow > 0.0) {
+            let cell = floor(fw * 9.0);
+            let hn = fract(sin(dot(cell, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);
+            let flick = 0.6 + 0.4 * sin(ubuf.fol_rain.y * (7.0 + hn * 9.0) + hn * 30.0);
+            fc = mix(fc, fc * vec3f(0.07, 0.06, 0.05), clamp(fchar, 0.0, 1.0));
+            let ember = smoothstep(0.55, 0.95, hn) * flick;
+            fc = fc + fglow * vec3f(1.0, 0.35, 0.06) * (0.3 + 1.6 * ember);
+        }
+        let rain = ubuf.fol_rain.x;
+        if (rain > 0.0) {
+            fc = fc * (1.0 - 0.22 * rain);
+            let rc = floor(fw * 7.0);
+            let h1 = fract(sin(dot(rc, vec3f(127.1, 311.7, 74.7))) * 43758.5453);
+            let h2 = fract(sin(dot(rc, vec3f(269.5, 183.3, 246.1))) * 43758.5453);
+            let h3 = fract(sin(dot(rc, vec3f(113.5, 271.9, 124.6))) * 43758.5453);
+            let ph = fract(ubuf.fol_rain.y * (0.7 + 0.8 * h2) + h1);
+            if (ph < 0.12 && h3 < rain * 0.85) {
+                let r = ph / 0.12;
+                let dd = length(fw - (rc + vec3f(h1, h2, h3)) / 7.0) * 7.0;
+                let ring = exp(-pow((dd - r * 0.55) * 9.0, 2.0)) * (1.0 - r);
+                let spot = exp(-dd * dd * 60.0) * (1.0 - r);
+                fc = fc + vec3f(0.85, 0.9, 1.0) * (ring * 0.9 + spot * 0.6) * rain;
+            }
+        }
+        prev = vec4f(fc, prev.a);
+    })""";
   }
   if (info.usesSoft) {
     // Port extension: soft particles. The fragment fades as the opaque scene behind it (the scene
