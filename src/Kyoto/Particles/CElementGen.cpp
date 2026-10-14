@@ -85,6 +85,31 @@ bool CElementGen::sMoveRedToAlphaBuffer;
 bool CElementGen::sSubtractBlend;
 
 int CElementGen::mParticleAliveCount;
+
+#ifdef TARGET_PC
+namespace {
+// Particle density (port setting): systems that emit a crowd (sparks, smoke, debris, drips)
+// emit more of it and may hold more alive. Systems of a few particles are left alone: they are
+// glows, beams and flashes, where a copy only stacks on the first and changes its brightness.
+const int kPortDensityMinMaxp = 10;
+// One quad batch is at most 0xffff vertices (GXBegin's count is 16-bit).
+const int kPortMaxBatchVerts = 0xfff0;
+
+float PortDensityScale() { return static_cast< float >(PortDebug::ParticleDensity()) * 0.01f; }
+
+bool PortDensityApplies(int retailMaxp) { return retailMaxp >= kPortDensityMinMaxp; }
+
+int PortScaledMaxp(int retailMaxp, int mbsp, bool mblr) {
+  const float scale = PortDensityScale();
+  if (scale <= 1.f || !PortDensityApplies(retailMaxp)) {
+    return retailMaxp;
+  }
+  const int vertsPerParticle = 4 * (mblr ? rstl::max_val(1, mbsp) : 1);
+  const int limit = rstl::max_val(retailMaxp, kPortMaxBatchVerts / vertsPerParticle);
+  return rstl::min_val(limit, static_cast< int >(static_cast< float >(retailMaxp) * scale + 0.5f));
+}
+} // namespace
+#endif
 int CElementGen::mParticleSystemAliveCount;
 
 double CElementGen::kTickTime = 1 / 60.0;
@@ -373,30 +398,6 @@ CElementGen::~CElementGen() {
   }
 }
 
-#ifdef TARGET_PC
-namespace {
-// Particle density (port setting): systems that emit a crowd (sparks, smoke, debris, drips)
-// emit more of it and may hold more alive. Systems of a few particles are left alone: they are
-// glows, beams and flashes, where a copy only stacks on the first and changes its brightness.
-const int kPortDensityMinMaxp = 10;
-// One quad batch is at most 0xffff vertices (GXBegin's count is 16-bit).
-const int kPortMaxBatchVerts = 0xfff0;
-
-float PortDensityScale() { return static_cast< float >(PortDebug::ParticleDensity()) * 0.01f; }
-
-bool PortDensityApplies(int retailMaxp) { return retailMaxp >= kPortDensityMinMaxp; }
-
-int PortScaledMaxp(int retailMaxp, int mbsp, bool mblr) {
-  const float scale = PortDensityScale();
-  if (scale <= 1.f || !PortDensityApplies(retailMaxp)) {
-    return retailMaxp;
-  }
-  const int vertsPerParticle = 4 * (mblr ? rstl::max_val(1, mbsp) : 1);
-  const int limit = rstl::max_val(retailMaxp, kPortMaxBatchVerts / vertsPerParticle);
-  return rstl::min_val(limit, static_cast< int >(static_cast< float >(retailMaxp) * scale + 0.5f));
-}
-} // namespace
-#endif
 
 void CElementGen::Initialize() {
   if (sStaticListInitialized)
