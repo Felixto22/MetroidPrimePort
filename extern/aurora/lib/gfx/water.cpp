@@ -230,14 +230,14 @@ fn trail_h(wp: vec2f) -> vec3f {
     let fade = t1.z * (1.0 - smoothstep(TRAIL_LIFE * 0.5, TRAIL_LIFE, age));
     let open = 1.0 - exp(-age * 9.0);
     let core = exp(-(d * d) / (w * w));
-    let trench = -0.42 * open * exp(-age * 0.75) * core;
+    let trench = -1.26 * open * exp(-age * 0.75) * core;
     let c = w * 0.9 + 1.7 * age;
     let x = d - c;
-    let wall = 0.3 * exp(-x * x * 2.2) * exp(-age * 0.55) * open;
+    let wall = 0.9 * exp(-x * x * 2.2) * exp(-age * 0.55) * open;
     let x2 = d - c * 0.55;
-    let wall2 = 0.13 * exp(-x2 * x2 * 3.0) * exp(-age * 0.8) * open;
+    let wall2 = 0.39 * exp(-x2 * x2 * 3.0) * exp(-age * 0.8) * open;
     let churn = core * exp(-age * 0.9) * open;
-    h = h + fade * vec3f(trench + wall + wall2, wall * 3.0 + wall2 * 2.0, churn);
+    h = h + fade * vec3f(trench + wall + wall2, wall + wall2 * 0.7, churn);
   }
   return h;
 }
@@ -463,7 +463,8 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
     let th = trail_h(wp);
     let gx = trail_h(wp + vec2f(0.06, 0.0)).x - th.x;
     let gy = trail_h(wp + vec2f(0.0, 0.06)).x - th.x;
-    let tg = vec2f(gx, gy) / 0.06 * 1.6;
+    var tg = vec2f(gx, gy) / 0.06;
+    tg = tg * min(1.0, 2.2 / max(length(tg), 1e-4));
     Nw = Nw - in.t * tg.x - cross(in.n, in.t) * tg.y;
     trailFoam = clamp((th.y - 0.25) * 1.4, 0.0, 1.0) + clamp(th.z * 0.9, 0.0, 1.0);
   }

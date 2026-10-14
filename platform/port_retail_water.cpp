@@ -383,7 +383,13 @@ bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const
         }
         // CRipple's amplitude runs 0.1..0.25 with the splash's intensity: every one shows, the
         // strongest the most. Fades over its life.
-        const float s = std::clamp(0.45f + r.GetLookupAmplitude() * 255.f / 0.25f * 0.55f, 0.f, 1.f);
+        float s = std::clamp(0.45f + r.GetLookupAmplitude() * 255.f / 0.25f * 0.55f, 0.f, 1.f);
+        // A shot's splash (its projectile, or one already gone) raises waves three times as high.
+        const CEntity* by = mgr.GetObjectById(r.GetUniqueId());
+        if (r.GetUniqueId() != kInvalidUniqueId &&
+            (by == nullptr || TCastToConstPtr< CGameProjectile >(by) != nullptr)) {
+          s *= 3.f;
+        }
         rings[count++] = {c.GetX(), c.GetY(), t, s * (1.f - t / life)};
       }
     }
