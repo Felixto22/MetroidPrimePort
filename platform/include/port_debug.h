@@ -371,6 +371,10 @@ void SetBurnableFoliage(bool enabled);
 // per model. Off in the original experience.
 bool ClusteredLighting();
 void SetClusteredLighting(bool enabled);
+// Cinematic look: on the retail picture, a bloom on the brightest light and a filmic colour grade
+// (port_cinematic.h). Off in the original experience.
+bool CinematicLook();
+void SetCinematicLook(bool enabled);
 // Arm cannon offset from its retail place, in metres along the camera's right,
 // forward and up axes (issue #72, like PrimeHack's). It moves the real gun, so
 // shots leave from the new muzzle. Zero in the original experience.

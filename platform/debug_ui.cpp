@@ -267,6 +267,7 @@ bool sInteractiveFoliage = true;
 bool sRainDetails = true;
 bool sBurnableFoliage = true;
 bool sClusteredLighting = true;
+bool sCinematicLook = true;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
@@ -700,6 +701,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sBurnableFoliage = ParseBool(value);
   } else if (key == "clustered_lighting") {
     sClusteredLighting = ParseBool(value);
+  } else if (key == "cinematic_look") {
+    sCinematicLook = ParseBool(value);
   } else if (key == "glass_reflections") {
     sGlassReflections = std::clamp(std::atoi(value.c_str()), PortDebug::kGlassReflectionsMin,
                                    PortDebug::kGlassReflectionsMax);
@@ -900,6 +903,7 @@ std::string SettingsText() {
   file << "rain_details=" << (sRainDetails ? 1 : 0) << '\n';
   file << "burnable_foliage=" << (sBurnableFoliage ? 1 : 0) << '\n';
   file << "clustered_lighting=" << (sClusteredLighting ? 1 : 0) << '\n';
+  file << "cinematic_look=" << (sCinematicLook ? 1 : 0) << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
   file << "msaa=" << sMsaa << '\n';
   file << "opengles=" << (sOpenGles ? 1 : 0) << '\n';
@@ -1925,6 +1929,17 @@ bool ClusteredLighting() {
 void SetClusteredLighting(bool enabled) {
   EnsureInitialized();
   sClusteredLighting = enabled;
+  MarkDirty();
+}
+
+bool CinematicLook() {
+  EnsureInitialized();
+  return sCinematicLook && !sOriginalExperience;
+}
+
+void SetCinematicLook(bool enabled) {
+  EnsureInitialized();
+  sCinematicLook = enabled;
   MarkDirty();
 }
 
@@ -6771,6 +6786,12 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Every dynamic light (shots, explosions, glowing creatures, fires) lights the\n"
                         "world per pixel, as many as reach a surface, not only the few the game picks.");
+  bool cinematicLook = sCinematicLook;
+  if (ImGui::Checkbox("Cinematic look", &cinematicLook)) {
+    SetCinematicLook(cinematicLook);
+  }
+  ImGui::SetItemTooltip("Bloom on the brightest light (shots, the sky, glows) and a filmic colour\n"
+                        "grade: more contrast and colour, cool shadows, warm highlights.");
   {
     // Issue #72: PrimeHack-style arm cannon placement.
     float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};

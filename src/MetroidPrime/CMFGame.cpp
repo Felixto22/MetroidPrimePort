@@ -26,6 +26,7 @@
 #include "MetroidPrime/TCastTo.hpp"
 #include "rstl/math.hpp"
 
+#include "port_cinematic.h"
 #include "port_debug.h"
 #include "port_freecam.h"
 #include "port_photo.h"
@@ -303,6 +304,11 @@ void CMFGame::Draw() const {
                      l.layers->IsLayerActive(l.area, TLayerId(layer));
             },
             &layers, gradeA, gradeB, gradeWeight);
+        // A retail room: the cinematic look's bloom and grade, when it's on.
+        if (!toned && PortCinematic::Retail(threshold, tints, tone, gradeA)) {
+          GXPortPostProcess(GX_TRUE, threshold, tints, tone, gradeA, 0, 0.f, 0.f);
+          return;
+        }
         // The picture is measured for the next frames' auto exposure (UpdateFrame).
         GXPortPostProcess(bloom, threshold, tints, tone, gradeA, gradeB, gradeWeight,
                           toned && measure ? PortRoomEnv::MeasureExposure() : 0.f);

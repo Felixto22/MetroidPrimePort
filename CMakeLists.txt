@@ -232,6 +232,7 @@ set(MP_PORT_SOURCES
     platform/port_retail_water.cpp
     platform/port_foliage.cpp
     platform/port_dynamic_lights.cpp
+    platform/port_cinematic.cpp
     platform/port_collision_view.cpp
     platform/port_remastered_cmdl.cpp
     platform/port_remastered_anuv.cpp

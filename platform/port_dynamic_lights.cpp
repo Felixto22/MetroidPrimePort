@@ -137,7 +137,7 @@ void Append(const CStateManager& mgr, rstl::vector< CLight >& lights) {
       lit = (lights[i].GetPosition() - pos).MagSquared() < 1.f;
     }
     if (!lit) {
-      lights.push_back(MakeLight(pos, shot->rgb, 0.9f, 0.3f, id++));
+      lights.push_back(MakeLight(pos, shot->rgb, 1.4f, 0.14f, id++));
     }
   }
   // A shot gone this frame hit something: a flash where it was.
@@ -154,7 +154,7 @@ void Append(const CStateManager& mgr, rstl::vector< CLight >& lights) {
   }
   for (int i = 0; i < sFlashCount; ++i) {
     const float k = 1.f - sFlashes[i].age / kFlashLife;
-    lights.push_back(MakeLight(sFlashes[i].pos, sFlashes[i].rgb, 1.8f * k * k, 0.18f, id++));
+    lights.push_back(MakeLight(sFlashes[i].pos, sFlashes[i].rgb, 2.6f * k * k, 0.1f, id++));
   }
 }
 } // namespace PortDynamicLights

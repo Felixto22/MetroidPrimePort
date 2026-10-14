@@ -219,6 +219,7 @@ enum EPortOption {
   kPO_RainDetails,
   kPO_BurnableFoliage,
   kPO_ClusteredLighting,
+  kPO_CinematicLook,
 };
 #define PORT_OPTION(opt) static_cast< EGameOption >(opt)
 
@@ -275,6 +276,7 @@ static const SGameOption skPortDisplayOptions[] = {
     {PORT_OPTION(kPO_RainDetails), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_BurnableFoliage), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_ClusteredLighting), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_CinematicLook), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_AntiAliasing), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_SpeedrunTimer), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_PhotoMode), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
@@ -310,7 +312,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {24, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {25, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -360,6 +362,8 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     return L"Burnable Vegetation";
   case kPO_ClusteredLighting:
     return L"Clustered Lighting";
+  case kPO_CinematicLook:
+    return L"Cinematic Look";
   case kPO_AntiAliasing:
     return L"Anti-Aliasing";
   case kPO_HudScale:
@@ -433,6 +437,8 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::BurnableFoliage() ? 1 : 0;
   case kPO_ClusteredLighting:
     return PortDebug::ClusteredLighting() ? 1 : 0;
+  case kPO_CinematicLook:
+    return PortDebug::CinematicLook() ? 1 : 0;
   case kPO_AntiAliasing:
     return PortDebug::Msaa() > 1 ? 1 : 0;
   case kPO_HudScale:
@@ -488,6 +494,7 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_RainDetails:
   case kPO_BurnableFoliage:
   case kPO_ClusteredLighting:
+  case kPO_CinematicLook:
   case kPO_AntiAliasing:
   case kPO_HudScale:
   case kPO_HideHelmet:
@@ -570,6 +577,9 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_ClusteredLighting:
     PortDebug::SetClusteredLighting(value > 0);
+    break;
+  case kPO_CinematicLook:
+    PortDebug::SetCinematicLook(value > 0);
     break;
   case kPO_AntiAliasing:
     PortDebug::SetMsaa(value > 0 ? 4 : 1);
