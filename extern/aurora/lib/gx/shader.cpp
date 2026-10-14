@@ -932,8 +932,48 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
   // attenuation, faded out at each light's radius. Lights already among the draw's GX lights are
   // skipped.
   std::string clusterFn;
+  // Port extension: the lights' ray-traced shadows (gfx/rt): the share of the point lights' light
+  // that reaches the pixel, from the mask traced after the previous frame (its texel found as the
+  // receivers find the sun's, by the way to that frame's view, and kept only where it saw the same
+  // depth), scales those lights: the clustered ones and the GX ones that are not far suns.
+  const bool rtLocal = ppl && config.clustered && i == 0 && !alpha && diffFn != GX_DF_NONE && webgpu::g_rtMaskBinding;
+  std::string rtFn;
+  if (rtLocal) {
+    rtFn = R"""(
+      var rt_local = 1.0;
+      if (ubuf.rt_info.x > 0.5) {
+        let rl_p = vec4f(in.mv_pos, 1.0);
+        let rl_v = vec3f(dot(ubuf.rt_rows[0], rl_p), dot(ubuf.rt_rows[1], rl_p), dot(ubuf.rt_rows[2], rl_p));
+        let rl_z = -rl_v.z;
+        if (rl_z > 1e-3) {
+          let rl_f = ubuf.rt_frustum;
+          let rl_s = (rl_v.xy / rl_z - rl_f.xz) / (rl_f.yw - rl_f.xz);
+          let rl_uv = vec2f(rl_s.x, 1.0 - rl_s.y);
+          if (all(rl_uv >= vec2f(0.0)) && all(rl_uv <= vec2f(1.0))) {
+            let rl_dim = ubuf.rt_info.yz;
+            let rl_t = rl_uv * rl_dim - 0.5;
+            let rl_b = floor(rl_t);
+            let rl_fr = rl_t - rl_b;
+            var rl_acc = 0.0;
+            var rl_w = 0.0;
+            for (var rl_k = 0u; rl_k < 4u; rl_k++) {
+              let rl_o = vec2f(f32(rl_k & 1u), f32(rl_k >> 1u));
+              let rl_q = vec2i(clamp(rl_b + rl_o, vec2f(0.0), rl_dim - 1.0));
+              let rl_m = textureLoad(rt_mask, rl_q, 0);
+              let rl_bw = select(1.0 - rl_fr.x, rl_fr.x, rl_o.x > 0.5) * select(1.0 - rl_fr.y, rl_fr.y, rl_o.y > 0.5);
+              let rl_ww = select(0.0, rl_bw + 1e-3, rl_m.b > 0.0 && abs(rl_m.b - rl_z) < 0.04 * rl_z + 0.1);
+              rl_acc += rl_ww * rl_m.g;
+              rl_w += rl_ww;
+            }
+            if (rl_w > 1e-4) {
+              rt_local = clamp(rl_acc / rl_w, 0.0, 1.0);
+            }
+          }
+        }
+      })""";
+  }
   if (ppl && config.clustered && i == 0 && !alpha && diffFn != GX_DF_NONE) {
-    clusterFn = fmt::format(R"""(
+    clusterFn = rtFn + fmt::format(R"""(
       {{
         let cl_base = bitcast<u32>(ubuf.cluster.x);
         let cl_count = u32(ubuf.cluster.y);
@@ -960,7 +1000,7 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
             cdir = cdir / max(cd, 1e-4);
             let catt = 1.0 / max(r2.x + r2.y * cd + r2.z * cd2, 1e-3) * (1.0 - smoothstep(r0.w * 0.7, r0.w, cd));
             let cdiff = {9};
-            lighting = lighting + vec4f(r1.rgb * (catt * cdiff), 0.0);{10}
+            lighting = lighting + vec4f(r1.rgb * (catt * cdiff{11}), 0.0);{10}
           }}
         }}
       }})""",
@@ -969,7 +1009,8 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
         diffFn == GX_DF_SIGN ? "dot(cdir, cl_n)" : "max(0.0, dot(cdir, cl_n))",
         config.specular ? "\n            port_spec = port_spec + r1.rgb * (catt * select(0.0, pow(max(dot(cl_n, "
                           "normalize(cdir + normalize(-in.mv_pos))), 0.0), 40.0), cdiff > 0.0));"
-                        : "");
+                        : "",
+        rtLocal ? " * rt_local" : "");
   }
   // Port extension: specular highlights (ShaderConfig::specular), Blinn-Phong, into port_spec,
   // which the fragment adds over its colour at the end.
@@ -990,12 +1031,13 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
           ldir = ldir / dist;
           var attn: f32;{2}
           var diff = {3};
-          lighting = lighting + (attn * diff * light.color);{11}
+          lighting = lighting + (attn * diff * light.color){12};{11}
       }}
       {7}{8} = ({4} * clamp(lighting, vec4f(0.0), vec4f(1.0))){8};
     }})""",
                      i, GX::MaxLights, lightAttnFn, lightDiffFn, matSrc, ambSrc, posVar, outVar, swizzle,
-                     alpha ? "a"sv : ""sv, clusterFn, specFn);
+                     alpha ? "a"sv : ""sv, clusterFn, specFn,
+                     rtLocal ? " * select(1.0, rt_local, dist < 1e5)"sv : ""sv);
 }
 
 // GX_AURORA_SET_PBR: replaces the TEV colour result with a metal/roughness evaluation of
@@ -4368,6 +4410,13 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   }
   if (info.usesClustered) {
     uniBufAttrs += "\n    cluster: vec4f,";
+    // GXState::rtUniform (gfx::rt::Uniform): this view to the traced frame's, its frustum, (on, width, height).
+    uniBufAttrs += "\n    rt_rows: array<vec4f, 3>,";
+    uniBufAttrs += "\n    rt_frustum: vec4f,";
+    uniBufAttrs += "\n    rt_info: vec4f,";
+    if (info.usesRtMask) {
+      texBindings += fmt::format("\n@group(2) @binding({})\nvar rt_mask: texture_2d<f32>;", kRtMaskBinding);
+    }
   }
   if (info.usesSpecular) {
     uniBufAttrs += "\n    spec: vec4f,";

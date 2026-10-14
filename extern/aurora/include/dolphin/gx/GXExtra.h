@@ -314,6 +314,9 @@ void GXPortRtMesh(u64 key, const f32* positions, u32 triangleCount);
 // The meshes this frame's shadow is traced against. Returns 1 + the index of the first key that
 // has no mesh (send it with GXPortRtMesh), 0 when all have one.
 u32 GXPortRtScene(const u64* keys, u32 count);
+// The frame's lights that cast traced shadows, world space: position, radius; colour, 0; GX
+// distance attenuation k0, k1, k2, 0. Up to 64, nearest the camera first. Stays until changed.
+void GXPortRtLights(const f32 (*lights)[12], u32 count);
 // A frame's phase: 0 (begin) before the world draws, after GXPortSetShadowFrame: this frame's
 // shadow receivers read the shadow traced after the previous frame; 1 (trace) once the opaque
 // world is drawn: its depth is traced after the frame. False when there is nothing to trace with.

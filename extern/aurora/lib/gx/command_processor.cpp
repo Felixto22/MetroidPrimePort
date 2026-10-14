@@ -1363,6 +1363,16 @@ void handle_aurora(ByteReader& reader) noexcept {
     gfx::rt::Uniform uniform{};
     const bool begin = params.misc[0] == 0;
     const bool on = gfx::rt::record(params, uniform);
+    if (begin) {
+      std::array<Vec4<float>, 5> values{};
+      if (on) {
+        std::memcpy(values.data(), &uniform, sizeof(uniform));
+      }
+      if (g_gxState.rtUniform != values) {
+        g_gxState.rtUniform = values;
+        g_gxState.dirty |= DirtyUniform;
+      }
+    }
     if (begin && g_gxState.shadowActive) {
       std::array<Vec4<float>, 5> values{};
       if (on) {
@@ -1443,6 +1453,11 @@ void handle_aurora(ByteReader& reader) noexcept {
     if (g_gxState.clusterActive != active) {
       g_gxState.clusterActive = active;
       g_gxState.dirty |= DirtyPipeline;
+    }
+    // The lights' traced shadow is off until this frame's GX_AURORA_PORT_RT_SHADOWS begin.
+    if (g_gxState.rtUniform != std::array<Vec4<float>, 5>{}) {
+      g_gxState.rtUniform = {};
+      g_gxState.dirty |= DirtyUniform;
     }
     if (std::memcmp(&g_gxState.clusterInfo, &value, sizeof(value)) != 0) {
       g_gxState.clusterInfo = value;

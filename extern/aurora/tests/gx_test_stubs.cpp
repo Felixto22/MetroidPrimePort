@@ -318,6 +318,11 @@ namespace aurora::gfx::rt {
 bool available() { return false; }
 void set_mesh(uint64_t key, const float* positions, uint32_t triangles) {}
 uint32_t set_scene(const uint64_t* keys, uint32_t count) { return 0; }
+void set_lights(const float (*lights)[12], uint32_t count) {}
+const wgpu::TextureView& mask_view() {
+  static const wgpu::TextureView view;
+  return view;
+}
 bool ensure_task() { return false; }
 bool record(Params params, Uniform& out) {
   out = {};

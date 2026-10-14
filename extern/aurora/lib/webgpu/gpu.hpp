@@ -58,6 +58,8 @@ extern bool g_hasCoreFeatures;
 extern bool g_bcTexturesSupported;
 // The device was given 17 sampled textures a stage (the default is 16), so group 2 has the baked lightmap's slot.
 extern bool g_lightmapBinding;
+// group 2 has an 18th sampled texture, the ray-traced lights' mask (gx::kRtMaskBinding).
+extern bool g_rtMaskBinding;
 extern bool g_astcTexturesSupported;
 extern bool g_textureComponentSwizzleSupported;
 

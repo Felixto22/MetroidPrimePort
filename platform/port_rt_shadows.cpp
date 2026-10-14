@@ -40,17 +40,18 @@ u64 AreaKey(const CGameArea& area) {
 } // namespace
 
 bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& view, const float sunTravel[3],
-           bool sunShadow) {
+           bool sunShadow, bool enabled) {
   sActive = false;
   const float len = std::sqrt(sunTravel[0] * sunTravel[0] + sunTravel[1] * sunTravel[1] + sunTravel[2] * sunTravel[2]);
   if (!PortDebug::RayTracedShadows()) {
     Note("off (setting)");
     return false;
   }
-  if (!sunShadow || !(len > 0.f) || areaCount <= 0) {
-    Note("idle (no sun shadow in this room)");
+  if (!enabled || areaCount <= 0) {
+    Note("idle (visor or view without the world)");
     return false;
   }
+  const bool sun = sunShadow && len > 0.f;
   if (!GXPortRtAvailable()) {
     Note("unavailable (see aurora::gfx::rt above)");
     return false;
@@ -111,7 +112,7 @@ bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& vie
   sParams.depth[2] = 0.125f;
   sParams.depth[3] = 1.f;
   for (int i = 0; i < 3; ++i) {
-    sParams.sun[i] = -sunTravel[i] / len;
+    sParams.sun[i] = sun ? -sunTravel[i] / len : 0.f;
   }
   // The sun disc's radius (tan): the penumbra widens with the distance to what casts it.
   static const float sSoftness = port::EnvFloat("MP_RT_SOFTNESS", 0.02f);
@@ -121,9 +122,9 @@ bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& vie
     Note("could not record this frame");
     return false;
   }
-  Note("on");
+  Note(sun ? "on (sun and lights)" : "on (lights; this room has no sun shadow)");
   sActive = true;
-  return true;
+  return sun;
 }
 
 void Trace() {

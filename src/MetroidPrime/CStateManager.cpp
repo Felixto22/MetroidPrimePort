@@ -2972,6 +2972,7 @@ static void PortUploadClusterLights(const CStateManager& mgr) {
   if (!PortDebug::ClusteredLighting()) {
     if (!sSentOff) {
       GXPortSetClusterLights(nullptr, 0);
+      GXPortRtLights(nullptr, 0);
       sSentOff = true;
     }
     return;
@@ -2987,6 +2988,8 @@ static void PortUploadClusterLights(const CStateManager& mgr) {
   struct Entry {
     float dist;
     f32 rec[12];
+    f32 world[3];
+    bool casts; // a point of light (not a local ambient), for the ray-traced shadows
   };
   static std::vector< Entry > entries;
   entries.clear();
@@ -3007,6 +3010,10 @@ static void PortUploadClusterLights(const CStateManager& mgr) {
       e.rec[r] = axes[r][0] * d.GetX() + axes[r][1] * d.GetY() + axes[r][2] * d.GetZ();
     }
     e.rec[3] = radius;
+    e.world[0] = l.GetPosition().GetX();
+    e.world[1] = l.GetPosition().GetY();
+    e.world[2] = l.GetPosition().GetZ();
+    e.casts = l.GetType() != kLT_LocalAmbient;
     const CColor& c = l.GetColor();
     e.rec[4] = c.GetRed();
     e.rec[5] = c.GetGreen();
@@ -3033,6 +3040,19 @@ static void PortUploadClusterLights(const CStateManager& mgr) {
     std::memcpy(&packed[i * 12], entries[i].rec, sizeof(entries[i].rec));
   }
   GXPortSetClusterLights(reinterpret_cast< const f32(*)[12] >(packed.data()), static_cast< u32 >(n));
+  // The same lights in world space cast the ray-traced shadows (port_rt_shadows.h), the nearest 64.
+  static std::vector< f32 > world;
+  world.clear();
+  for (size_t i = 0; i < entries.size() && i < 64; ++i) {
+    if (entries[i].rec[3] <= 0.f || !entries[i].casts) {
+      continue; // the no-light placeholder, or an ambient
+    }
+    const f32* r = entries[i].rec;
+    const f32 rec[12] = {entries[i].world[0], entries[i].world[1], entries[i].world[2], r[3],
+                         r[4], r[5], r[6], 0.f, r[8], r[9], r[10], 0.f};
+    world.insert(world.end(), rec, rec + 12);
+  }
+  GXPortRtLights(reinterpret_cast< const f32(*)[12] >(world.data()), static_cast< u32 >(world.size() / 12));
 }
 
 static void PortDrawAmbientOcclusion(const CStateManager& mgr) {
@@ -3489,7 +3509,8 @@ void CStateManager::DrawWorld() const {
   // Ray-traced shadows: the opaque world's shadow is traced, so only its cut-outs (and, after the
   // areas, the actors) cast into the shadow map.
   const bool portRtShadows =
-      PortRtShadows::Begin(areas.begin(), areas.size(), backupViewMatrix, sPortSunTravel, portShadow);
+      PortRtShadows::Begin(areas.begin(), areas.size(), backupViewMatrix, sPortSunTravel, portShadow,
+                           !thermal && visor != CPlayerState::kPV_XRay && !portCollisionOnly);
   if (portRtShadows) {
     GXPortSetShadowCasterCutouts();
   } else {

@@ -44,6 +44,9 @@ constexpr uint32_t Group = 8;
 // The shadow map layer's depth unit: a texel packs round(depth * 64) (16 bits) above its
 // visibility (8 bits), as a 24-bit integer over 2^24, which a Depth32Float holds exactly.
 constexpr float DepthUnits = 64.f;
+// The traced mask's largest size: what the lit draws read it at (mask_view) is this big.
+constexpr uint32_t MaxMask = 2048;
+constexpr uint32_t MaxLights = 64;
 
 // What the trace needs from the frame (any thread).
 struct SharedState {
@@ -52,6 +55,9 @@ struct SharedState {
   std::unordered_set<uint64_t> known;                       // pending or built
   std::vector<uint64_t> scene;
   std::vector<uint64_t> drop; // meshes the game forgot
+  std::vector<float> lights;   // the frame's lights (set_lights), 12 floats each
+  // The lights each recorded trace goes with (FIFO processor writes, render thread reads).
+  std::array<std::vector<float>, 4> traceLights;
 };
 SharedState& shared() {
   static SharedState state;
@@ -67,6 +73,19 @@ struct FifoState {
   uint32_t height = 0;
 };
 FifoState g_fifo;
+uint32_t g_lightSlot = 0;
+
+// The traced mask as the lit draws read it (mask_view): a copy of the last trace, made at the next
+// begin, so the shared texture (which a resize replaces) is never in a draw's bind group.
+struct MaskState {
+  std::mutex mutex;
+  wgpu::Texture texture;
+  wgpu::TextureView view;
+};
+MaskState& mask_state() {
+  static MaskState state;
+  return state;
+}
 
 std::atomic<bool> g_ready{false};
 std::atomic<bool> g_failed{false};
@@ -360,17 +379,23 @@ using DxcCreateInstanceProc = HRESULT(__stdcall*)(REFCLSID, REFIID, LPVOID*);
 // depths), nudged off the surface, casts four rays at the sun's disc; the share that escapes is
 // its visibility. Inline ray queries (DXR 1.1) from a compute shader.
 constexpr const char* TraceSource = R"hlsl(
-#define RS "RootConstants(num32BitConstants=28, b0), SRV(t0), DescriptorTable(SRV(t1), UAV(u0))"
+#define RS "RootConstants(num32BitConstants=28, b0), SRV(t0), SRV(t2), DescriptorTable(SRV(t1), UAV(u0))"
 cbuffer C : register(b0) {
   float4 v2w0;
   float4 v2w1;
   float4 v2w2;
   float4 frustum; // left, right, bottom, top at a view depth of 1
-  float4 sun;     // world direction to the sun, tan of the disc's radius
-  float4 misc;    // offset off the surface, its growth with depth, ray length, 0
+  float4 sun;     // world direction to the sun (0: no sun), tan of the disc's radius
+  float4 misc;    // offset off the surface, its growth with depth, ray length, light count
   float4 extra;
 };
+struct Light {
+  float4 pos;   // world position, radius
+  float4 color; // rgb
+  float4 att;   // GX distance attenuation k0, k1, k2
+};
 RaytracingAccelerationStructure scene : register(t0);
+StructuredBuffer<Light> lights : register(t2);
 Texture2D<float> depthTex : register(t1);
 RWTexture2D<float4> outTex : register(u0);
 
@@ -395,7 +420,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   int2 at = int2(id.xy);
   float zl = depthTex[at];
   if (zl <= 0.0) {
-    outTex[id.xy] = float4(1.0, 0.0, 0.0, 1.0);
+    outTex[id.xy] = float4(1.0, 1.0, 0.0, 1.0);
     return;
   }
   float2 texel = 1.0 / float2(size);
@@ -427,34 +452,80 @@ void main(uint3 id : SV_DispatchThreadID) {
   float4 p4 = float4(pos, 1.0);
   float3 wp = float3(dot(v2w0, p4), dot(v2w1, p4), dot(v2w2, p4));
   float3 wn = normalize(float3(dot(v2w0.xyz, n), dot(v2w1.xyz, n), dot(v2w2.xyz, n)));
-  float3 l = normalize(sun.xyz);
-  // Off the surface along its normal, and a little toward the sun.
   float bias = misc.x + misc.y * zl;
-  float3 origin = wp + wn * bias + l * (bias * 0.5);
-  float3 up = abs(l.z) > 0.99 ? float3(1.0, 0.0, 0.0) : float3(0.0, 0.0, 1.0);
-  float3 t = normalize(cross(up, l));
-  float3 b = cross(l, t);
   float spin = ign(float2(id.xy)) * 6.2831853;
-  const uint rays = 4;
-  float lit = 0.0;
-  [unroll]
-  for (uint r = 0; r < rays; ++r) {
-    float a = spin + float(r) * 1.5707963;
-    float rad = sqrt((float(r) + 0.5) / float(rays)) * sun.w;
-    float3 d = normalize(l + (t * cos(a) + b * sin(a)) * rad);
+  // The sun: four rays within its disc; the share that escapes.
+  float sunVis = 1.0;
+  if (dot(sun.xyz, sun.xyz) > 0.5) {
+    float3 l = normalize(sun.xyz);
+    float3 origin = wp + wn * bias + l * (bias * 0.5);
+    float3 up = abs(l.z) > 0.99 ? float3(1.0, 0.0, 0.0) : float3(0.0, 0.0, 1.0);
+    float3 t = normalize(cross(up, l));
+    float3 b = cross(l, t);
+    const uint rays = 4;
+    float lit = 0.0;
+    [unroll]
+    for (uint r = 0; r < rays; ++r) {
+      float a = spin + float(r) * 1.5707963;
+      float rad = sqrt((float(r) + 0.5) / float(rays)) * sun.w;
+      float3 d = normalize(l + (t * cos(a) + b * sin(a)) * rad);
+      RayDesc ray;
+      ray.Origin = origin;
+      ray.Direction = d;
+      ray.TMin = 0.0;
+      ray.TMax = misc.z;
+      RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_FORCE_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
+      q.TraceRayInline(scene, RAY_FLAG_NONE, 0xFF, ray);
+      q.Proceed();
+      if (q.CommittedStatus() != COMMITTED_TRIANGLE_HIT) {
+        lit += 1.0;
+      }
+    }
+    sunVis = lit / float(rays);
+  }
+  // Every light that reaches the point (shots, fires, glowing creatures): a ray to each, a point
+  // jittered within a small bulb so the edges soften; the visible share of their light, weighted
+  // by how much each gives (GX's attenuation, the facing, the colour's brightness).
+  float wsum = 0.0;
+  float vsum = 0.0;
+  uint count = min((uint)misc.w, 64u);
+  for (uint i = 0; i < count; ++i) {
+    Light light = lights[i];
+    float3 dv = light.pos.xyz - wp;
+    float dist = length(dv);
+    if (dist >= light.pos.w || dist < 0.05) {
+      continue;
+    }
+    float3 ld = dv / dist;
+    float ndl = dot(wn, ld);
+    if (ndl <= 0.0) {
+      continue;
+    }
+    float att = 1.0 / max(light.att.x + light.att.y * dist + light.att.z * dist * dist, 1e-3) *
+                (1.0 - smoothstep(light.pos.w * 0.7, light.pos.w, dist));
+    float w = dot(light.color.rgb, float3(0.3, 0.59, 0.11)) * att * ndl;
+    if (w < 1e-3) {
+      continue;
+    }
+    float a = spin + float(i) * 2.3999632;
+    float3 jit = float3(cos(a), sin(a), cos(a * 1.7)) * 0.15;
+    float3 origin = wp + wn * bias;
+    float3 to = light.pos.xyz + jit - origin;
+    float tlen = length(to);
     RayDesc ray;
     ray.Origin = origin;
-    ray.Direction = d;
+    ray.Direction = to / max(tlen, 1e-4);
     ray.TMin = 0.0;
-    ray.TMax = misc.z;
+    ray.TMax = max(tlen - 0.2, 0.0);
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_FORCE_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
     q.TraceRayInline(scene, RAY_FLAG_NONE, 0xFF, ray);
     q.Proceed();
-    if (q.CommittedStatus() != COMMITTED_TRIANGLE_HIT) {
-      lit += 1.0;
-    }
+    float vis = q.CommittedStatus() != COMMITTED_TRIANGLE_HIT ? 1.0 : 0.0;
+    wsum += w;
+    vsum += w * vis;
   }
-  outTex[id.xy] = float4(lit / float(rays), 0.0, 0.0, 1.0);
+  float localVis = wsum > 1e-4 ? vsum / wsum : 1.0;
+  outTex[id.xy] = float4(sunVis, localVis, zl, 1.0);
 }
 )hlsl";
 
@@ -481,6 +552,7 @@ struct D3D {
   struct Slot {
     ComPtr<ID3D12CommandAllocator> allocator;
     ComPtr<ID3D12Resource> instances; // upload heap, MaxInstances descs
+    ComPtr<ID3D12Resource> lights;    // upload heap, MaxLights lights (12 floats each)
     uint64_t fence = 0;
   };
   std::array<Slot, Slots> slots;
@@ -666,7 +738,9 @@ bool init_d3d12() {
     }
     slot.instances = make_buffer(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * MaxInstances, D3D12_HEAP_TYPE_UPLOAD,
                                  D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
-    if (!slot.instances) {
+    slot.lights = make_buffer(sizeof(float) * 12 * MaxLights, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
+                              D3D12_RESOURCE_STATE_GENERIC_READ);
+    if (!slot.instances || !slot.lights) {
       return false;
     }
   }
@@ -998,13 +1072,33 @@ bool trace(const Params& params) {
   constants[20] = sBias;
   constants[21] = 0.0015f;
   constants[22] = sLength;
+  // The frame's lights (set_lights, as recorded with this trace).
+  uint32_t lightCount = 0;
+  {
+    std::vector<float> lights;
+    {
+      auto& s = shared();
+      std::scoped_lock lock{s.mutex};
+      lights = s.traceLights[params.misc[3] % s.traceLights.size()];
+    }
+    lightCount = std::min<uint32_t>(static_cast<uint32_t>(lights.size() / 12), MaxLights);
+    void* lightData = nullptr;
+    if (lightCount > 0 && SUCCEEDED(slot.lights->Map(0, &noRead, &lightData))) {
+      std::memcpy(lightData, lights.data(), sizeof(float) * 12 * lightCount);
+      slot.lights->Unmap(0, nullptr);
+    } else {
+      lightCount = 0;
+    }
+  }
+  constants[23] = static_cast<float>(lightCount);
   list->SetComputeRootSignature(g_d3d.rootSignature.Get());
   ID3D12DescriptorHeap* heaps[] = {g_d3d.heap.Get()};
   list->SetDescriptorHeaps(1, heaps);
   list->SetPipelineState(g_d3d.pipeline.Get());
   list->SetComputeRoot32BitConstants(0, 28, constants, 0);
   list->SetComputeRootShaderResourceView(1, g_d3d.tlas->GetGPUVirtualAddress());
-  list->SetComputeRootDescriptorTable(2, g_d3d.heap->GetGPUDescriptorHandleForHeapStart());
+  list->SetComputeRootShaderResourceView(2, slot.lights->GetGPUVirtualAddress());
+  list->SetComputeRootDescriptorTable(3, g_d3d.heap->GetGPUDescriptorHandleForHeapStart());
   list->Dispatch((g_render.width + Group - 1) / Group, (g_render.height + Group - 1) / Group, 1);
   if (FAILED(list->Close())) {
     return false;
@@ -1030,13 +1124,39 @@ void shutdown_d3d12() {}
 #endif
 
 void encode_begin(const wgpu::CommandEncoder& cmd, const Params& params) {
+  const bool draw = g_render.traced && g_render.depthView && g_render.maskView &&
+                    params.misc[1] == g_render.width && params.misc[2] == g_render.height;
+  g_render.traced = false;
+  // The lit draws' copy of the trace; cleared (no depth: nothing traced) when there is none.
+  const wgpu::TextureView& stable = mask_view();
+  if (draw && mask_state().texture) {
+    const wgpu::TexelCopyTextureInfo source{.texture = g_render.maskTexture};
+    const wgpu::TexelCopyTextureInfo target{.texture = mask_state().texture};
+    const wgpu::Extent3D size{g_render.width, g_render.height, 1};
+    cmd.CopyTextureToTexture(&source, &target, &size);
+  } else if (stable) {
+    const wgpu::RenderPassColorAttachment attachment{
+        .view = stable,
+        .loadOp = wgpu::LoadOp::Clear,
+        .storeOp = wgpu::StoreOp::Store,
+        .clearValue = {1.0, 1.0, 0.0, 0.0},
+    };
+    const wgpu::RenderPassDescriptor passDescriptor{
+        .label = "RT Mask Clear",
+        .colorAttachmentCount = 1,
+        .colorAttachments = &attachment,
+    };
+    cmd.BeginRenderPass(&passDescriptor).End();
+  }
+  // The sun's part goes into the shadow map's extra layer, for its receivers.
+  const bool sun = params.sun[0] != 0.f || params.sun[1] != 0.f || params.sun[2] != 0.f;
+  if (!sun) {
+    return;
+  }
   const auto& layer = shadow::rt_layer_view();
   if (!layer) {
     return;
   }
-  const bool draw = g_render.traced && g_render.depthView && g_render.maskView &&
-                    params.misc[1] == g_render.width && params.misc[2] == g_render.height;
-  g_render.traced = false;
   wgpu::BindGroup group;
   if (draw) {
     ensure_inject();
@@ -1189,6 +1309,33 @@ void set_mesh(uint64_t key, const float* positions, uint32_t triangles) {
   s.known.insert(key);
 }
 
+void set_lights(const float (*lights)[12], uint32_t count) {
+  auto& s = shared();
+  std::scoped_lock lock{s.mutex};
+  count = std::min(count, MaxLights);
+  s.lights.assign(lights != nullptr ? &lights[0][0] : nullptr,
+                  lights != nullptr ? &lights[0][0] + static_cast<size_t>(count) * 12 : nullptr);
+}
+
+const wgpu::TextureView& mask_view() {
+  auto& m = mask_state();
+  std::scoped_lock lock{m.mutex};
+  if (!m.texture && g_device) {
+    // Full size only where the trace can run (D3D12); elsewhere a texel the draws find empty.
+    const uint32_t size = webgpu::g_backendType == wgpu::BackendType::D3D12 ? MaxMask : 1;
+    const wgpu::TextureDescriptor descriptor{
+        .label = "RT Mask",
+        .usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst |
+                 wgpu::TextureUsage::RenderAttachment,
+        .size = {size, size, 1},
+        .format = wgpu::TextureFormat::RGBA16Float,
+    };
+    m.texture = g_device.CreateTexture(&descriptor);
+    m.view = m.texture.CreateView();
+  }
+  return m.view;
+}
+
 uint32_t set_scene(const uint64_t* keys, uint32_t count) {
   auto& s = shared();
   std::scoped_lock lock{s.mutex};
@@ -1252,12 +1399,21 @@ bool record(Params params, Uniform& out) {
     g_fifo.traced = false;
     return false;
   }
-  const float layer = static_cast<float>(shadow::layer_size());
+  const bool sun = params.sun[0] != 0.f || params.sun[1] != 0.f || params.sun[2] != 0.f;
+  const float layer = static_cast<float>(std::min(MaxMask, sun ? shadow::layer_size() : MaxMask));
   const float scale = std::min({1.f, layer / static_cast<float>(size.width), layer / static_cast<float>(size.height)});
   const uint32_t width = std::max(1u, static_cast<uint32_t>(std::floor(static_cast<float>(size.width) * scale)));
   const uint32_t height = std::max(1u, static_cast<uint32_t>(std::floor(static_cast<float>(size.height) * scale)));
   params.misc[1] = width;
   params.misc[2] = height;
+  {
+    // The frame's lights go with its trace.
+    auto& s = shared();
+    std::scoped_lock lock{s.mutex};
+    g_lightSlot = (g_lightSlot + 1) % s.traceLights.size();
+    s.traceLights[g_lightSlot] = s.lights;
+  }
+  params.misc[3] = g_lightSlot;
   if (!record_encoder_task(g_task, &params, sizeof(params))) {
     g_fifo.traced = false;
     return false;
@@ -1283,6 +1439,16 @@ void shutdown() {
     s.known.clear();
     s.scene.clear();
     s.drop.clear();
+    s.lights.clear();
+    for (auto& lights : s.traceLights) {
+      lights.clear();
+    }
+  }
+  {
+    auto& m = mask_state();
+    std::scoped_lock lock{m.mutex};
+    m.texture = {};
+    m.view = {};
   }
   g_ready.store(false);
   if (task != InvalidEncoderTask) {

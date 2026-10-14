@@ -1,6 +1,7 @@
 #include "shader_info.hpp"
 
 #include "../gfx/recording.hpp"
+#include "../webgpu/gpu.hpp"
 
 #include <cmath>
 
@@ -397,6 +398,8 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
   if (config.clustered) {
     info.usesClustered = true;
     info.uniformSize += sizeof(Vec4<float>); // GXState::clusterInfo
+    info.uniformSize += sizeof(g_gxState.rtUniform);
+    info.usesRtMask = webgpu::g_rtMaskBinding;
   }
   if (config.foliage || config.waterfall) {
     info.usesFoliage = true;
@@ -628,6 +631,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
   }
   if (info.usesClustered) {
     buf.append(g_gxState.clusterInfo);
+    for (const auto& v : g_gxState.rtUniform) {
+      buf.append(v);
+    }
   }
   if (info.usesSpecular) {
     buf.append(Vec4<float>{g_gxState.specular, 0.f, 0.f, 0.f});

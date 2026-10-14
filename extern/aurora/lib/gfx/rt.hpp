@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include <webgpu/webgpu_cpp.h>
+
 // Port extension: ray-traced sun shadows (GXPortRtShadows) with DirectX Raytracing, beside WebGPU.
 // Windows only, on Dawn's D3D12 device, with a DXR 1.1 GPU (inline ray queries); elsewhere
 // available() is false and the sun keeps its shadow map.
@@ -26,7 +28,7 @@ struct Params {
   float frustum[4];        // left, right, bottom, top at a view depth of 1
   float depth[4];          // near, far, and the GX z range the world draws in (min, max)
   float sun[4];            // world direction to the sun (xyz); w: tan of the sun disc's radius
-  uint32_t misc[4];        // phase (0: begin, 1: trace), mask width, height (set here), 0
+  uint32_t misc[4];        // phase (0: begin, 1: trace), mask width, height, light slot (set here)
 };
 static_assert(sizeof(Params) == 28 * 4);
 
@@ -42,6 +44,12 @@ static_assert(sizeof(Uniform) == 5 * 16);
 bool available();
 // The world triangles (xyz of each corner, three corners a triangle) for key; null/0 forgets it.
 void set_mesh(uint64_t key, const float* positions, uint32_t triangles);
+// The frame's lights, world space: position, radius; colour, 0; GX attenuation k0, k1, k2, 0. Up
+// to 64 (nearest the camera first); each casts shadows of the world onto what it lights.
+void set_lights(const float (*lights)[12], uint32_t count);
+// The last trace as the lit draws read it (any thread): r the sun's visibility, g the lights',
+// b the texel's view depth (0: nothing traced there).
+const wgpu::TextureView& mask_view();
 // The areas to trace this frame; returns 1 + the index of the first key that has no mesh (pending
 // or built), 0 when all do.
 uint32_t set_scene(const uint64_t* keys, uint32_t count);

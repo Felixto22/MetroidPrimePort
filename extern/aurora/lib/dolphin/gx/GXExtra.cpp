@@ -239,6 +239,8 @@ void GXPortRtMesh(u64 key, const f32* positions, u32 triangleCount) {
   aurora::gfx::rt::set_mesh(key, positions, triangleCount);
 }
 
+void GXPortRtLights(const f32 (*lights)[12], u32 count) { aurora::gfx::rt::set_lights(lights, count); }
+
 u32 GXPortRtScene(const u64* keys, u32 count) {
   return aurora::gfx::rt::set_scene(keys, keys != nullptr ? count : 0);
 }

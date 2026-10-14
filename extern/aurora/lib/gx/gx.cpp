@@ -11,6 +11,7 @@
 #include "../gfx/probe.hpp"
 #include "../gfx/recording.hpp"
 #include "../gfx/resource_cache.hpp"
+#include "../gfx/rt.hpp"
 #include "../gfx/shadow.hpp"
 #include "../gfx/volfog.hpp"
 #include "../gfx/scenecap.hpp"
@@ -655,8 +656,11 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
                 "a new PipelineConfig field must be written above");
 }
 
-// The lightmap's slot is the last binding, left out of group 2 when the device has no room for it.
-static size_t texture_binding_count() noexcept { return kTextureBindings - (webgpu::g_lightmapBinding ? 0 : 1); }
+// The lightmap's and the ray-traced mask's slots are the last bindings, left out of group 2 when the device
+// has no room for them.
+static size_t texture_binding_count() noexcept {
+  return webgpu::g_rtMaskBinding ? kTextureBindings : kTextureBindings - (webgpu::g_lightmapBinding ? 1 : 2);
+}
 
 int bump_pick(const ShaderInfo& info) noexcept {
   if (info.bumpSlot == 0) {
@@ -682,7 +686,7 @@ GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept {
   ZoneScoped;
 
   if (!info.sampledTextures.any() && !info.sampledIndTextures.any() && !info.usesVolFog && !info.shadowReceive &&
-      !info.usesLightmap && !info.usesGlass && !info.usesSoft && info.bumpSlot == 0) {
+      !info.usesLightmap && !info.usesGlass && !info.usesSoft && info.bumpSlot == 0 && !info.usesRtMask) {
     // Don't bother re-binding anything
     return {};
   }
@@ -699,6 +703,8 @@ GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept {
   }
   textureEntries[kLightmapBinding].binding = kLightmapBinding;
   textureEntries[kLightmapBinding].textureView = gfx::probe::lightmap_view(g_gxState.pbrLightmap).Get();
+  textureEntries[kRtMaskBinding].binding = kRtMaskBinding;
+  textureEntries[kRtMaskBinding].textureView = gfx::rt::mask_view().Get();
   textureEntries[kBrdfLutBinding].binding = kBrdfLutBinding;
   textureEntries[kBrdfLutBinding].textureView = gfx::probe::brdf_lut_view().Get();
   textureEntries[kVolFogFroxelBinding].binding = kVolFogFroxelBinding;
@@ -821,6 +827,16 @@ void initialize() noexcept {
                 .viewDimension = wgpu::TextureViewDimension::e2DArray,
             },
     };
+    // The ray-traced lights' mask (gfx/rt), the 18th: only on a device that has it
+    textureEntries[kRtMaskBinding] = {
+        .binding = kRtMaskBinding,
+        .visibility = wgpu::ShaderStage::Fragment,
+        .texture =
+            {
+                .sampleType = wgpu::TextureSampleType::UnfilterableFloat,
+                .viewDimension = wgpu::TextureViewDimension::e2D,
+            },
+    };
     // The PBR environment BRDF table (GX_AURORA_SET_PBR_BRDF_LUT), also read with the probe's sampler
     textureEntries[kBrdfLutBinding] = {
         .binding = kBrdfLutBinding,
@@ -927,6 +943,10 @@ void initialize() noexcept {
     entries[kBrdfLutBinding] = {
         .binding = kBrdfLutBinding,
         .textureView = gfx::probe::brdf_lut_view(),
+    };
+    entries[kRtMaskBinding] = {
+        .binding = kRtMaskBinding,
+        .textureView = gfx::rt::mask_view(),
     };
     entries[kVolFogFroxelBinding] = {
         .binding = kVolFogFroxelBinding,

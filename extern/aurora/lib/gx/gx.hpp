@@ -64,7 +64,10 @@ constexpr u32 kShadowSamplerBinding = kVolFogSamplerBinding;
 // sampled texture of group 2, one past WebGPU's default limit, so the layout has it only when the device was
 // given more (webgpu::g_lightmapBinding); kTextureBindings counts it.
 constexpr u32 kLightmapBinding = MaxTextures * 2 + 10;
-constexpr u32 kTextureBindings = MaxTextures * 2 + 11;
+// The ray-traced lights' mask (gfx/rt mask_view), read by the clustered draws: the 18th sampled texture,
+// in group 2 only when the device was given that many (webgpu::g_rtMaskBinding).
+constexpr u32 kRtMaskBinding = MaxTextures * 2 + 11;
+constexpr u32 kTextureBindings = MaxTextures * 2 + 12;
 constexpr u32 MaxTluts = 20;
 constexpr u32 MaxTevStages = GX_MAX_TEVSTAGE;
 constexpr u32 MaxColorChannels = 4;
@@ -491,6 +494,8 @@ struct GXState {
   bool shadowActive = false;
   // gfx::shadow::Uniform, then gfx::rt::Uniform (the ray-traced shadow).
   std::array<Vec4<float>, 41> shadowUniform{};
+  // gfx::rt::Uniform for the clustered draws (their lights' traced shadows); zero when off.
+  std::array<Vec4<float>, 5> rtUniform{};
 
   // GX2 polygon offset state
   f32 frontOffset = 0.0f;
@@ -718,6 +723,7 @@ struct ShaderInfo {
   bool usesSoft : 1 = false;
   bool usesFoliage : 1 = false;   // ShaderConfig::foliage: the pusher uniform
   bool usesClustered : 1 = false; // ShaderConfig::clustered: the cluster uniform
+  bool usesRtMask : 1 = false;    // clustered, with the ray-traced lights' mask bound (kRtMaskBinding)
   bool usesSpecular : 1 = false;  // ShaderConfig::specular: the specular uniform      // ShaderConfig::soft: the scene copy
   bool usesGlass : 1 = false;     // ShaderConfig::glass: the glass uniform and the scene copy
   u8 bumpSlot = 0;                // ShaderConfig::bumpSlot: 1 + the normal map's texmap slot, 0 for none
