@@ -3052,7 +3052,8 @@ static void PortUploadClusterLights(const CStateManager& mgr) {
                          r[4], r[5], r[6], 0.f, r[8], r[9], r[10], 0.f};
     world.insert(world.end(), rec, rec + 12);
   }
-  GXPortRtLights(reinterpret_cast< const f32(*)[12] >(world.data()), static_cast< u32 >(world.size() / 12));
+  GXPortRtLights(reinterpret_cast< const f32(*)[12] >(world.data()),
+                 PortDebug::RayTracedShadows() ? static_cast< u32 >(world.size() / 12) : 0u);
 }
 
 static void PortDrawAmbientOcclusion(const CStateManager& mgr) {

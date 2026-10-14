@@ -268,6 +268,7 @@ bool sRainDetails = true;
 bool sBurnableFoliage = true;
 bool sClusteredLighting = true;
 bool sRayTracedShadows = true;
+bool sRayTracedReflections = true;
 bool sCinematicLook = true;
 int sGlobalIllumination = PortDebug::kGlobalIlluminationDefault;
 float sGunOffset[3] = {};
@@ -705,6 +706,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sClusteredLighting = ParseBool(value);
   } else if (key == "ray_traced_shadows") {
     sRayTracedShadows = ParseBool(value);
+  } else if (key == "ray_traced_reflections") {
+    sRayTracedReflections = ParseBool(value);
   } else if (key == "cinematic_look") {
     sCinematicLook = ParseBool(value);
   } else if (key == "global_illumination") {
@@ -911,6 +914,7 @@ std::string SettingsText() {
   file << "burnable_foliage=" << (sBurnableFoliage ? 1 : 0) << '\n';
   file << "clustered_lighting=" << (sClusteredLighting ? 1 : 0) << '\n';
   file << "ray_traced_shadows=" << (sRayTracedShadows ? 1 : 0) << '\n';
+  file << "ray_traced_reflections=" << (sRayTracedReflections ? 1 : 0) << '\n';
   file << "cinematic_look=" << (sCinematicLook ? 1 : 0) << '\n';
   file << "global_illumination=" << sGlobalIllumination << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
@@ -1949,6 +1953,17 @@ bool RayTracedShadows() {
 void SetRayTracedShadows(bool enabled) {
   EnsureInitialized();
   sRayTracedShadows = enabled;
+  MarkDirty();
+}
+
+bool RayTracedReflections() {
+  EnsureInitialized();
+  return sRayTracedReflections && !sOriginalExperience;
+}
+
+void SetRayTracedReflections(bool enabled) {
+  EnsureInitialized();
+  sRayTracedReflections = enabled;
   MarkDirty();
 }
 
@@ -6823,6 +6838,12 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("The sun's shadow of the world traced with DirectX Raytracing (D3D12, a GPU\n"
                         "with DXR 1.1): exact to the smallest railing, at any distance, with soft edges.");
+  bool rayTracedReflections = sRayTracedReflections;
+  if (ImGui::Checkbox("Ray-traced reflections", &rayTracedReflections)) {
+    SetRayTracedReflections(rayTracedReflections);
+  }
+  ImGui::SetItemTooltip("Water mirrors the world traced with DirectX Raytracing (D3D12, a GPU with\n"
+                        "DXR 1.1): what's off screen or hidden shows in it too.");
   bool cinematicLook = sCinematicLook;
   if (ImGui::Checkbox("Cinematic look", &cinematicLook)) {
     SetCinematicLook(cinematicLook);

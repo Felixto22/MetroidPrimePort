@@ -316,7 +316,12 @@ void shutdown() {}
 
 namespace aurora::gfx::rt {
 bool available() { return false; }
-void set_mesh(uint64_t key, const float* positions, uint32_t triangles) {}
+void set_mesh(uint64_t key, const float* positions, const uint32_t* colors, uint32_t triangles) {}
+void add_plane(float height, float minX, float minY, float maxX, float maxY) {}
+const wgpu::TextureView& refl_view() {
+  static const wgpu::TextureView view;
+  return view;
+}
 uint32_t set_scene(const uint64_t* keys, uint32_t count) { return 0; }
 void set_lights(const float (*lights)[12], uint32_t count) {}
 const wgpu::TextureView& mask_view() {

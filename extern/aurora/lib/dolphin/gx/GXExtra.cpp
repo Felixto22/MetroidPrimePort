@@ -235,8 +235,12 @@ GXBool GXPortSSGI(const GXPortSsgiParams* ssgi) {
 
 GXBool GXPortRtAvailable() { return aurora::gfx::rt::available() ? GX_TRUE : GX_FALSE; }
 
-void GXPortRtMesh(u64 key, const f32* positions, u32 triangleCount) {
-  aurora::gfx::rt::set_mesh(key, positions, triangleCount);
+void GXPortRtMesh(u64 key, const f32* positions, const u32* colors, u32 triangleCount) {
+  aurora::gfx::rt::set_mesh(key, positions, colors, triangleCount);
+}
+
+void GXPortRtReflectPlane(f32 height, f32 minX, f32 minY, f32 maxX, f32 maxY) {
+  aurora::gfx::rt::add_plane(height, minX, minY, maxX, maxY);
 }
 
 void GXPortRtLights(const f32 (*lights)[12], u32 count) { aurora::gfx::rt::set_lights(lights, count); }

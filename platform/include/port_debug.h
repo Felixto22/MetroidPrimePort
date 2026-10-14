@@ -380,6 +380,10 @@ void SetCinematicLook(bool enabled);
 // Off in the original experience, and where the GPU can't.
 bool RayTracedShadows();
 void SetRayTracedShadows(bool enabled);
+// Ray-traced reflections: water mirrors the world traced with DirectX Raytracing (aurora::gfx::rt),
+// what's off screen included, instead of screen space alone. Off in the original experience.
+bool RayTracedReflections();
+void SetRayTracedReflections(bool enabled);
 // Global illumination: screen-space bounce light traced by a compute shader (aurora::gfx::ssgi),
 // as a percentage (0: off, up to 200). Off in the original experience.
 const int kGlobalIlluminationDefault = 100;

@@ -309,8 +309,11 @@ GXBool GXPortSSGI(const GXPortSsgiParams* params);
 // D3D12 device (Windows, a DXR 1.1 GPU). Whether this device can: the first call sets it up.
 GXBool GXPortRtAvailable(void);
 // The world's static opaque triangles under `key` (xyz of each corner, 3 corners a triangle, world
-// space); null or 0 forgets the key.
-void GXPortRtMesh(u64 key, const f32* positions, u32 triangleCount);
+// space), and each one's rough colour (0xRRGGBB, may be null) for the reflections of what is off
+// screen; null or 0 forgets the key.
+void GXPortRtMesh(u64 key, const f32* positions, const u32* colors, u32 triangleCount);
+// A water surface drawn this frame that reflects the world traced (its world height and x, y box).
+void GXPortRtReflectPlane(f32 height, f32 minX, f32 minY, f32 maxX, f32 maxY);
 // The meshes this frame's shadow is traced against. Returns 1 + the index of the first key that
 // has no mesh (send it with GXPortRtMesh), 0 when all have one.
 u32 GXPortRtScene(const u64* keys, u32 count);

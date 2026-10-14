@@ -11,6 +11,7 @@
 #include "recording.hpp"
 #include "resource_cache.hpp"
 #include "texture.hpp"
+#include "rt.hpp"
 #include "volfog.hpp"
 
 #include <aurora/gfx.hpp>
@@ -35,7 +36,7 @@ namespace aurora::gfx::water {
 namespace {
 Module Log("aurora::gfx::water");
 
-constexpr uint32_t UniformSize = 1184;
+constexpr uint32_t UniformSize = 1264;
 constexpr auto EvictAfter = std::chrono::seconds(10);
 
 struct Uniform {
@@ -59,6 +60,7 @@ struct Uniform {
   float rippleInfo[4];  // count, tile
   float trails[16][4];  // DrawDesc::trails, two rows each
   float trailInfo[4];   // count
+  float rt[5][4];       // gx::GXState::rtUniform: this view to the traced frame's, its frustum, (on, w, h)
 };
 static_assert(sizeof(Uniform) == UniformSize);
 
@@ -79,6 +81,7 @@ enum Binding : uint32_t {
   BFogSamp,
   BSceneColor,
   BSceneDepth,
+  BRtRefl,
   BCount
 };
 
@@ -149,6 +152,9 @@ struct U {
   rippleInfo: vec4f,
   trails: array<vec4f, 16>,
   trailInfo: vec4f,
+  rtRows: array<vec4f, 3>,
+  rtFrustum: vec4f,
+  rtInfo: vec4f,
 }
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var normalMap: texture_2d<f32>;
@@ -166,6 +172,7 @@ struct U {
 @group(0) @binding(13) var fogSamp: sampler;
 @group(0) @binding(14) var sceneColor: texture_2d<f32>;
 @group(0) @binding(15) var sceneDepth: texture_2d<f32>;
+@group(0) @binding(16) var rtRefl: texture_2d<f32>;
 
 struct VIn {
   @location(0) pos: vec3f,
@@ -320,6 +327,23 @@ fn brdf(nv: f32, rough: f32) -> vec2f {
 // marched through the scene snapshot in screen space, and where the ray leaves the screen or
 // finds nothing the colour at its last on-screen point stands in, faded toward the edges.
 var<private> g_vpos: vec3f;
+// How far the waves bend the traced reflection's lookup (uv).
+var<private> g_rtOff: vec2f;
+
+// Port extension: the ray-traced reflection (gfx/rt refl_view) of this point of the water, traced
+// after the previous frame: the point taken to that frame's view and screen. a: 1 a hit, 0.5 the
+// sky, 0 nothing traced.
+fn rt_refl() -> vec4f {
+  if (u.rtInfo.x < 0.5) { return vec4f(0.0); }
+  let p = vec4f(g_vpos, 1.0);
+  let v = vec3f(dot(u.rtRows[0], p), dot(u.rtRows[1], p), dot(u.rtRows[2], p));
+  let z = -v.z;
+  if (z < 1e-3) { return vec4f(0.0); }
+  let s = (v.xy / z - u.rtFrustum.xz) / (u.rtFrustum.yw - u.rtFrustum.xz);
+  let uv = clamp(vec2f(s.x, 1.0 - s.y) + g_rtOff, vec2f(0.0), vec2f(1.0));
+  let px = vec2i(clamp(uv * u.rtInfo.yz, vec2f(0.0), u.rtInfo.yz - 1.0));
+  return textureLoad(rtRefl, px, 0);
+}
 
 fn scene_lin(px: vec2i) -> f32 {
   var z = textureLoad(sceneDepth, px, 0).r;
@@ -336,6 +360,11 @@ fn scene_exposed(uv: vec2f) -> vec3f {
 }
 
 fn ssr(r: vec3f) -> vec3f {
+  let traced = rt_refl();
+  if (traced.a > 0.75) {
+    let ty = srgb_dec(clamp(traced.rgb, vec3f(0.0), vec3f(1.0)));
+    return min(vec3f(untone(ty.r), untone(ty.g), untone(ty.b)), vec3f(4.0));
+  }
   let size = vec2f(textureDimensions(sceneDepth));
   var p = g_vpos;
   var last = vec2f(-1.0);
@@ -493,6 +522,7 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
   let V = normalize(in.vpos);
   var R = V - 2.0 * dot(V, N) * N;
   let Ng = normalize(in.n);
+  g_rtOff = (N.xy - Ng.xy) * vec2f(0.06, -0.06);
 
   // The depth behind the surface, linear like Remastered's linearSceneDepth.
   let size = vec2i(textureDimensions(sceneColor));
@@ -620,6 +650,7 @@ void ensure_static(const wgpu::Device& device) {
       samp(BFogSamp, SS::Vertex),
       tex(BSceneColor, SS::Fragment, wgpu::TextureViewDimension::e2D, wgpu::TextureSampleType::UnfilterableFloat),
       tex(BSceneDepth, SS::Fragment, wgpu::TextureViewDimension::e2D, wgpu::TextureSampleType::UnfilterableFloat),
+      tex(BRtRefl, SS::Fragment, wgpu::TextureViewDimension::e2D, wgpu::TextureSampleType::UnfilterableFloat),
   };
   const wgpu::BindGroupLayoutDescriptor layoutDescriptor{
       .label = "Water Bind Group Layout",
@@ -770,8 +801,9 @@ void draw_payload(const DrawContext& ctx, const wgpu::RenderPassEncoder& pass, c
   views[BFroxels] = volfog::froxel_view();
   views[BSceneColor] = entry_view(p.colorId, DummyBlack);
   views[BSceneDepth] = entry_view(p.depthId, DummyBlack);
+  views[BRtRefl] = rt::refl_view() ? rt::refl_view() : g_state.dummyView[DummyBlack];
   for (const Binding b : {BNormal, BSourceFlow, BRainNoise, BCube, BBrdf, BVolume, BFroxels, BSceneColor,
-                          BSceneDepth}) {
+                          BSceneDepth, BRtRefl}) {
     if (!views[b]) {
       return;
     }
@@ -987,6 +1019,8 @@ void draw(const DrawDesc& desc, const Vertex* verts, uint32_t vertexCount, const
   const uint32_t trails = std::min(desc.trailCount, DrawDesc::MaxTrails);
   std::memcpy(u.trails, desc.trails, sizeof(float) * 8 * trails);
   u.trailInfo[0] = float(trails);
+  static_assert(sizeof(gx.rtUniform) == sizeof(u.rt));
+  std::memcpy(u.rt, gx.rtUniform.data(), sizeof(u.rt));
 
   Payload p{};
   p.flags = (desc.bottom ? 1u : 0u) | (rain ? 2u : 0u);

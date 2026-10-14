@@ -19,6 +19,7 @@
 #include "MetroidPrime/Weapons/CGameProjectile.hpp"
 
 #include "aurora/water.hpp"
+#include <dolphin/gx/GXExtra.h>
 
 #include <algorithm>
 #include <cmath>
@@ -346,6 +347,10 @@ bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const
   }
   const bool poison = fluidType == 1;
   const Mesh& mesh = BuildMesh(uid, boxMin.GetX(), boxMin.GetY(), boxMax.GetX(), boxMax.GetY());
+  // The ray-traced reflections trace this surface's mirror image of the world (aurora::gfx::rt).
+  if (PortDebug::RayTracedReflections()) {
+    GXPortRtReflectPlane(surfaceZ, boxMin.GetX(), boxMin.GetY(), boxMax.GetX(), boxMax.GetY());
+  }
   const float cx = 0.5f * (boxMin.GetX() + boxMax.GetX());
   const float cy = 0.5f * (boxMin.GetY() + boxMax.GetY());
   // Mesh (x, y, z) -> world (x, -z, y), at the surface.

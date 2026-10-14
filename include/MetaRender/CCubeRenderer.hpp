@@ -171,7 +171,9 @@ public:
   // Port: the opaque triangles of area areaIdx's world models as the normal visor draws them, in
   // world space (xyz per corner, three corners a triangle), for the ray-traced shadows (alpha-tested
   // and depth-sorted surfaces left out). False when the area's geometry isn't loaded here.
-  bool PortAreaTriangles(int areaIdx, std::vector< float >& out) const;
+  // colors, when given, gets each triangle's rough lit colour (0xRRGGBB; its material's
+  // textures' means) for the ray-traced reflections.
+  bool PortAreaTriangles(int areaIdx, std::vector< float >& out, std::vector< uint >* colors = nullptr) const;
 #endif
 
   void AllocatePhazonSuitMaskTexture();

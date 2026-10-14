@@ -23,6 +23,7 @@ GXPortRtParams sParams;
 // Areas whose geometry had no opaque triangle (nothing to send, nothing to ask again).
 std::unordered_set< u64 > sEmpty;
 std::vector< float > sTriangles;
+std::vector< uint > sColors;
 // Why the trace is (or isn't) on, logged when it changes.
 const char* sLastState = nullptr;
 
@@ -43,7 +44,8 @@ bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& vie
            bool sunShadow, bool enabled) {
   sActive = false;
   const float len = std::sqrt(sunTravel[0] * sunTravel[0] + sunTravel[1] * sunTravel[1] + sunTravel[2] * sunTravel[2]);
-  if (!PortDebug::RayTracedShadows()) {
+  const bool shadows = PortDebug::RayTracedShadows();
+  if (!shadows && !PortDebug::RayTracedReflections()) {
     Note("off (setting)");
     return false;
   }
@@ -51,7 +53,7 @@ bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& vie
     Note("idle (visor or view without the world)");
     return false;
   }
-  const bool sun = sunShadow && len > 0.f;
+  const bool sun = shadows && sunShadow && len > 0.f;
   if (!GXPortRtAvailable()) {
     Note("unavailable (see aurora::gfx::rt above)");
     return false;
@@ -77,9 +79,11 @@ bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& vie
   const u32 missing = GXPortRtScene(keys, static_cast< u32 >(count));
   if (missing != 0) {
     const CGameArea& area = *keyAreas[missing - 1];
-    if (gpRender != nullptr && gpRender->PortAreaTriangles(area.GetId().Value(), sTriangles) &&
+    if (gpRender != nullptr && gpRender->PortAreaTriangles(area.GetId().Value(), sTriangles, &sColors) &&
         sTriangles.size() >= 9) {
-      GXPortRtMesh(keys[missing - 1], sTriangles.data(), static_cast< u32 >(sTriangles.size() / 9));
+      GXPortRtMesh(keys[missing - 1], sTriangles.data(),
+                   sColors.size() * 9 == sTriangles.size() ? reinterpret_cast< const u32* >(sColors.data()) : nullptr,
+                   static_cast< u32 >(sTriangles.size() / 9));
       PortLog::Write("port: ray-traced shadows: area %08X sent, %u triangles\n", unsigned(area.GetAreaAssetId()),
                      unsigned(sTriangles.size() / 9));
     } else {
@@ -89,6 +93,8 @@ bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& vie
     }
     sTriangles.clear();
     sTriangles.shrink_to_fit();
+    sColors.clear();
+    sColors.shrink_to_fit();
   }
 
   memset(&sParams, 0, sizeof(sParams));
@@ -122,7 +128,7 @@ bool Begin(const CGameArea* const* areas, int areaCount, const CTransform4f& vie
     Note("could not record this frame");
     return false;
   }
-  Note(sun ? "on (sun and lights)" : "on (lights; this room has no sun shadow)");
+  Note(sun ? "on (sun, lights, reflections)" : shadows ? "on (lights, reflections; no sun shadow here)" : "on (reflections)");
   sActive = true;
   return sun;
 }

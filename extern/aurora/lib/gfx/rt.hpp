@@ -43,7 +43,13 @@ static_assert(sizeof(Uniform) == 5 * 16);
 // Whether the device can trace (any thread); the first call sets the D3D12 side up.
 bool available();
 // The world triangles (xyz of each corner, three corners a triangle) for key; null/0 forgets it.
-void set_mesh(uint64_t key, const float* positions, uint32_t triangles);
+// colors: each triangle's colour (0xRRGGBB), for the reflections of what is off screen; may be null.
+void set_mesh(uint64_t key, const float* positions, const uint32_t* colors, uint32_t triangles);
+// A reflecting water surface drawn this frame (world height and x, y box); traced after the next frame.
+void add_plane(float height, float minX, float minY, float maxX, float maxY);
+// The last trace's reflections in the water planes as the water reads them (any thread): rgb the
+// display-referred colour, a 1 for a hit, 0.5 for the sky, 0 for no water there.
+const wgpu::TextureView& refl_view();
 // The frame's lights, world space: position, radius; colour, 0; GX attenuation k0, k1, k2, 0. Up
 // to 64 (nearest the camera first); each casts shadows of the world onto what it lights.
 void set_lights(const float (*lights)[12], uint32_t count);

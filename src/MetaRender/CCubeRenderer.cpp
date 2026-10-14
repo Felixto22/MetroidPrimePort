@@ -2986,12 +2986,204 @@ void CCubeRenderer::DrawString(const char* string, int x, int y) {
 }
 
 #ifdef TARGET_PC
+#include "Kyoto/Graphics/CGraphicsPalette.hpp"
+#include <unordered_map>
+
+namespace {
+// A GX texel colour (big-endian 16-bit formats) as r, g, b in 0..255.
+void PortDecode565(uint v, float* c) {
+  c[0] += float((v >> 11) & 31) * (255.f / 31.f);
+  c[1] += float((v >> 5) & 63) * (255.f / 63.f);
+  c[2] += float(v & 31) * (255.f / 31.f);
+}
+void PortDecode5A3(uint v, float* c) {
+  if (v & 0x8000) {
+    c[0] += float((v >> 10) & 31) * (255.f / 31.f);
+    c[1] += float((v >> 5) & 31) * (255.f / 31.f);
+    c[2] += float(v & 31) * (255.f / 31.f);
+  } else {
+    c[0] += float((v >> 8) & 15) * 17.f;
+    c[1] += float((v >> 4) & 15) * 17.f;
+    c[2] += float(v & 15) * 17.f;
+  }
+}
+void PortDecodeTlut(uint fmt, uint v, float* c) {
+  if (fmt == GX_TL_RGB565) {
+    PortDecode565(v, c);
+  } else if (fmt == GX_TL_RGB5A3) {
+    PortDecode5A3(v, c);
+  } else {
+    const float i = float(v & 0xff);
+    c[0] += i, c[1] += i, c[2] += i;
+  }
+}
+uint PortRead16(const uchar* p) { return (uint(p[0]) << 8) | uint(p[1]); }
+
+// A texture's mean colour (mip 0, every texel whatever its tile), packed 0xRRGGBB; mid grey when
+// its data isn't readable. For the ray-traced reflections of what is off screen.
+uint PortTextureMean(const CTexture& tex) {
+  const int w = tex.GetWidth(), h = tex.GetHeight();
+  const uchar* data = static_cast< const uchar* >(tex.GetConstBitMapData(0));
+  if (data == nullptr || w <= 0 || h <= 0) {
+    return 0x808080;
+  }
+  const auto pad = [](int v, int b) { return (v + b - 1) / b * b; };
+  float c[3] = {0.f, 0.f, 0.f};
+  double n = 0.0;
+  const ETexelFormat fmt = tex.GetTexelFormat();
+  switch (fmt) {
+  case kTF_I4: {
+    const int bytes = pad(w, 8) * pad(h, 8) / 2;
+    for (int i = 0; i < bytes; ++i) {
+      for (int k = 0; k < 2; ++k) {
+        const float v = float((data[i] >> (k * 4)) & 15) * 17.f;
+        c[0] += v, c[1] += v, c[2] += v;
+      }
+    }
+    n = bytes * 2.0;
+  } break;
+  case kTF_I8:
+  case kTF_IA4: {
+    const int bytes = pad(w, 8) * pad(h, 4);
+    for (int i = 0; i < bytes; ++i) {
+      const float v = fmt == kTF_I8 ? float(data[i]) : float(data[i] & 15) * 17.f;
+      c[0] += v, c[1] += v, c[2] += v;
+    }
+    n = bytes;
+  } break;
+  case kTF_IA8: {
+    const int count = pad(w, 4) * pad(h, 4);
+    for (int i = 0; i < count; ++i) {
+      const float v = float(data[i * 2 + 1]);
+      c[0] += v, c[1] += v, c[2] += v;
+    }
+    n = count;
+  } break;
+  case kTF_RGB565:
+  case kTF_RGB5A3: {
+    const int count = pad(w, 4) * pad(h, 4);
+    for (int i = 0; i < count; ++i) {
+      fmt == kTF_RGB565 ? PortDecode565(PortRead16(data + i * 2), c) : PortDecode5A3(PortRead16(data + i * 2), c);
+    }
+    n = count;
+  } break;
+  case kTF_RGBA8: {
+    const int blocks = pad(w, 4) * pad(h, 4) / 16;
+    for (int b = 0; b < blocks; ++b) {
+      const uchar* blk = data + b * 64;
+      for (int t = 0; t < 16; ++t) {
+        c[0] += blk[t * 2 + 1];
+        c[1] += blk[32 + t * 2];
+        c[2] += blk[32 + t * 2 + 1];
+      }
+    }
+    n = blocks * 16.0;
+  } break;
+  case kTF_CMPR: {
+    const int subs = pad(w, 8) * pad(h, 8) / 16;
+    for (int b = 0; b < subs; ++b) {
+      const uchar* blk = data + b * 8;
+      const uint c0 = PortRead16(blk), c1 = PortRead16(blk + 2);
+      float p[4][3] = {};
+      PortDecode565(c0, p[0]);
+      PortDecode565(c1, p[1]);
+      for (int k = 0; k < 3; ++k) {
+        p[2][k] = c0 > c1 ? (2.f * p[0][k] + p[1][k]) / 3.f : (p[0][k] + p[1][k]) * 0.5f;
+        p[3][k] = c0 > c1 ? (p[0][k] + 2.f * p[1][k]) / 3.f : p[2][k];
+      }
+      for (int t = 0; t < 16; ++t) {
+        const uint idx = (blk[4 + t / 4] >> (6 - (t % 4) * 2)) & 3;
+        c[0] += p[idx][0], c[1] += p[idx][1], c[2] += p[idx][2];
+      }
+    }
+    n = subs * 16.0;
+  } break;
+  case kTF_C4:
+  case kTF_C8: {
+    const CGraphicsPalette* palette = tex.GetPalette();
+    const ushort* entries = palette != nullptr ? palette->GetPaletteData() : nullptr;
+    if (entries == nullptr) {
+      return 0x808080;
+    }
+    const uint tlut = palette->GetTlutFmt();
+    const int count = fmt == kTF_C4 ? pad(w, 8) * pad(h, 8) : pad(w, 8) * pad(h, 4);
+    uint hist[256] = {};
+    for (int i = 0; i < count; ++i) {
+      hist[fmt == kTF_C4 ? (data[i / 2] >> ((i & 1) ? 0 : 4)) & 15 : data[i]]++;
+    }
+    const uchar* raw = reinterpret_cast< const uchar* >(entries);
+    for (int e = 0; e < (fmt == kTF_C4 ? 16 : 256); ++e) {
+      if (hist[e] == 0) {
+        continue;
+      }
+      float one[3] = {0.f, 0.f, 0.f};
+      PortDecodeTlut(tlut, PortRead16(raw + e * 2), one);
+      c[0] += one[0] * hist[e], c[1] += one[1] * hist[e], c[2] += one[2] * hist[e];
+    }
+    n = count;
+  } break;
+  default:
+    return 0x808080;
+  }
+  if (n <= 0.0) {
+    return 0x808080;
+  }
+  uint out = 0;
+  for (int k = 0; k < 3; ++k) {
+    const uint v = uint(std::min(255.0, std::max(0.0, c[k] / n)));
+    out |= v << (16 - k * 8);
+  }
+  return out;
+}
+
+// What a material looks like lit, roughly (0xRRGGBB): its base texture's mean, times its
+// lightmap's where it has one.
+uint PortMaterialMean(const CCubeModel& model, const CCubeMaterial& material) {
+  static std::unordered_map< const CTexture*, uint > sMeans;
+  const uint* words = reinterpret_cast< const uint* >(material.GetData());
+  const uint count = CBasics::SwapBytes(words[1]);
+  const rstl::vector< TCachedToken< CTexture > >& textures = model.GetTextures();
+  const auto mean = [&](uint slot) -> int {
+    if (slot >= count) {
+      return -1;
+    }
+    const uint index = CBasics::SwapBytes(words[2 + slot]);
+    if (index >= uint(textures.size())) {
+      return -1;
+    }
+    const CTexture* tex = textures[index].GetObject();
+    if (tex == nullptr) {
+      return -1;
+    }
+    auto it = sMeans.find(tex);
+    if (it == sMeans.end()) {
+      it = sMeans.emplace(tex, PortTextureMean(*tex)).first;
+    }
+    return int(it->second);
+  };
+  const uint flags = material.GetFlags();
+  const bool lightmap = (flags & kStateFlag_Lightmap) != 0 && (flags & kStateFlag_PortPBR) == 0;
+  const int base = mean(lightmap ? 1 : 0);
+  const int light = lightmap ? mean(0) : -1;
+  float rgb[3];
+  for (int k = 0; k < 3; ++k) {
+    const float b = base >= 0 ? float((base >> (16 - k * 8)) & 255) / 255.f : 0.5f;
+    const float l = light >= 0 ? float((light >> (16 - k * 8)) & 255) / 255.f * 1.6f : 0.75f;
+    rgb[k] = std::min(1.f, b * l);
+  }
+  return (uint(rgb[0] * 255.f) << 16) | (uint(rgb[1] * 255.f) << 8) | uint(rgb[2] * 255.f);
+}
+} // namespace
+
 // The opaque world triangles for the ray-traced shadows (aurora::gfx::rt): each model the normal
 // visor draws, each of its unsorted surfaces that is neither alpha-tested nor depth-sorted, its
 // display list walked as DrawSurfaceWireframe walks it (big-endian indices after each primitive's
 // opcode and count, the position's first), positions read big-endian.
-bool CCubeRenderer::PortAreaTriangles(int areaIdx, std::vector< float >& out) const {
+bool CCubeRenderer::PortAreaTriangles(int areaIdx, std::vector< float >& out, std::vector< uint >* colors) const {
   out.clear();
+  if (colors != nullptr) {
+    colors->clear();
+  }
   for (AUTO(it, x1c_areaListItems.begin()); it != x1c_areaListItems.end(); ++it) {
     const CAreaListItem& item = *it;
     if (item.GetAreaId() != areaIdx || item.GetModelList().get() == nullptr) {
@@ -3041,6 +3233,7 @@ bool CCubeRenderer::PortAreaTriangles(int areaIdx, std::vector< float >& out) co
         if (direct || posSize == 0) {
           continue;
         }
+        const uint surfaceColor = colors != nullptr ? PortMaterialMean(model, material) : 0;
         uint bases[CCubeSurface::kPB_Count];
         const uint posBase = surface.PortBaseIndices(bases) ? bases[CCubeSurface::kPB_Pos] : 0;
         const uchar* dl = static_cast< const uchar* >(surface.GetDisplayList());
@@ -3072,6 +3265,9 @@ bool CCubeRenderer::PortAreaTriangles(int areaIdx, std::vector< float >& out) co
             readPos(ib, tri[1]);
             readPos(ic, tri[2]);
             out.insert(out.end(), &tri[0][0], &tri[0][0] + 9);
+            if (colors != nullptr) {
+              colors->push_back(surfaceColor);
+            }
           };
           if (op == GX_TRIANGLES) {
             for (uint v = 0; v + 2 < count; v += 3) {

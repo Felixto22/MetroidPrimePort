@@ -47,6 +47,11 @@ constexpr float DepthUnits = 64.f;
 // The traced mask's largest size: what the lit draws read it at (mask_view) is this big.
 constexpr uint32_t MaxMask = 2048;
 constexpr uint32_t MaxLights = 64;
+constexpr uint32_t MaxPlanes = 8;
+constexpr uint32_t MaxMeshSlots = 128;
+// The frame data the trace reads: the lights (3 rows each), then the planes (2 rows each) from row 192.
+constexpr uint32_t PlaneRow = 192;
+constexpr uint32_t FrameRows = PlaneRow + MaxPlanes * 2;
 
 // What the trace needs from the frame (any thread).
 struct SharedState {
@@ -58,6 +63,9 @@ struct SharedState {
   std::vector<float> lights;   // the frame's lights (set_lights), 12 floats each
   // The lights each recorded trace goes with (FIFO processor writes, render thread reads).
   std::array<std::vector<float>, 4> traceLights;
+  std::vector<float> planes; // reflecting water (add_plane): height, x min, y min, x max, y max
+  std::array<std::vector<float>, 4> tracePlanes;
+  std::unordered_map<uint64_t, std::vector<uint32_t>> pendingColors; // with pending
 };
 SharedState& shared() {
   static SharedState state;
@@ -86,6 +94,11 @@ MaskState& mask_state() {
   static MaskState state;
   return state;
 }
+// The same for the traced reflections (refl_view).
+MaskState& refl_state() {
+  static MaskState state;
+  return state;
+}
 
 std::atomic<bool> g_ready{false};
 std::atomic<bool> g_failed{false};
@@ -107,6 +120,14 @@ struct RenderState {
   wgpu::SharedTextureMemory maskMemory;
   wgpu::Texture maskTexture;
   wgpu::TextureView maskView;
+  // The frame's colour (Dawn writes; the reflections show what is on screen as it shows) and the
+  // traced reflections (D3D12 writes).
+  wgpu::SharedTextureMemory colorMemory;
+  wgpu::Texture colorTexture;
+  wgpu::TextureView colorView;
+  wgpu::SharedTextureMemory reflMemory;
+  wgpu::Texture reflTexture;
+  wgpu::TextureView reflView;
   uint32_t width = 0;
   uint32_t height = 0;
   bool depthCopied = false; // this frame's depth is in depthTexture, for the trace after submit
@@ -121,6 +142,8 @@ struct P {
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var depthTex: DEPTH_TYPE;
 @group(0) @binding(2) var outTex: texture_storage_2d<r32float, write>;
+@group(0) @binding(3) var colorIn: texture_2d<f32>;
+@group(0) @binding(4) var colorOut: texture_storage_2d<rgba16float, write>;
 
 @compute @workgroup_size(8, 8)
 fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
@@ -137,6 +160,9 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
     zl = p.depth.x * p.depth.y / (p.depth.y - d * (p.depth.y - p.depth.x));
   }
   textureStore(outTex, gid.xy, vec4f(zl, 0.0, 0.0, 0.0));
+  let csize = vec2i(textureDimensions(colorIn));
+  let cat = min(vec2i((vec2f(gid.xy) + 0.5) * vec2f(csize) / vec2f(osize)), csize - vec2i(1));
+  textureStore(colorOut, gid.xy, vec4f(textureLoad(colorIn, cat, 0).rgb, 1.0));
 }
 )";
 
@@ -233,6 +259,19 @@ void ensure_copy(uint32_t samples) {
           .visibility = wgpu::ShaderStage::Compute,
           .storageTexture = {.access = wgpu::StorageTextureAccess::WriteOnly,
                              .format = wgpu::TextureFormat::R32Float,
+                             .viewDimension = wgpu::TextureViewDimension::e2D},
+      },
+      wgpu::BindGroupLayoutEntry{
+          .binding = 3,
+          .visibility = wgpu::ShaderStage::Compute,
+          .texture = {.sampleType = wgpu::TextureSampleType::UnfilterableFloat,
+                      .viewDimension = wgpu::TextureViewDimension::e2D},
+      },
+      wgpu::BindGroupLayoutEntry{
+          .binding = 4,
+          .visibility = wgpu::ShaderStage::Compute,
+          .storageTexture = {.access = wgpu::StorageTextureAccess::WriteOnly,
+                             .format = wgpu::TextureFormat::RGBA16Float,
                              .viewDimension = wgpu::TextureViewDimension::e2D},
       },
   };
@@ -379,7 +418,7 @@ using DxcCreateInstanceProc = HRESULT(__stdcall*)(REFCLSID, REFIID, LPVOID*);
 // depths), nudged off the surface, casts four rays at the sun's disc; the share that escapes is
 // its visibility. Inline ray queries (DXR 1.1) from a compute shader.
 constexpr const char* TraceSource = R"hlsl(
-#define RS "RootConstants(num32BitConstants=28, b0), SRV(t0), SRV(t2), DescriptorTable(SRV(t1), UAV(u0))"
+#define RS "RootConstants(num32BitConstants=28, b0), SRV(t0), SRV(t2), DescriptorTable(SRV(t1), SRV(t3), UAV(u0), UAV(u1)), DescriptorTable(SRV(t0, space=1, numDescriptors=unbounded, flags=DESCRIPTORS_VOLATILE))"
 cbuffer C : register(b0) {
   float4 v2w0;
   float4 v2w1;
@@ -387,17 +426,18 @@ cbuffer C : register(b0) {
   float4 frustum; // left, right, bottom, top at a view depth of 1
   float4 sun;     // world direction to the sun (0: no sun), tan of the disc's radius
   float4 misc;    // offset off the surface, its growth with depth, ray length, light count
-  float4 extra;
-};
-struct Light {
-  float4 pos;   // world position, radius
-  float4 color; // rgb
-  float4 att;   // GX distance attenuation k0, k1, k2
+  float4 extra;   // reflecting water planes, 0, 0, 0
 };
 RaytracingAccelerationStructure scene : register(t0);
-StructuredBuffer<Light> lights : register(t2);
+// The frame's lights (3 rows each: world position and radius; colour; GX attenuation) from 0,
+// then the reflecting planes (2 rows each: height, x min, y min, x max; y max) from 192.
+StructuredBuffer<float4> frameData : register(t2);
 Texture2D<float> depthTex : register(t1);
+Texture2D<float4> colorTex : register(t3);
 RWTexture2D<float4> outTex : register(u0);
+RWTexture2D<float4> reflTex : register(u1);
+// Each mesh's triangle colours (0xRRGGBB), by its instance id.
+StructuredBuffer<uint> meshColors[] : register(t0, space1);
 
 float3 view_pos(float2 uv, float zl) {
   float2 ray = float2(lerp(frustum.x, frustum.y, uv.x), lerp(frustum.z, frustum.w, 1.0 - uv.y));
@@ -406,6 +446,76 @@ float3 view_pos(float2 uv, float zl) {
 
 float ign(float2 px) {
   return frac(52.9829189 * frac(dot(px, float2(0.06711056, 0.00583715))));
+}
+
+// The reflection in the water planes at this texel: the eye's ray meets the nearest plane in
+// front of the opaque world, mirrors, and the mirrored ray is traced through the world. What it
+// hits shows as the frame shows it when that point is on screen and unhidden there, else as its
+// triangle's colour. rgb, and a: 1 hit, 0.5 sky (left to the screen-space fallback), 0 no water.
+float4 reflect_at(int2 at, int2 size, float2 uv, float zl) {
+  uint planes = min((uint)extra.x, 8u);
+  if (planes == 0) {
+    return float4(0.0, 0.0, 0.0, 0.0);
+  }
+  float3 v1 = view_pos(uv, 1.0);
+  float len1 = length(v1);
+  float3 wd = normalize(float3(dot(v2w0.xyz, v1), dot(v2w1.xyz, v1), dot(v2w2.xyz, v1)));
+  float3 eye = float3(v2w0.w, v2w1.w, v2w2.w);
+  float best = 1e30;
+  for (uint j = 0; j < planes; ++j) {
+    float4 a = frameData[192 + j * 2];
+    float4 b = frameData[193 + j * 2];
+    if (eye.z <= a.x + 0.01 || wd.z >= -1e-4) {
+      continue;
+    }
+    float t = (a.x - eye.z) / wd.z;
+    if (zl > 0.0 && t / len1 > zl + 0.1) {
+      continue;
+    }
+    float3 p = eye + wd * t;
+    if (p.x < a.y || p.x > a.w || p.y < a.z || p.y > b.x || t >= best) {
+      continue;
+    }
+    best = t;
+  }
+  if (best >= 1e30) {
+    return float4(0.0, 0.0, 0.0, 0.0);
+  }
+  float3 origin = eye + wd * best + float3(0.0, 0.0, 0.02);
+  float3 r = float3(wd.x, wd.y, -wd.z);
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = r;
+  ray.TMin = 0.0;
+  ray.TMax = 500.0;
+  RayQuery<RAY_FLAG_FORCE_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> q;
+  q.TraceRayInline(scene, RAY_FLAG_NONE, 0xFF, ray);
+  while (q.Proceed()) {
+  }
+  if (q.CommittedStatus() != COMMITTED_TRIANGLE_HIT) {
+    return float4(0.0, 0.0, 0.0, 0.5);
+  }
+  float3 hit = origin + r * q.CommittedRayT();
+  // On screen, and what the frame shows there?
+  float3 d = hit - eye;
+  float3 hv = float3(dot(float3(v2w0.x, v2w1.x, v2w2.x), d), dot(float3(v2w0.y, v2w1.y, v2w2.y), d),
+                     dot(float3(v2w0.z, v2w1.z, v2w2.z), d));
+  float hz = -hv.z;
+  if (hz > 1e-3) {
+    float2 sv = (hv.xy / hz - frustum.xz) / (frustum.yw - frustum.xz);
+    float2 huv = float2(sv.x, 1.0 - sv.y);
+    if (all(huv >= 0.0) && all(huv <= 1.0)) {
+      int2 hp = min(int2(huv * float2(size)), size - 1);
+      float zq = depthTex[hp];
+      if (zq > 0.0 && abs(zq - hz) < 0.04 * hz + 0.25) {
+        return float4(colorTex[hp].rgb, 1.0);
+      }
+    }
+  }
+  uint packed = meshColors[NonUniformResourceIndex(q.CommittedInstanceID())][q.CommittedPrimitiveIndex()];
+  float3 c = float3((packed >> 16) & 255, (packed >> 8) & 255, packed & 255) / 255.0;
+  // Farther surfaces fade a little into the haze.
+  return float4(c * lerp(1.0, 0.75, saturate(q.CommittedRayT() / 120.0)), 1.0);
 }
 
 [RootSignature(RS)]
@@ -419,6 +529,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   int2 size = int2(w, h);
   int2 at = int2(id.xy);
   float zl = depthTex[at];
+  reflTex[id.xy] = reflect_at(at, size, (float2(at) + 0.5) / float2(size), zl);
   if (zl <= 0.0) {
     outTex[id.xy] = float4(1.0, 1.0, 0.0, 1.0);
     return;
@@ -490,10 +601,12 @@ void main(uint3 id : SV_DispatchThreadID) {
   float vsum = 0.0;
   uint count = min((uint)misc.w, 64u);
   for (uint i = 0; i < count; ++i) {
-    Light light = lights[i];
-    float3 dv = light.pos.xyz - wp;
+    float4 lpos = frameData[i * 3];
+    float4 lcolor = frameData[i * 3 + 1];
+    float4 latt = frameData[i * 3 + 2];
+    float3 dv = lpos.xyz - wp;
     float dist = length(dv);
-    if (dist >= light.pos.w || dist < 0.05) {
+    if (dist >= lpos.w || dist < 0.05) {
       continue;
     }
     float3 ld = dv / dist;
@@ -501,16 +614,16 @@ void main(uint3 id : SV_DispatchThreadID) {
     if (ndl <= 0.0) {
       continue;
     }
-    float att = 1.0 / max(light.att.x + light.att.y * dist + light.att.z * dist * dist, 1e-3) *
-                (1.0 - smoothstep(light.pos.w * 0.7, light.pos.w, dist));
-    float w = dot(light.color.rgb, float3(0.3, 0.59, 0.11)) * att * ndl;
+    float att = 1.0 / max(latt.x + latt.y * dist + latt.z * dist * dist, 1e-3) *
+                (1.0 - smoothstep(lpos.w * 0.7, lpos.w, dist));
+    float w = dot(lcolor.rgb, float3(0.3, 0.59, 0.11)) * att * ndl;
     if (w < 1e-3) {
       continue;
     }
     float a = spin + float(i) * 2.3999632;
     float3 jit = float3(cos(a), sin(a), cos(a * 1.7)) * 0.15;
     float3 origin = wp + wn * bias;
-    float3 to = light.pos.xyz + jit - origin;
+    float3 to = lpos.xyz + jit - origin;
     float tlen = length(to);
     RayDesc ray;
     ray.Origin = origin;
@@ -534,8 +647,10 @@ constexpr uint32_t MaxInstances = 64;
 
 struct Mesh {
   ComPtr<ID3D12Resource> vertices;
+  ComPtr<ID3D12Resource> colors; // a uint per triangle (0xRRGGBB)
   ComPtr<ID3D12Resource> blas;
   uint32_t triangles = 0;
+  uint32_t slot = 0; // its colours' descriptor, after the four fixed ones; its instance id
   uint64_t lastUsed = 0;
 };
 
@@ -564,6 +679,9 @@ struct D3D {
   uint64_t scratchSize = 0;
   ComPtr<ID3D12Resource> depth; // shared with Dawn (g_render.depthTexture)
   ComPtr<ID3D12Resource> mask;  // shared with Dawn (g_render.maskTexture)
+  ComPtr<ID3D12Resource> color; // shared with Dawn (g_render.colorTexture)
+  ComPtr<ID3D12Resource> refl;  // shared with Dawn (g_render.reflTexture)
+  std::vector<uint32_t> freeSlots;
   std::unordered_map<uint64_t, Mesh> meshes;
   // Resources the GPU may still read, freed once the fence passes their value.
   std::vector<std::pair<uint64_t, ComPtr<ID3D12Resource>>> garbage;
@@ -718,7 +836,7 @@ bool init_d3d12() {
   }
   D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
   heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-  heapDesc.NumDescriptors = 2;
+  heapDesc.NumDescriptors = 4 + MaxMeshSlots;
   heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
   if (FAILED(g_d3d.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&g_d3d.heap)))) {
     Log.warn("descriptor heap");
@@ -738,7 +856,7 @@ bool init_d3d12() {
     }
     slot.instances = make_buffer(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * MaxInstances, D3D12_HEAP_TYPE_UPLOAD,
                                  D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
-    slot.lights = make_buffer(sizeof(float) * 12 * MaxLights, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
+    slot.lights = make_buffer(sizeof(float) * 4 * FrameRows, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
                               D3D12_RESOURCE_STATE_GENERIC_READ);
     if (!slot.instances || !slot.lights) {
       return false;
@@ -752,7 +870,10 @@ bool init_d3d12() {
     return false;
   }
   g_d3d.list->Close();
-  Log.info("ray-traced shadows ready (DXR 1.1)");
+  for (uint32_t i = MaxMeshSlots; i-- > 0;) {
+    g_d3d.freeSlots.push_back(i);
+  }
+  Log.info("ray tracing ready (DXR 1.1)");
   return true;
 }
 
@@ -763,24 +884,40 @@ bool ensure_shared(uint32_t width, uint32_t height) {
   }
   // The old ones may still be in flight: let the GPU finish with them first.
   wait_fence(g_d3d.fenceValue);
-  for (auto* memory : {&g_render.depthMemory, &g_render.maskMemory}) {
-    if (*memory) {
-      wgpu::Texture& texture = memory == &g_render.depthMemory ? g_render.depthTexture : g_render.maskTexture;
+  const std::array<std::pair<wgpu::SharedTextureMemory*, wgpu::Texture*>, 4> shared{{
+      {&g_render.depthMemory, &g_render.depthTexture},
+      {&g_render.maskMemory, &g_render.maskTexture},
+      {&g_render.colorMemory, &g_render.colorTexture},
+      {&g_render.reflMemory, &g_render.reflTexture},
+  }};
+  for (const auto& [memory, texture] : shared) {
+    if (*memory && *texture) {
       checked("RT shared texture end", [&] {
         wgpu::SharedTextureMemoryEndAccessState state{};
-        memory->EndAccess(texture, &state);
+        memory->EndAccess(*texture, &state);
       });
     }
   }
-  g_render.depthMemory = {};
-  g_render.depthTexture = {};
-  g_render.depthView = {};
-  g_render.maskMemory = {};
-  g_render.maskTexture = {};
-  g_render.maskView = {};
+  const auto drop = [] {
+    g_render.depthMemory = {};
+    g_render.depthTexture = {};
+    g_render.depthView = {};
+    g_render.maskMemory = {};
+    g_render.maskTexture = {};
+    g_render.maskView = {};
+    g_render.colorMemory = {};
+    g_render.colorTexture = {};
+    g_render.colorView = {};
+    g_render.reflMemory = {};
+    g_render.reflTexture = {};
+    g_render.reflView = {};
+  };
+  drop();
   g_render.traced = false;
   retire(g_d3d.depth);
   retire(g_d3d.mask);
+  retire(g_d3d.color);
+  retire(g_d3d.refl);
   g_render.width = 0;
   g_render.height = 0;
 
@@ -807,7 +944,8 @@ bool ensure_shared(uint32_t width, uint32_t height) {
     }
     return true;
   };
-  if (!make(DXGI_FORMAT_R32_FLOAT, g_d3d.depth) || !make(DXGI_FORMAT_R16G16B16A16_FLOAT, g_d3d.mask)) {
+  if (!make(DXGI_FORMAT_R32_FLOAT, g_d3d.depth) || !make(DXGI_FORMAT_R16G16B16A16_FLOAT, g_d3d.mask) ||
+      !make(DXGI_FORMAT_R16G16B16A16_FLOAT, g_d3d.color) || !make(DXGI_FORMAT_R16G16B16A16_FLOAT, g_d3d.refl)) {
     return false;
   }
   const auto import = [&](const ComPtr<ID3D12Resource>& resource, const char* label, wgpu::SharedTextureMemory& memory,
@@ -827,13 +965,10 @@ bool ensure_shared(uint32_t width, uint32_t height) {
     });
   };
   if (!import(g_d3d.depth, "RT Depth", g_render.depthMemory, g_render.depthTexture, g_render.depthView) ||
-      !import(g_d3d.mask, "RT Shadow Mask", g_render.maskMemory, g_render.maskTexture, g_render.maskView)) {
-    g_render.depthMemory = {};
-    g_render.depthTexture = {};
-    g_render.depthView = {};
-    g_render.maskMemory = {};
-    g_render.maskTexture = {};
-    g_render.maskView = {};
+      !import(g_d3d.mask, "RT Shadow Mask", g_render.maskMemory, g_render.maskTexture, g_render.maskView) ||
+      !import(g_d3d.color, "RT Frame Colour", g_render.colorMemory, g_render.colorTexture, g_render.colorView) ||
+      !import(g_d3d.refl, "RT Reflections", g_render.reflMemory, g_render.reflTexture, g_render.reflView)) {
+    drop();
     return false;
   }
   // The trace's view of them.
@@ -845,10 +980,15 @@ bool ensure_shared(uint32_t width, uint32_t height) {
   srv.Texture2D.MipLevels = 1;
   g_d3d.device->CreateShaderResourceView(g_d3d.depth.Get(), &srv, cpu);
   cpu.ptr += g_d3d.descriptorSize;
+  srv.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+  g_d3d.device->CreateShaderResourceView(g_d3d.color.Get(), &srv, cpu);
+  cpu.ptr += g_d3d.descriptorSize;
   D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
   uav.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
   uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
   g_d3d.device->CreateUnorderedAccessView(g_d3d.mask.Get(), nullptr, &uav, cpu);
+  cpu.ptr += g_d3d.descriptorSize;
+  g_d3d.device->CreateUnorderedAccessView(g_d3d.refl.Get(), nullptr, &uav, cpu);
   g_render.width = width;
   g_render.height = height;
   return true;
@@ -857,33 +997,65 @@ bool ensure_shared(uint32_t width, uint32_t height) {
 // Builds the meshes the game sent since the last trace (their BLAS) and drops the forgotten.
 void update_meshes(ID3D12GraphicsCommandList4* list, bool& built) {
   std::unordered_map<uint64_t, std::vector<float>> pending;
+  std::unordered_map<uint64_t, std::vector<uint32_t>> pendingColors;
   std::vector<uint64_t> drop;
   {
     auto& s = shared();
     std::scoped_lock lock{s.mutex};
     pending.swap(s.pending);
+    pendingColors.swap(s.pendingColors);
     drop.swap(s.drop);
   }
+  const auto forget = [](std::unordered_map<uint64_t, Mesh>::iterator it) {
+    retire(it->second.vertices);
+    retire(it->second.colors);
+    retire(it->second.blas);
+    g_d3d.freeSlots.push_back(it->second.slot);
+    g_d3d.meshes.erase(it);
+  };
   for (const uint64_t key : drop) {
     const auto it = g_d3d.meshes.find(key);
     if (it != g_d3d.meshes.end()) {
-      retire(it->second.vertices);
-      retire(it->second.blas);
-      g_d3d.meshes.erase(it);
+      forget(it);
     }
   }
   for (auto& [key, positions] : pending) {
     const auto old = g_d3d.meshes.find(key);
     if (old != g_d3d.meshes.end()) {
-      retire(old->second.vertices);
-      retire(old->second.blas);
-      g_d3d.meshes.erase(old);
+      forget(old);
     }
     const uint32_t triangles = static_cast<uint32_t>(positions.size() / 9);
-    if (triangles == 0) {
+    if (triangles == 0 || g_d3d.freeSlots.empty()) {
       continue;
     }
     Mesh mesh;
+    mesh.slot = g_d3d.freeSlots.back();
+    // Each triangle's colour (grey where the game sent none), and its view for the trace.
+    {
+      std::vector<uint32_t> colors(triangles, 0x808080u);
+      const auto pc = pendingColors.find(key);
+      if (pc != pendingColors.end()) {
+        std::copy_n(pc->second.begin(), std::min<size_t>(pc->second.size(), triangles), colors.begin());
+      }
+      mesh.colors = make_buffer(static_cast<uint64_t>(triangles) * 4, D3D12_HEAP_TYPE_UPLOAD,
+                                D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+      void* cm = nullptr;
+      const D3D12_RANGE none{0, 0};
+      if (!mesh.colors || FAILED(mesh.colors->Map(0, &none, &cm))) {
+        continue;
+      }
+      std::memcpy(cm, colors.data(), colors.size() * 4);
+      mesh.colors->Unmap(0, nullptr);
+      D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+      srv.Format = DXGI_FORMAT_UNKNOWN;
+      srv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+      srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+      srv.Buffer.NumElements = triangles;
+      srv.Buffer.StructureByteStride = 4;
+      D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_d3d.heap->GetCPUDescriptorHandleForHeapStart();
+      cpu.ptr += static_cast<SIZE_T>(4 + mesh.slot) * g_d3d.descriptorSize;
+      g_d3d.device->CreateShaderResourceView(mesh.colors.Get(), &srv, cpu);
+    }
     mesh.triangles = triangles;
     mesh.lastUsed = g_d3d.traces;
     const uint64_t bytes = static_cast<uint64_t>(triangles) * 9 * sizeof(float);
@@ -933,6 +1105,7 @@ void update_meshes(ID3D12GraphicsCommandList4* list, bool& built) {
     build.ScratchAccelerationStructureData = scratch->GetGPUVirtualAddress();
     list->BuildRaytracingAccelerationStructure(&build, 0, nullptr);
     retire(scratch);
+    g_d3d.freeSlots.pop_back();
     g_d3d.meshes[key] = std::move(mesh);
     built = true;
     Log.info("mesh {:016x}: {} triangles, BLAS {} KiB", key, triangles, info.ResultDataMaxSizeInBytes / 1024);
@@ -975,6 +1148,7 @@ bool trace(const Params& params) {
     instance.Transform[0][0] = 1.f;
     instance.Transform[1][1] = 1.f;
     instance.Transform[2][2] = 1.f;
+    instance.InstanceID = it->second.slot;
     instance.InstanceMask = 0xFF;
     instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
     instance.AccelerationStructure = it->second.blas->GetGPUVirtualAddress();
@@ -1072,25 +1246,42 @@ bool trace(const Params& params) {
   constants[20] = sBias;
   constants[21] = 0.0015f;
   constants[22] = sLength;
-  // The frame's lights (set_lights, as recorded with this trace).
+  // The frame's lights and reflecting planes (as recorded with this trace).
   uint32_t lightCount = 0;
+  uint32_t planeCount = 0;
   {
     std::vector<float> lights;
+    std::vector<float> planes;
     {
       auto& s = shared();
       std::scoped_lock lock{s.mutex};
       lights = s.traceLights[params.misc[3] % s.traceLights.size()];
+      planes = s.tracePlanes[params.misc[3] % s.tracePlanes.size()];
     }
     lightCount = std::min<uint32_t>(static_cast<uint32_t>(lights.size() / 12), MaxLights);
-    void* lightData = nullptr;
-    if (lightCount > 0 && SUCCEEDED(slot.lights->Map(0, &noRead, &lightData))) {
-      std::memcpy(lightData, lights.data(), sizeof(float) * 12 * lightCount);
+    planeCount = std::min<uint32_t>(static_cast<uint32_t>(planes.size() / 5), MaxPlanes);
+    void* frameData = nullptr;
+    if (SUCCEEDED(slot.lights->Map(0, &noRead, &frameData))) {
+      float* rows = static_cast<float*>(frameData);
+      std::memcpy(rows, lights.data(), sizeof(float) * 12 * lightCount);
+      for (uint32_t i = 0; i < planeCount; ++i) {
+        float* row = rows + (PlaneRow + i * 2) * 4;
+        const float* plane = planes.data() + i * 5;
+        row[0] = plane[0];
+        row[1] = plane[1];
+        row[2] = plane[2];
+        row[3] = plane[3];
+        row[4] = plane[4];
+        row[5] = row[6] = row[7] = 0.f;
+      }
       slot.lights->Unmap(0, nullptr);
     } else {
       lightCount = 0;
+      planeCount = 0;
     }
   }
   constants[23] = static_cast<float>(lightCount);
+  constants[24] = static_cast<float>(planeCount);
   list->SetComputeRootSignature(g_d3d.rootSignature.Get());
   ID3D12DescriptorHeap* heaps[] = {g_d3d.heap.Get()};
   list->SetDescriptorHeaps(1, heaps);
@@ -1099,6 +1290,11 @@ bool trace(const Params& params) {
   list->SetComputeRootShaderResourceView(1, g_d3d.tlas->GetGPUVirtualAddress());
   list->SetComputeRootShaderResourceView(2, slot.lights->GetGPUVirtualAddress());
   list->SetComputeRootDescriptorTable(3, g_d3d.heap->GetGPUDescriptorHandleForHeapStart());
+  {
+    D3D12_GPU_DESCRIPTOR_HANDLE meshes = g_d3d.heap->GetGPUDescriptorHandleForHeapStart();
+    meshes.ptr += static_cast<UINT64>(4) * g_d3d.descriptorSize;
+    list->SetComputeRootDescriptorTable(4, meshes);
+  }
   list->Dispatch((g_render.width + Group - 1) / Group, (g_render.height + Group - 1) / Group, 1);
   if (FAILED(list->Close())) {
     return false;
@@ -1143,6 +1339,27 @@ void encode_begin(const wgpu::CommandEncoder& cmd, const Params& params) {
     };
     const wgpu::RenderPassDescriptor passDescriptor{
         .label = "RT Mask Clear",
+        .colorAttachmentCount = 1,
+        .colorAttachments = &attachment,
+    };
+    cmd.BeginRenderPass(&passDescriptor).End();
+  }
+  // The water's copy of the reflections; cleared (a 0: nothing traced) when there are none.
+  const wgpu::TextureView& reflStable = refl_view();
+  if (draw && g_render.reflTexture && refl_state().texture) {
+    const wgpu::TexelCopyTextureInfo source{.texture = g_render.reflTexture};
+    const wgpu::TexelCopyTextureInfo target{.texture = refl_state().texture};
+    const wgpu::Extent3D size{g_render.width, g_render.height, 1};
+    cmd.CopyTextureToTexture(&source, &target, &size);
+  } else if (reflStable) {
+    const wgpu::RenderPassColorAttachment attachment{
+        .view = reflStable,
+        .loadOp = wgpu::LoadOp::Clear,
+        .storeOp = wgpu::StoreOp::Store,
+        .clearValue = {0.0, 0.0, 0.0, 0.0},
+    };
+    const wgpu::RenderPassDescriptor passDescriptor{
+        .label = "RT Reflections Clear",
         .colorAttachmentCount = 1,
         .colorAttachments = &attachment,
     };
@@ -1198,9 +1415,10 @@ void encode_begin(const wgpu::CommandEncoder& cmd, const Params& params) {
 void encode_trace(const EncoderTaskContext& ctx, const wgpu::CommandEncoder& cmd, const Params& params) {
   g_render.depthCopied = false;
   const auto& depth = webgpu::g_depthBuffer;
+  const auto& source = webgpu::present_source();
   const uint32_t width = params.misc[1];
   const uint32_t height = params.misc[2];
-  if (width == 0 || height == 0 || !depth.view || g_failed.load()) {
+  if (width == 0 || height == 0 || !depth.view || !source.view || g_failed.load()) {
     return;
   }
   if (!ensure_shared(width, height)) {
@@ -1214,6 +1432,8 @@ void encode_trace(const EncoderTaskContext& ctx, const wgpu::CommandEncoder& cmd
       wgpu::BindGroupEntry{.binding = 0, .buffer = g_render.uniforms, .size = 16},
       wgpu::BindGroupEntry{.binding = 1, .textureView = depth.view},
       wgpu::BindGroupEntry{.binding = 2, .textureView = g_render.depthView},
+      wgpu::BindGroupEntry{.binding = 3, .textureView = source.view},
+      wgpu::BindGroupEntry{.binding = 4, .textureView = g_render.colorView},
   };
   const wgpu::BindGroupDescriptor groupDescriptor{
       .label = "RT Depth Copy",
@@ -1296,9 +1516,14 @@ bool available() {
   return g_ready.load();
 }
 
-void set_mesh(uint64_t key, const float* positions, uint32_t triangles) {
+void set_mesh(uint64_t key, const float* positions, const uint32_t* colors, uint32_t triangles) {
   auto& s = shared();
   std::scoped_lock lock{s.mutex};
+  if (colors != nullptr && positions != nullptr && triangles != 0) {
+    s.pendingColors[key].assign(colors, colors + triangles);
+  } else {
+    s.pendingColors.erase(key);
+  }
   if (positions == nullptr || triangles == 0) {
     s.pending.erase(key);
     s.known.erase(key);
@@ -1334,6 +1559,39 @@ const wgpu::TextureView& mask_view() {
     m.view = m.texture.CreateView();
   }
   return m.view;
+}
+
+const wgpu::TextureView& refl_view() {
+  auto& m = refl_state();
+  std::scoped_lock lock{m.mutex};
+  if (!m.texture && g_device) {
+    const uint32_t size = webgpu::g_backendType == wgpu::BackendType::D3D12 ? MaxMask : 1;
+    const wgpu::TextureDescriptor descriptor{
+        .label = "RT Reflections",
+        .usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst |
+                 wgpu::TextureUsage::RenderAttachment,
+        .size = {size, size, 1},
+        .format = wgpu::TextureFormat::RGBA16Float,
+    };
+    m.texture = g_device.CreateTexture(&descriptor);
+    m.view = m.texture.CreateView();
+  }
+  return m.view;
+}
+
+void add_plane(float height, float minX, float minY, float maxX, float maxY) {
+  auto& s = shared();
+  std::scoped_lock lock{s.mutex};
+  if (s.planes.size() / 5 >= MaxPlanes) {
+    return;
+  }
+  // The same surface drawn twice in a frame (its reflection passes) counts once.
+  for (size_t i = 0; i + 5 <= s.planes.size(); i += 5) {
+    if (s.planes[i] == height && s.planes[i + 1] == minX && s.planes[i + 2] == minY) {
+      return;
+    }
+  }
+  s.planes.insert(s.planes.end(), {height, minX, minY, maxX, maxY});
 }
 
 uint32_t set_scene(const uint64_t* keys, uint32_t count) {
@@ -1412,6 +1670,9 @@ bool record(Params params, Uniform& out) {
     std::scoped_lock lock{s.mutex};
     g_lightSlot = (g_lightSlot + 1) % s.traceLights.size();
     s.traceLights[g_lightSlot] = s.lights;
+    // The water drawn since the last trace (it draws after this point in the frame).
+    s.tracePlanes[g_lightSlot].swap(s.planes);
+    s.planes.clear();
   }
   params.misc[3] = g_lightSlot;
   if (!record_encoder_task(g_task, &params, sizeof(params))) {
@@ -1443,12 +1704,16 @@ void shutdown() {
     for (auto& lights : s.traceLights) {
       lights.clear();
     }
+    s.planes.clear();
+    s.pendingColors.clear();
+    for (auto& planes : s.tracePlanes) {
+      planes.clear();
+    }
   }
-  {
-    auto& m = mask_state();
-    std::scoped_lock lock{m.mutex};
-    m.texture = {};
-    m.view = {};
+  for (MaskState* m : {&mask_state(), &refl_state()}) {
+    std::scoped_lock lock{m->mutex};
+    m->texture = {};
+    m->view = {};
   }
   g_ready.store(false);
   if (task != InvalidEncoderTask) {
