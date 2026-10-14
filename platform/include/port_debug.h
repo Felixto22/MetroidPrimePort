@@ -324,7 +324,7 @@ void SetShadowQuality(int size);
 // Fast doors: every room next to the current one streams at once, without waiting for the rooms
 // left behind to unload, in a game heap raised to kFastDoorsMem1MB (from the next start), so
 // doors open as soon as their animation allows. Off in the original experience.
-const int kFastDoorsMem1MB = 768;
+const int kFastDoorsMem1MB = 256; // what room geometry mods run in; larger arenas fail CGameAllocator::Initialize
 bool FastDoors();
 void SetFastDoors(bool enabled);
 // Glass (depth-sorted materials with a reflection map) gets Fresnel reflections of the scene, at
