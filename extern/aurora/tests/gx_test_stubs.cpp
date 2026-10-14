@@ -135,6 +135,7 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   // No-op for tests
 }
 GXBindGroups build_bind_groups(const ShaderInfo& info) noexcept { return {}; }
+bool shadow_cutout(const ShaderConfig& sc, u32& texMap, u32& texCoord) noexcept { return false; }
 ShaderInfo build_shader_info(const ShaderConfig& config) noexcept { return {}; }
 gfx::Range build_uniform(const ShaderInfo& info) noexcept { return {.size = 1}; }
 void resolve_sampled_textures(const ShaderInfo& info) noexcept {}

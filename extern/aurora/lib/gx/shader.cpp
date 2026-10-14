@@ -2917,8 +2917,8 @@ bool shadow_cutout(const ShaderConfig& sc, u32& texMap, u32& texCoord) noexcept 
     const auto& tcg = sc.tcgs[stage.texCoordId];
     if (tcg.src < GX_TG_TEX0 || tcg.src > GX_TG_TEX7 || (tcg.type != GX_TG_MTX2x4 && tcg.type != GX_TG_MTX3x4) ||
         tcg.postMtx != GX_PTIDENTITY || tcg.normalize ||
-        sc.attrs[GX_VA_TEX0 + (tcg.src - GX_TG_TEX0)].attrType == GX_NONE ||
-        sc.attrs[GX_VA_TEX0MTXIDX + stage.texCoordId].attrType != GX_NONE) {
+        sc.attrs[static_cast<u32>(GX_VA_TEX0) + static_cast<u32>(tcg.src - GX_TG_TEX0)].attrType == GX_NONE ||
+        sc.attrs[static_cast<u32>(GX_VA_TEX0MTXIDX) + static_cast<u32>(stage.texCoordId)].attrType != GX_NONE) {
       return false;
     }
     if (alpha_compare_discard(sc).constant == 1) {
