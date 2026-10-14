@@ -35,7 +35,7 @@ namespace aurora::gfx::water {
 namespace {
 Module Log("aurora::gfx::water");
 
-constexpr uint32_t UniformSize = 912;
+constexpr uint32_t UniformSize = 1184;
 constexpr auto EvictAfter = std::chrono::seconds(10);
 
 struct Uniform {
@@ -57,6 +57,8 @@ struct Uniform {
   float pad[4];
   float ripples[16][4]; // DrawDesc::ripples
   float rippleInfo[4];  // count, tile
+  float trails[16][4];  // DrawDesc::trails, two rows each
+  float trailInfo[4];   // count
 };
 static_assert(sizeof(Uniform) == UniformSize);
 
@@ -145,6 +147,8 @@ struct U {
   pad: vec4f,
   ripples: array<vec4f, 16>,
   rippleInfo: vec4f,
+  trails: array<vec4f, 16>,
+  trailInfo: vec4f,
 }
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var normalMap: texture_2d<f32>;
@@ -204,10 +208,47 @@ fn ring_h(wp: vec2f) -> vec2f {
   return h;
 }
 
+// Port extension (DrawDesc::trails): the wakes shots cut skimming over the surface, at world point
+// wp: the height (x), how much is crest (y), and how much churned water (z). Along each segment the
+// age is that of the moment the shot passed; across it the water first parts in a trench, its two
+// walls run out to the sides as waves, and the trench fills back in.
+const TRAIL_LIFE: f32 = 4.5;
+fn trail_h(wp: vec2f) -> vec3f {
+  let tcount = min(u32(u.trailInfo.x), 8u);
+  var h = vec3f(0.0);
+  for (var ti = 0u; ti < tcount; ti++) {
+    let t0 = u.trails[ti * 2u];
+    let t1 = u.trails[ti * 2u + 1u];
+    let ab = t0.zw - t0.xy;
+    let s = clamp(dot(wp - t0.xy, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
+    let d = length(wp - (t0.xy + ab * s));
+    let age = mix(t1.x, t1.y, s);
+    let w = t1.w;
+    if (age < 0.0 || age > TRAIL_LIFE || d > w * 3.0 + 1.6 * age + 1.5) {
+      continue;
+    }
+    let fade = t1.z * (1.0 - smoothstep(TRAIL_LIFE * 0.5, TRAIL_LIFE, age));
+    let open = 1.0 - exp(-age * 9.0);
+    let core = exp(-(d * d) / (w * w));
+    let trench = -0.42 * open * exp(-age * 0.75) * core;
+    let c = w * 0.9 + 1.7 * age;
+    let x = d - c;
+    let wall = 0.3 * exp(-x * x * 2.2) * exp(-age * 0.55) * open;
+    let x2 = d - c * 0.55;
+    let wall2 = 0.13 * exp(-x2 * x2 * 3.0) * exp(-age * 0.8) * open;
+    let churn = core * exp(-age * 0.9) * open;
+    h = h + fade * vec3f(trench + wall + wall2, wall * 3.0 + wall2 * 2.0, churn);
+  }
+  return h;
+}
+
 fn displace(q: vec3f, uv: vec2f, k: f32, r1: vec3f, wp: vec2f) -> vec3f {
   var p = q + vec3f(0.0, flow_h(uv) * k, 0.0);
   if (u.rippleInfo.x > 0.5) {
     p.y = p.y + ring_h(wp).x * r1.y;
+  }
+  if (u.trailInfo.x > 0.5) {
+    p.y = p.y + trail_h(wp).x * r1.y;
   }
   let ph1 = dot(u.W[0].xy, p.xz * u.W[1].w) - u.W[1].z;
   let ph2 = dot(u.W[0].zw, p.xz * u.W[2].w) - u.W[2].z;
@@ -415,6 +456,17 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
     }
     Nw = Nw - in.t * rg.x - cross(in.n, in.t) * rg.y;
   }
+  // Port extension (DrawDesc::trails): the wakes' slopes, per pixel (the mesh is coarse).
+  var trailFoam = 0.0;
+  if (u.trailInfo.x > 0.5) {
+    let wp = in.uv.zw * u.rippleInfo.y;
+    let th = trail_h(wp);
+    let gx = trail_h(wp + vec2f(0.06, 0.0)).x - th.x;
+    let gy = trail_h(wp + vec2f(0.0, 0.06)).x - th.x;
+    let tg = vec2f(gx, gy) / 0.06 * 1.6;
+    Nw = Nw - in.t * tg.x - cross(in.n, in.t) * tg.y;
+    trailFoam = clamp((th.y - 0.25) * 1.4, 0.0, 1.0) + clamp(th.z * 0.9, 0.0, 1.0);
+  }
   var rainLight = vec3f(0.0);
   if (RAIN) {
     let cellId = floor(in.rain / u.R[1].w);
@@ -501,6 +553,13 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
       let foam = shore * (0.35 + 0.65 * breakup) * fade;
       o0 = o0 + foam * 0.85 * in.light.rgb / max(u.volScale.rgb, vec3f(1e-3)) * 0.8;
       o1 = min(o1 + vec3f(foam * 0.85), vec3f(1.0));
+    }
+    // Port extension (DrawDesc::trails): white water on the wakes' walls and in the churned trench.
+    if (trailFoam > 0.0) {
+      let breakup3 = smoothstep(0.3, 0.7, 0.5 * (n1.x + n2.x) + 0.1);
+      let tfoam = clamp(trailFoam, 0.0, 1.0) * (0.45 + 0.55 * breakup3) * fade;
+      o0 = o0 + tfoam * 0.9 * in.light.rgb / max(u.volScale.rgb, vec3f(1e-3)) * 0.8;
+      o1 = min(o1 + vec3f(tfoam * 0.85), vec3f(1.0));
     }
     // Port extension (DrawDesc::ripples): white water on the rings' crests.
     if (u.rippleInfo.x > 0.5) {
@@ -924,6 +983,9 @@ void draw(const DrawDesc& desc, const Vertex* verts, uint32_t vertexCount, const
   std::memcpy(u.ripples, desc.ripples, sizeof(float) * 4 * ripples);
   u.rippleInfo[0] = float(ripples);
   u.rippleInfo[1] = desc.rippleTile;
+  const uint32_t trails = std::min(desc.trailCount, DrawDesc::MaxTrails);
+  std::memcpy(u.trails, desc.trails, sizeof(float) * 8 * trails);
+  u.trailInfo[0] = float(trails);
 
   Payload p{};
   p.flags = (desc.bottom ? 1u : 0u) | (rain ? 2u : 0u);

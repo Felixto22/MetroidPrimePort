@@ -50,6 +50,13 @@ struct DrawDesc {
   uint32_t rippleCount = 0;
   float rippleTile = 1.f;
   float ripples[MaxRipples][4] = {};
+  // Port extension: up to MaxTrails wakes a shot cuts skimming over the surface, in the same plane
+  // as the ripples: from (ax, ay) to (bx, by), the seconds since the shot passed each end, the
+  // strength (0..1) and the half width (m). The water parts along it, two walls run out to the
+  // sides, and it closes again over a few seconds.
+  static constexpr uint32_t MaxTrails = 8;
+  uint32_t trailCount = 0;
+  float trails[MaxTrails][8] = {};
   float viewToCube[3][4] = {};
   // The ambient volume (probe::create_volume id, 0 for none): rows of view position ->
   // texture coordinates, and what its mean is multiplied by (rgb; w for its largest channel).

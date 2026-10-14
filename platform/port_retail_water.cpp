@@ -14,6 +14,9 @@
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
+#include "MetroidPrime/CObjectList.hpp"
+#include "MetroidPrime/TCastTo.hpp"
+#include "MetroidPrime/Weapons/CGameProjectile.hpp"
 
 #include "aurora/water.hpp"
 
@@ -237,6 +240,99 @@ void UpdateWake(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin,
   }
 }
 
+// A shot skimming the surface cuts a wake: per water body, the segments shots drew over it (a new
+// one where a shot turns or has gone far), each with the clock at both ends.
+struct Trail {
+  TUniqueId shot = kInvalidUniqueId;
+  float ax = 0.f, ay = 0.f, bx = 0.f, by = 0.f;
+  float ta = 0.f, tb = 0.f;
+  float strength = 0.f, width = 0.f;
+  bool open = false; // the shot is still drawing it
+};
+std::unordered_map< uint32_t, std::vector< Trail > >& Trails() {
+  static auto* trails = new std::unordered_map< uint32_t, std::vector< Trail > >();
+  return *trails;
+}
+constexpr float kTrailLife = 4.5f;     // seconds a wake lasts (water.cpp TRAIL_LIFE)
+constexpr float kTrailHeight = 3.2f;   // how high over the surface a shot still parts it (m)
+constexpr size_t kMaxTrails = aurora::gfx::water::DrawDesc::MaxTrails;
+
+void UpdateTrails(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const CVector3f& boxMax,
+                  float surfaceZ, float clock) {
+  std::vector< Trail >& trails = Trails()[uid];
+  for (size_t i = trails.size(); i-- > 0;) {
+    if (Age(clock, trails[i].tb) > kTrailLife) {
+      trails.erase(trails.begin() + std::ptrdiff_t(i));
+    }
+  }
+  for (Trail& t : trails) {
+    t.open = false;
+  }
+  const CObjectList& actors = mgr.GetObjectListById(kOL_Actor);
+  for (int idx = actors.GetFirstObjectIndex(); idx != -1; idx = actors.GetNextObjectIndex(idx)) {
+    const CGameProjectile* proj = TCastToConstPtr< CGameProjectile >(actors.GetObjectByIndex(idx));
+    if (proj == nullptr || !proj->GetActive()) {
+      continue;
+    }
+    const CVector3f pos = proj->GetTranslation();
+    const float x = pos.GetX(), y = pos.GetY();
+    const float h = pos.GetZ() - surfaceZ;
+    if (x < boxMin.GetX() || x > boxMax.GetX() || y < boxMin.GetY() || y > boxMax.GetY() || h < -0.6f ||
+        h > kTrailHeight) {
+      continue;
+    }
+    // Lower shots part it more; missiles and charged shots cut wider.
+    const float strength = std::clamp(1.25f - std::max(h, 0.f) * 0.3f, 0.35f, 1.f);
+    const bool heavy = proj->GetType() == kWT_Missile || proj->GetType() == kWT_Plasma;
+    const float width = heavy ? 0.85f : 0.6f;
+    Trail* current = nullptr;
+    for (Trail& t : trails) {
+      if (t.shot == proj->GetUniqueId() && Age(clock, t.tb) < 0.25f) {
+        current = &t;
+      }
+    }
+    if (current != nullptr) {
+      const float dx = x - current->bx, dy = y - current->by;
+      const float step = std::hypot(dx, dy);
+      if (step < 0.05f) {
+        current->open = true;
+        current->tb = clock;
+        continue;
+      }
+      const float lx = current->bx - current->ax, ly = current->by - current->ay;
+      const float len = std::hypot(lx, ly);
+      // Still straight on (within ~12 degrees) and not too long: stretch it.
+      if (len < 0.05f || (len < 14.f && (lx * dx + ly * dy) / (len * step) > 0.978f)) {
+        current->bx = x;
+        current->by = y;
+        current->tb = clock;
+        current->strength = std::max(current->strength, strength);
+        current->open = true;
+        continue;
+      }
+    }
+    // A new segment, from where the last one ended (or from here).
+    Trail t;
+    t.shot = proj->GetUniqueId();
+    t.ax = current != nullptr ? current->bx : x;
+    t.ay = current != nullptr ? current->by : y;
+    t.ta = current != nullptr ? current->tb : clock;
+    t.bx = x;
+    t.by = y;
+    t.tb = clock;
+    t.strength = strength;
+    t.width = width;
+    t.open = true;
+    if (trails.size() >= kMaxTrails) {
+      // The oldest gives way.
+      auto oldest = std::min_element(trails.begin(), trails.end(),
+                                     [&](const Trail& a, const Trail& b) { return Age(clock, a.tb) > Age(clock, b.tb); });
+      trails.erase(oldest);
+    }
+    trails.push_back(t);
+  }
+}
+
 } // namespace
 
 bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const CVector3f& boxMax, float surfaceZ,
@@ -298,6 +394,22 @@ bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const
       }
     }
     std::sort(rings, rings + count, [](const Ring& a, const Ring& b) { return a.t < b.t; });
+    // The wakes shots cut skimming over it.
+    UpdateTrails(mgr, uid, boxMin, boxMax, surfaceZ, now);
+    for (const Trail& t : Trails()[uid]) {
+      if (d.trailCount >= aurora::gfx::water::DrawDesc::MaxTrails) {
+        break;
+      }
+      float(&slot)[8] = d.trails[d.trailCount++];
+      slot[0] = t.ax;
+      slot[1] = t.ay;
+      slot[2] = t.bx;
+      slot[3] = t.by;
+      slot[4] = Age(now, t.ta);
+      slot[5] = Age(now, t.tb);
+      slot[6] = t.strength;
+      slot[7] = t.width;
+    }
     d.rippleTile = kRippleTile;
     for (int i = 0; i < count && d.rippleCount < aurora::gfx::water::DrawDesc::MaxRipples; ++i) {
       float(&slot)[4] = d.ripples[d.rippleCount++];
@@ -393,5 +505,6 @@ bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const
 void Reset() {
   Meshes().clear();
   Wakes().clear();
+  Trails().clear();
 }
 } // namespace PortRetailWater
