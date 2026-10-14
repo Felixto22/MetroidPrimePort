@@ -862,6 +862,63 @@ void MeleeHit(const CVector3f& at, const CVector3f& dir, int beam) {
   }
 }
 
+void GrenadeTick(const CVector3f& at, float fuse, bool returned) {
+  // Blinking faster toward the end of its fuse.
+  const float rate = fuse < 0.8f ? 14.f : fuse < 1.6f ? 7.f : 3.5f;
+  const bool on = std::fmod(sNow * rate, 1.f) < 0.5f;
+  const uint32_t core = returned ? 0xff80d0ff : on ? 0xffff3020 : 0xffff9040;
+  Emit(at, CVector3f(0.f, 0.f, 0.f), 0.05f, on ? 0.35f : 0.22f, core, fxp::Glow);
+  Emit(at, sRng.Dir() * 0.3f, 0.35f, 0.12f, 0x50808080, fxp::Smoke, 1.f, -0.5f);
+}
+
+void Explosion(const CStateManager& mgr, const CVector3f& at, float scale) {
+  Shot s{};
+  s.kind = kMissile;
+  s.charged = scale > 1.f;
+  Impact(mgr, s, at, CVector3f(0.f, 0.f, -1.f), PortDebug::HeatDistortion());
+}
+
+void ShieldBreak(const CVector3f& at, const CVector3f& dir) {
+  const CVector3f back = -Norm(dir);
+  Emit(at, CVector3f(0.f, 0.f, 0.f), 0.12f, 2.f, 0xffffffff, fxp::Glow);
+  Emit(at, CVector3f(0.f, 0.f, 0.f), 0.4f, 3.f, 0xd0a0e0ff, fxp::Ring);
+  for (int i = 0; i < 30; ++i) {
+    // Shards of the shield.
+    Emit(at, Norm(back * 0.4f + sRng.Dir()) * sRng.Range(3.f, 8.f), sRng.Range(0.5f, 1.f), 0.06f, 0xe0c0f0ff,
+         fxp::Flake | fxp::Shrink, 1.f, 9.8f);
+  }
+  for (int i = 0; i < 10; ++i) {
+    Emit(at, sRng.Dir() * sRng.Range(6.f, 10.f), sRng.Range(0.08f, 0.15f), 0.05f, 0xffc0e8ff, fxp::Arc, 0.f, 0.f,
+         kNoFloor, 0.07f);
+  }
+}
+
+void Shatter(const CVector3f& at) {
+  Emit(at, CVector3f(0.f, 0.f, 0.f), 0.15f, 2.5f, 0xffd0f0ff, fxp::Glow);
+  Emit(at, CVector3f(0.f, 0.f, 0.f), 0.4f, 3.5f, 0xc0b0e8ff, fxp::Ring);
+  for (int i = 0; i < 40; ++i) {
+    Emit(at + sRng.Dir() * 0.3f, sRng.Dir() * sRng.Range(2.f, 7.f) + CVector3f(0.f, 0.f, 2.f), sRng.Range(0.8f, 1.5f),
+         sRng.Range(0.05f, 0.12f), 0xf0e0f8ff, fxp::Flake | fxp::Shrink, 0.8f, 9.8f);
+  }
+}
+
+void Rage(const CVector3f& at) {
+  Emit(at, CVector3f(0.f, 0.f, 0.f), 0.3f, 3.f, 0xffff2010, fxp::Glow);
+  Emit(at, CVector3f(0.f, 0.f, 0.f), 0.5f, 4.f, 0xd0ff3020, fxp::Ring);
+  for (int i = 0; i < 24; ++i) {
+    Emit(at, sRng.Dir() * sRng.Range(2.f, 5.f), sRng.Range(0.4f, 0.8f), 0.05f, 0xffff4020, fxp::Ember | fxp::Shrink,
+         1.5f, -1.f);
+  }
+}
+
+void RageAura(const CVector3f& at) {
+  for (int i = 0; i < 4; ++i) {
+    const CVector3f off(sRng.Range(-0.5f, 0.5f), sRng.Range(-0.5f, 0.5f), sRng.Range(-0.8f, 0.8f));
+    Emit(at + off, CVector3f(0.f, 0.f, 1.2f), sRng.Range(0.4f, 0.7f), 0.06f, 0xffff3018, fxp::Ember | fxp::Shrink, 1.f,
+         -0.5f);
+  }
+}
+
 void NoteSky(bool drawn) { sSkyDrawn = drawn; }
 
 bool ReplacesEnvFx(int envFxType) {

@@ -7,7 +7,13 @@
 //  - a space pirate hurt by Samus sends its nearest partner charging at her to strike with its
 //    rifle's blade, for twice its shot's damage; a hurt pirate gets a health pack thrown by a partner;
 //  - a Seedling that touches Samus latches onto her visor and hurts her until she morphs;
-//  - Samus strikes with the arm cannon on LB (V on the keyboard), as hard as a charged shot.
+//  - Samus strikes with the arm cannon on LB (V on the keyboard), as hard as a charged shot; it
+//    breaks through shields the beam can't, freezes with the Ice Beam, shatters what is frozen and
+//    knocks grenades back;
+//  - pirates take cover and step out to shoot, enemies flank Samus from the sides, pirates throw
+//    grenades, and a pirate whose partner dies is enraged (faster, always closing in to strike);
+//  - Hard+ (port_debug.h HardPlus): all of it, enemies at least 175% as fast, with half as much
+//    health again, and their damage to Samus doubled.
 #include "Kyoto/Math/CTransform4f.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
 
@@ -20,6 +26,10 @@ class CStateManager;
 namespace PortEnemyAi {
 // The factor an enemy's think time runs at (1 for bosses and with the setting at 100%).
 float SpeedScale(const CPatterned& self);
+// Once a game tick (CStateManager::Update): the grenades in flight.
+void Update(CStateManager& mgr, float dt);
+// What the enemies' damage to Samus is multiplied by (Hard+: 2).
+float PlayerDamageScale();
 // At the end of CPatterned::Think, after its state machine (it may take over the body's commands).
 void Think(CPatterned& self, float dt, CStateManager& mgr);
 

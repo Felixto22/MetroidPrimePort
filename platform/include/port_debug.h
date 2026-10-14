@@ -455,6 +455,12 @@ void SetEnemySpeed(int percent);
 // Cannon melee: LB (V on the keyboard) strikes with the arm cannon as hard as a charged shot.
 bool CannonMelee();
 void SetCannonMelee(bool enabled);
+// Hard+ mode: the smarter enemies, at least 175% speed, half as much health again, and double
+// damage to Samus (port_enemy_ai.h). Off by default and in the original experience.
+bool HardPlus();
+// CStateManager::DrawWorld drew the world this frame (screens without it draw at a capped scale).
+void NoteWorldDrawn();
+void SetHardPlus(bool enabled);
 // Global illumination: screen-space bounce light traced by a compute shader (aurora::gfx::ssgi),
 // as a percentage (0: off, up to 200). Off in the original experience.
 const int kGlobalIlluminationDefault = 100;

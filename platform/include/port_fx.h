@@ -36,6 +36,16 @@ void DrawFinish(const CStateManager& mgr, const CTransform4f& view);
 void ThrowPack(const CVector3f& from, const CVector3f& to, float seconds);
 // A burst where the arm cannon struck (beam: CPlayerState::EBeamId).
 void MeleeHit(const CVector3f& at, const CVector3f& dir, int beam);
+// A pirate grenade in flight (each game tick): its glow, blinking faster as the fuse runs down.
+void GrenadeTick(const CVector3f& at, float fuse, bool returned);
+// A grenade going off.
+void Explosion(const CStateManager& mgr, const CVector3f& at, float scale);
+// The cannon strike breaking through a shield, and shattering a frozen enemy.
+void ShieldBreak(const CVector3f& at, const CVector3f& dir);
+void Shatter(const CVector3f& at);
+// A pirate enraged (its partner died): the burst, and the aura it keeps.
+void Rage(const CVector3f& at);
+void RageAura(const CVector3f& at);
 // Forgets the particles and everything tracked (a world change).
 void Reset();
 } // namespace PortFx

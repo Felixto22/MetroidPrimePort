@@ -285,6 +285,7 @@ bool sAmbientParticles = true;
 bool sSmarterEnemies = true;
 int sEnemySpeed = PortDebug::kEnemySpeedDefault;
 bool sCannonMelee = true;
+bool sHardPlus = false;
 bool sCinematicLook = true;
 int sGlobalIllumination = PortDebug::kGlobalIlluminationDefault;
 float sGunOffset[3] = {};
@@ -756,6 +757,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sEnemySpeed = std::clamp(std::atoi(value.c_str()), PortDebug::kEnemySpeedMin, PortDebug::kEnemySpeedMax);
   } else if (key == "cannon_melee") {
     sCannonMelee = ParseBool(value);
+  } else if (key == "hard_plus") {
+    sHardPlus = ParseBool(value);
   } else if (key == "cinematic_look") {
     sCinematicLook = ParseBool(value);
   } else if (key == "global_illumination") {
@@ -979,6 +982,7 @@ std::string SettingsText() {
   file << "smarter_enemies=" << (sSmarterEnemies ? 1 : 0) << '\n';
   file << "enemy_speed=" << sEnemySpeed << '\n';
   file << "cannon_melee=" << (sCannonMelee ? 1 : 0) << '\n';
+  file << "hard_plus=" << (sHardPlus ? 1 : 0) << '\n';
   file << "cinematic_look=" << (sCinematicLook ? 1 : 0) << '\n';
   file << "global_illumination=" << sGlobalIllumination << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
@@ -1445,8 +1449,19 @@ float TickFrames() { return sTickPeriod * 60.f; }
 static bool EffectiveFrameLimit() { return sFrameLimitEnabled || sOriginalExperience; }
 // Photo mode's supersampled capture holds the EFB at this scale for a few frames; never saved.
 static float sCaptureScale = 0.f;
+// Screens without the world (the pause menu, the elevator ride, the map) are layer upon layer of
+// full-screen translucency: above this scale they cost more than the world itself, so they are
+// drawn at it (sMenuCap, from NoteWorldDrawn and RecordFrame).
+constexpr float kMenuScaleCap = 2.f;
+static bool sMenuCap = false;
+static bool sWorldDrawnThisFrame = false;
+static int sFramesWithoutWorld = 0;
 static float EffectiveRenderScale() {
-  return sCaptureScale > 0.f ? sCaptureScale : sOriginalExperience ? 1.f : sRenderScale;
+  if (sCaptureScale > 0.f) {
+    return sCaptureScale;
+  }
+  const float scale = sOriginalExperience ? 1.f : sRenderScale;
+  return sMenuCap ? std::min(scale, kMenuScaleCap) : scale;
 }
 static int EffectiveMsaa() { return sOriginalExperience ? 1 : sMsaa; }
 static int EffectiveAnisotropy() { return sOriginalExperience ? 1 : sAnisotropy; }
@@ -1560,8 +1575,28 @@ static void UpdateDynamicRes(double fps, unsigned frames) {
   }
 }
 
+void NoteWorldDrawn() { sWorldDrawnThisFrame = true; }
+
+static void UpdateMenuScaleCap(bool presented) {
+  if (!presented) {
+    return;
+  }
+  sFramesWithoutWorld = sWorldDrawnThisFrame ? 0 : sFramesWithoutWorld + 1;
+  sWorldDrawnThisFrame = false;
+  const bool cap = sFramesWithoutWorld > 8 && sCaptureScale <= 0.f && !sOriginalExperience &&
+                   sRenderScale > kMenuScaleCap;
+  if (cap == sMenuCap) {
+    return;
+  }
+  sMenuCap = cap;
+  sDynScale = 0.f;
+  VISetFrameBufferScale(EffectiveRenderScale());
+  PortLog::Write("port: screen without the world: render scale %.2fx\n", double(EffectiveRenderScale()));
+}
+
 void RecordFrame(uint64_t durationNs, unsigned ticks, bool presented) {
   sMainLoopRan = true;
+  UpdateMenuScaleCap(presented);
   sTimingNs += durationNs;
   sTimingTicks += ticks;
   if (presented) ++sTimingFrames;
@@ -2204,6 +2239,17 @@ bool CannonMelee() {
 void SetCannonMelee(bool enabled) {
   EnsureInitialized();
   sCannonMelee = enabled;
+  MarkDirty();
+}
+
+bool HardPlus() {
+  EnsureInitialized();
+  return sHardPlus && !sOriginalExperience;
+}
+
+void SetHardPlus(bool enabled) {
+  EnsureInitialized();
+  sHardPlus = enabled;
   MarkDirty();
 }
 
@@ -7170,6 +7216,12 @@ void DrawVideoDisplay() {
     SetCannonMelee(cannonMelee);
   }
   ImGui::SetItemTooltip("LB (or V on the keyboard) strikes with the arm cannon, as hard as a charged shot of the beam.");
+  bool hardPlus = sHardPlus;
+  if (ImGui::Checkbox("Hard+ mode", &hardPlus)) {
+    SetHardPlus(hardPlus);
+  }
+  ImGui::SetItemTooltip("Every smarter-enemy behaviour on, enemies at least 175% as fast with half as much health again,\n"
+                        "and their shots and blows hurt Samus twice as much.");
   bool cinematicLook = sCinematicLook;
   if (ImGui::Checkbox("Cinematic look", &cinematicLook)) {
     SetCinematicLook(cinematicLook);

@@ -292,6 +292,8 @@ public:
   // port_enemy_ai.h: whether it flies, and whether its state machine runs.
   bool PortIsFlyer() const { return x400_31_isFlyer; }
   bool PortStateMachineEnabled() const { return x403_25_enableStateMachine; }
+  // The cannon strike on a frozen enemy: the death it is about to take shatters it.
+  void PortShatter() { x402_26_dieIf80PercFrozen = true; }
 #endif
   void SetWasHit(const bool v) { x400_24_hitByPlayerProjectile = v; }
   bool GetWasHit() const { return x400_24_hitByPlayerProjectile; }

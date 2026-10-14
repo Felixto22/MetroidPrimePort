@@ -135,6 +135,7 @@
 {"Video", "Display", "HUD and view", "Smarter enemies", "enemies ai dodge flee pirates melee heal seedling latch smarter difficulty"},
 {"Video", "Display", "HUD and view", "Enemy speed", "enemies speed fast faster difficulty pace"},
 {"Video", "Display", "HUD and view", "Cannon melee", "melee cannon strike punch lb hit close"},
+{"Video", "Display", "HUD and view", "Hard+ mode", "hard difficulty harder plus mode challenge enemies damage"},
 {"Video", "Display", "HUD and view", "Cinematic look", "cinematic bloom glow color grade contrast filmic"},
 {"Video", "Display", "HUD and view", "Global illumination", "global illumination ssgi bounce light compute shader indirect"},
 {"Video", "Display", "HUD and view", "Fast doors", "fast doors loading streaming rooms wait memory"},

@@ -1541,6 +1541,10 @@ void CStateManager::Update(float dt) {
   PortAp::Poll(*this);
   PortPreScanElevators(*this);
   PortArtifactTemple(*this);
+  // Grenades in flight (port_enemy_ai.h).
+  if (GetGameState() == kGS_Running) {
+    PortEnemyAi::Update(*this, dt);
+  }
   int debugTeleportArea = -1;
   if (PortDebug::ConsumeTeleportRequest(debugTeleportArea)) {
     const TAreaId aid(debugTeleportArea);
@@ -1846,6 +1850,30 @@ void CStateManager::UpdateAreaSounds() {
 void CStateManager::ApplyDamage(const TUniqueId damagerId, const TUniqueId damageeId,
                                 const TUniqueId radiusSender, const CDamageInfo& info,
                                 const CMaterialFilter& filter, const CVector3f& knockbackVec) {
+#ifdef TARGET_PC
+  // Hard+ (port_enemy_ai.h): an enemy's blow or shot hurts Samus twice as much.
+  {
+    static bool sScaling = false;
+    const float scale = PortEnemyAi::PlayerDamageScale();
+    if (!sScaling && scale != 1.f && x84c_player != nullptr && damageeId == x84c_player->GetUniqueId() &&
+        damagerId != x84c_player->GetUniqueId()) {
+      const CEntity* source = GetObjectById(damagerId);
+      bool enemy = TCastToConstPtr< CPatterned >(source) != nullptr;
+      if (const CWeapon* weapon = TCastToConstPtr< CWeapon >(source)) {
+        enemy = weapon->GetOwnerId() != x84c_player->GetUniqueId() &&
+                TCastToConstPtr< CPatterned >(GetObjectById(weapon->GetOwnerId())) != nullptr;
+      }
+      if (enemy) {
+        CDamageInfo scaled(info);
+        scaled.MultiplyDamage(scale);
+        sScaling = true;
+        ApplyDamage(damagerId, damageeId, radiusSender, scaled, filter, knockbackVec);
+        sScaling = false;
+        return;
+      }
+    }
+  }
+#endif
   const CEntity* damagerEnt = GetObjectById(damagerId);
   CEntity* damageeEnt = ObjectById(damageeId);
   const CActor* const damager = TCastToConstPtr< CActor >(damagerEnt);
@@ -3434,6 +3462,7 @@ float CStateManager::PortZoomedFov(float fov) {
 
 void CStateManager::DrawWorld() const {
 #ifdef TARGET_PC
+  PortDebug::NoteWorldDrawn();
   // A zoomed pass (sharp scan window) draws before the frame's own: the frame's captures and
   // the gun belong to that one.
   const bool portZoomed = sPortViewZoom != 1.f;

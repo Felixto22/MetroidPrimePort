@@ -12,6 +12,7 @@
 #include "MetroidPrime/BodyState/CBodyController.hpp"
 #include "MetroidPrime/BodyState/CBodyStateCmdMgr.hpp"
 #include "MetroidPrime/CDamageInfo.hpp"
+#include "MetroidPrime/CDamageVulnerability.hpp"
 #include "MetroidPrime/CHealthInfo.hpp"
 #include "MetroidPrime/CGameCollision.hpp"
 #include "MetroidPrime/CObjectList.hpp"
@@ -37,6 +38,7 @@
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
 
 namespace PortEnemyAi {
 namespace {
@@ -68,6 +70,25 @@ struct Ai {
   float latchCd = 0.f;
   bool hadSolid = false;
   bool hadCharacter = false;
+  // Hard+: its health raised once.
+  bool hpScaled = false;
+  // A pirate's partner, and its fury once the partner is dead.
+  TUniqueId partner = kInvalidUniqueId;
+  bool rage = false;
+  float rageFx = 0.f;
+  // Cover: 0 none, 1 moving to it, 2 hiding, 3 peeking out.
+  int coverPhase = 0;
+  float coverT = 0.f;
+  float coverCd = 0.f;
+  int coverCycles = 0;
+  CVector3f coverPos = CVector3f::Zero();
+  CVector3f peekPos = CVector3f::Zero();
+  // Flanking: the bearing around Samus it heads for.
+  float flankT = 0.f;
+  float flankCd = 0.f;
+  float flankBearing = 0.f;
+  // Grenades.
+  float grenadeCd = -1.f;
 };
 std::unordered_map< ushort, Ai > sAi;
 uint32_t sCounter = 0;
@@ -97,6 +118,12 @@ CVector3f Norm(const CVector3f& v) {
   const float l = v.Magnitude();
   return l > 1e-5f ? v * (1.f / l) : CVector3f(0.f, 1.f, 0.f);
 }
+
+bool Hard() { return PortDebug::HardPlus(); }
+bool Smart() { return PortDebug::SmarterEnemies() || Hard(); }
+float Rand(CStateManager& mgr) { return mgr.Random()->Float(); }
+float RandRange(CStateManager& mgr, float a, float b) { return a + (b - a) * Rand(mgr); }
+CVector3f EyeOf(const CPlayer& player) { return player.GetTranslation() + CVector3f(0.f, 0.f, player.GetEyeHeight()); }
 
 const CMaterialFilter& SolidFilter() {
   static const CMaterialFilter filter = CMaterialFilter::MakeIncludeExclude(
@@ -249,8 +276,9 @@ void Dodge(CPatterned& self, Ai& a, float dt, CStateManager& mgr) {
     return;
   }
   a.lastThreat = shot;
-  // Not every time: about half the shots.
-  if ((mgr.Random()->Next() % 100) >= 55) {
+  // Not every time: about half the shots (more when enraged or on Hard+).
+  const float chance = a.rage ? 0.85f : Hard() ? 0.75f : 0.55f;
+  if (Rand(mgr) >= chance) {
     return;
   }
   // Room to step into: no wall, ground under it.
@@ -265,7 +293,7 @@ void Dodge(CPatterned& self, Ai& a, float dt, CStateManager& mgr) {
            .IsValid()) {
     return;
   }
-  a.dodgeCd = 1.6f;
+  a.dodgeCd = a.rage ? 1.f : 1.6f;
   if (Pirate(self)) {
     const bool right = CVector3f::Dot(side, self.GetTransform().GetRight()) > 0.f;
     self.BodyCtrl()->CommandMgr().DeliverCmd(CBCStepCmd(right ? pas::kSD_Right : pas::kSD_Left, pas::kStep_Dodge));
@@ -313,7 +341,7 @@ void Charge(CPatterned& self, Ai& a, float dt, CStateManager& mgr) {
     if (a.strikeT > 0.f) {
       a.strikeT -= dt;
       if (a.strikeT <= 0.f && dist < 3.6f && CVector3f::Dot(self.GetTransform().GetForward(), dir) > 0.2f) {
-        const CDamageInfo info(CWeaponMode(kWT_AI), MeleeDamage(self), 0.f, 12.f);
+        const CDamageInfo info(CWeaponMode(kWT_AI), MeleeDamage(self) * (a.rage ? 1.5f : 1.f), 0.f, 12.f);
         mgr.ApplyDamage(self.GetUniqueId(), player.GetUniqueId(), self.GetUniqueId(), info,
                         CMaterialFilter::MakeIncludeExclude(CMaterialList(kMT_Solid), CMaterialList()), dir * 12.f);
       }
@@ -393,6 +421,296 @@ void Heal(CPatterned& self, Ai& a, float dt, CStateManager& mgr) {
   buddy->BodyCtrl()->CommandMgr().DeliverCmd(CBCLocomotionCmd(CVector3f::Zero(), Norm(Flat(to - from)), 1.f));
 }
 
+// ---- Grenades (pirates throw them; the cannon strike knocks them back) ----
+struct Grenade {
+  CVector3f pos;
+  CVector3f vel;
+  float fuse;
+  float damage;
+  TUniqueId thrower;
+  bool returned;
+};
+std::vector< Grenade > sGrenades;
+
+void Throw(CPatterned& self, CStateManager& mgr) {
+  CPlayer& player = *mgr.Player();
+  const CVector3f from = self.GetTranslation() + CVector3f(0.f, 0.f, 1.8f) + self.GetTransform().GetForward() * 0.5f;
+  // Where Samus will be, roughly.
+  const CVector3f target = player.GetTranslation() + player.GetVelocityWR() * 0.4f;
+  const float dist = Len(Flat(target - from));
+  const float t = std::clamp(dist / 12.f, 0.8f, 1.6f);
+  constexpr float g = 14.f;
+  Grenade gr;
+  gr.pos = from;
+  gr.vel = (target - from) * (1.f / t) + CVector3f(0.f, 0.f, 0.5f * g * t);
+  gr.fuse = t + 0.9f;
+  gr.damage = MeleeDamage(self) * (Hard() ? 1.5f : 1.f);
+  gr.thrower = self.GetUniqueId();
+  gr.returned = false;
+  if (sGrenades.size() < 16) {
+    sGrenades.push_back(gr);
+  }
+  // The throw: it turns to Samus.
+  self.BodyCtrl()->CommandMgr().DeliverCmd(
+      CBCLocomotionCmd(CVector3f::Zero(), Norm(Flat(player.GetTranslation() - self.GetTranslation())), 1.f));
+}
+
+void Explode(const Grenade& gr, CStateManager& mgr) {
+  PortFx::Explosion(mgr, gr.pos, gr.returned ? 1.3f : 1.f);
+  CPlayer& player = *mgr.Player();
+  const CMaterialFilter filter = CMaterialFilter::MakeIncludeExclude(CMaterialList(kMT_Solid), CMaterialList());
+  constexpr float radius = 4.5f;
+  if (!gr.returned) {
+    const CVector3f d = player.GetTranslation() + CVector3f(0.f, 0.f, 1.f) - gr.pos;
+    const float dist = Len(d);
+    if (dist < radius && !Blocked(mgr, gr.pos + CVector3f(0.f, 0.f, 0.2f), player.GetTranslation() + CVector3f(0.f, 0.f, 1.f))) {
+      const CDamageInfo info(CWeaponMode(kWT_AI), gr.damage * (1.f - 0.5f * dist / radius), 0.f, 14.f);
+      const TUniqueId from = mgr.GetObjectById(gr.thrower) != nullptr ? gr.thrower : player.GetUniqueId();
+      mgr.ApplyDamage(from, player.GetUniqueId(), from, info, filter, Norm(d) * 14.f);
+    }
+    return;
+  }
+  // Knocked back: it hurts the enemies around it.
+  const CObjectList& actors = mgr.GetObjectListById(kOL_Actor);
+  const CDamageInfo info(CWeaponMode(kWT_Missile), 45.f, 0.f, 15.f);
+  for (int idx = actors.GetFirstObjectIndex(); idx != -1; idx = actors.GetNextObjectIndex(idx)) {
+    const CEntity* e = actors.GetObjectByIndex(idx);
+    if (e == nullptr) {
+      continue;
+    }
+    CPatterned* p = TCastToPtr< CPatterned >(mgr.ObjectById(e->GetUniqueId()));
+    if (p == nullptr || !p->IsAlive()) {
+      continue;
+    }
+    const CVector3f d = p->GetTranslation() + CVector3f(0.f, 0.f, 1.f) - gr.pos;
+    if (Len(d) < radius + 0.5f) {
+      mgr.ApplyDamage(player.GetUniqueId(), p->GetUniqueId(), player.GetUniqueId(), info, filter, Norm(d) * 15.f);
+    }
+  }
+}
+
+void UpdateGrenades(CStateManager& mgr, float dt) {
+  constexpr float g = 14.f;
+  for (size_t i = sGrenades.size(); i-- > 0;) {
+    Grenade& gr = sGrenades[i];
+    gr.fuse -= dt;
+    gr.vel = gr.vel - CVector3f(0.f, 0.f, g * dt);
+    const CVector3f step = gr.vel * dt;
+    const float len = Len(step);
+    bool boom = gr.fuse <= 0.f;
+    if (len > 1e-5f) {
+      const CRayCastResult hit =
+          CGameCollision::RayStaticIntersection(mgr, gr.pos, step * (1.f / len), len + 0.12f, SolidFilter());
+      if (hit.IsValid()) {
+        const CVector3f n = hit.GetPlane().GetNormal();
+        gr.pos = hit.GetPoint() + n * 0.13f;
+        gr.vel = (gr.vel - n * (2.f * CVector3f::Dot(gr.vel, n))) * 0.45f;
+        // Knocked back, it goes off where it lands.
+        boom = boom || gr.returned;
+      } else {
+        gr.pos = gr.pos + step;
+      }
+    }
+    if (gr.returned && !boom) {
+      // Or against an enemy.
+      const CObjectList& actors = mgr.GetObjectListById(kOL_Actor);
+      for (int idx = actors.GetFirstObjectIndex(); idx != -1 && !boom; idx = actors.GetNextObjectIndex(idx)) {
+        const CPatterned* p = TCastToConstPtr< CPatterned >(actors.GetObjectByIndex(idx));
+        boom = p != nullptr && p->IsAlive() && Len(p->GetTranslation() + CVector3f(0.f, 0.f, 1.f) - gr.pos) < 1.4f;
+      }
+    }
+    if (boom) {
+      const Grenade done = gr;
+      sGrenades.erase(sGrenades.begin() + std::ptrdiff_t(i));
+      Explode(done, mgr);
+      continue;
+    }
+    PortFx::GrenadeTick(gr.pos, gr.fuse, gr.returned);
+  }
+}
+
+// ---- Cover: behind a column, out of Samus' sight, stepping out to shoot ----
+bool FloorAt(CStateManager& mgr, CVector3f& at, float maxRise) {
+  const CRayCastResult floor =
+      CGameCollision::RayStaticIntersection(mgr, at + CVector3f(0.f, 0.f, 1.5f), CVector3f::Down(), 3.5f, SolidFilter());
+  if (!floor.IsValid() || std::fabs(floor.GetPoint().GetZ() - at.GetZ()) > maxRise) {
+    return false;
+  }
+  at = floor.GetPoint();
+  return true;
+}
+
+bool FindCover(CPatterned& self, Ai& a, CStateManager& mgr) {
+  const CVector3f eye = EyeOf(*mgr.Player());
+  const CVector3f pos = self.GetTranslation();
+  const CVector3f waist(0.f, 0.f, 0.9f);
+  const CVector3f chest(0.f, 0.f, 1.3f);
+  float best = 1e9f;
+  const float start = Rand(mgr) * 6.2831853f;
+  for (int k = 0; k < 16; ++k) {
+    const float ang = start + float(k) * (6.2831853f / 16.f);
+    const float r = (k & 1) ? 3.5f : 6.5f;
+    CVector3f c = pos + CVector3f(std::cos(ang) * r, std::sin(ang) * r, 0.f);
+    if (!FloorAt(mgr, c, 1.2f) || Len(Flat(c - eye)) < 6.f || Blocked(mgr, pos + waist, c + waist) ||
+        !Blocked(mgr, c + chest, eye)) {
+      continue;
+    }
+    const CVector3f side = Norm(CVector3f::Cross(Norm(Flat(eye - c)), CVector3f(0.f, 0.f, 1.f)));
+    for (const float sgn : {1.f, -1.f}) {
+      CVector3f peek = c + side * (1.3f * sgn);
+      if (!FloorAt(mgr, peek, 0.8f) || Blocked(mgr, c + waist, peek + waist) || Blocked(mgr, peek + chest, eye)) {
+        continue;
+      }
+      const float d = Len(c - pos);
+      if (d < best) {
+        best = d;
+        a.coverPos = c;
+        a.peekPos = peek;
+      }
+      break;
+    }
+  }
+  return best < 1e8f;
+}
+
+// True while cover takes over this tick.
+bool Cover(CPatterned& self, Ai& a, float dt, CStateManager& mgr, bool hurt) {
+  const CVector3f eye = EyeOf(*mgr.Player());
+  const CVector3f face = Norm(Flat(eye - self.GetTranslation()));
+  a.coverT -= dt;
+  switch (a.coverPhase) {
+  case 1: { // to the cover
+    const CVector3f to = Flat(a.coverPos - self.GetTranslation());
+    if (Len(to) < 0.6f) {
+      a.coverPhase = 2;
+      a.coverT = RandRange(mgr, 1.f, 1.8f);
+    } else if (a.coverT <= 0.f) {
+      a.coverPhase = 0;
+      return false;
+    }
+    Steer(self, Norm(to), face);
+    return true;
+  }
+  case 2: // hiding
+    if (!Blocked(mgr, a.coverPos + CVector3f(0.f, 0.f, 1.3f), eye)) {
+      a.coverPhase = 0; // Samus came round: no longer cover
+      return false;
+    }
+    if (a.coverT <= 0.f) {
+      if (a.coverCycles-- <= 0) {
+        a.coverPhase = 0;
+        return false;
+      }
+      a.coverPhase = 3;
+      a.coverT = RandRange(mgr, 1.8f, 2.6f);
+    }
+    Steer(self, Norm(Flat(a.coverPos - self.GetTranslation())) * std::min(1.f, Len(a.coverPos - self.GetTranslation())),
+          face);
+    return true;
+  case 3: { // peeking out: steps out, then its own fight takes over (it shoots)
+    if (hurt || a.coverT <= 0.f) {
+      a.coverPhase = 2;
+      a.coverT = RandRange(mgr, 1.f, 2.f);
+      return true;
+    }
+    const CVector3f to = Flat(a.peekPos - self.GetTranslation());
+    if (Len(to) > 0.5f) {
+      Steer(self, Norm(to), face);
+      return true;
+    }
+    return false;
+  }
+  default:
+    return false;
+  }
+}
+
+void MaybeTakeCover(CPatterned& self, Ai& a, float dt, CStateManager& mgr) {
+  if (a.coverCd > 0.f) {
+    a.coverCd -= dt;
+    return;
+  }
+  a.coverCd = RandRange(mgr, 6.f, 10.f) * (Hard() ? 0.7f : 1.f);
+  const CVector3f eye = EyeOf(*mgr.Player());
+  const float dist = Len(Flat(eye - self.GetTranslation()));
+  if (dist < 7.f || dist > 28.f || Blocked(mgr, self.GetTranslation() + CVector3f(0.f, 0.f, 1.5f), eye) ||
+      Rand(mgr) > 0.6f) {
+    return;
+  }
+  if (FindCover(self, a, mgr)) {
+    a.coverPhase = 1;
+    a.coverT = 4.f;
+    a.coverCycles = 2 + int(Rand(mgr) * 2.f);
+  }
+}
+
+// ---- Flanking: coming at Samus from a side instead of straight on ----
+bool Flank(CPatterned& self, Ai& a, float dt, CStateManager& mgr) {
+  CPlayer& player = *mgr.Player();
+  const CVector3f toSelf = Flat(self.GetTranslation() - player.GetTranslation());
+  const float dist = Len(toSelf);
+  const bool ranged = Pirate(self) || self.GetCharacterType() == CPatterned::kC_FlyingPirate ||
+                      self.GetCharacterType() == CPatterned::kC_Drone;
+  const float radius = ranged ? 9.f : 2.5f;
+  if (a.flankT > 0.f) {
+    a.flankT -= dt;
+    const CVector3f target =
+        player.GetTranslation() + CVector3f(std::cos(a.flankBearing), std::sin(a.flankBearing), 0.f) * radius;
+    const CVector3f to = Flat(target - self.GetTranslation());
+    const CVector3f waist(0.f, 0.f, 0.9f);
+    if (Len(to) < 1.5f || Blocked(mgr, self.GetTranslation() + waist, self.GetTranslation() + waist + Norm(to) * 2.f)) {
+      a.flankT = 0.f;
+      return false;
+    }
+    // Blended over its own steering, heavier: it still aims and shoots on the way.
+    self.BodyCtrl()->CommandMgr().DeliverCmd(CBCLocomotionCmd(Norm(to), Norm(-toSelf), 2.5f));
+    return true;
+  }
+  if (a.flankCd > 0.f) {
+    a.flankCd -= dt;
+    return false;
+  }
+  a.flankCd = RandRange(mgr, 5.f, 8.f) * (Hard() ? 0.7f : 1.f);
+  if (dist < (ranged ? 7.f : 5.f) || dist > 28.f ||
+      Blocked(mgr, self.GetTranslation() + CVector3f(0.f, 0.f, 1.5f), EyeOf(player))) {
+    return false;
+  }
+  // Partners split: one to each side.
+  const float side = (self.GetUniqueId().value & 1) != 0 ? 1.f : -1.f;
+  a.flankBearing = std::atan2(toSelf.GetY(), toSelf.GetX()) + side * RandRange(mgr, 1.0f, 1.35f);
+  a.flankT = 4.5f;
+  return false;
+}
+
+// ---- A pirate whose partner died ----
+void CheckPartner(CPatterned& self, Ai& a, CStateManager& mgr) {
+  if (a.rage) {
+    return;
+  }
+  if (a.partner == kInvalidUniqueId) {
+    if (CPatterned* p = NearestPirate(self, mgr, 25.f)) {
+      a.partner = p->GetUniqueId();
+      Ai& b = StateOf(*p);
+      if (b.partner == kInvalidUniqueId) {
+        b.partner = self.GetUniqueId();
+      }
+    }
+    return;
+  }
+  const CPatterned* p = TCastToConstPtr< CPatterned >(mgr.GetObjectById(a.partner));
+  if (p != nullptr && p->IsAlive()) {
+    return;
+  }
+  a.partner = kInvalidUniqueId;
+  a.rage = true;
+  a.coverPhase = 0;
+  a.fleeT = 0.f;
+  a.fled = true; // it fights to the end
+  a.chargeCd = 0.f;
+  PortFx::Rage(self.GetTranslation() + CVector3f(0.f, 0.f, 1.2f));
+  PortLog::Write("port: enemy ai: a space pirate lost its partner and is enraged\n");
+}
+
 // ---- The cannon strike ----
 float sMeleeT = -1.f;
 float sMeleeCool = 0.f;
@@ -440,10 +758,48 @@ void MeleeStrike(CPlayer& player, CStateManager& mgr) {
     if (dist > 0.6f && Blocked(mgr, eye, at - d * (0.4f / dist))) {
       continue;
     }
-    mgr.ApplyDamage(player.GetUniqueId(), act->GetUniqueId(), player.GetUniqueId(), info,
-                    CMaterialFilter::MakeIncludeExclude(CMaterialList(kMT_Solid), CMaterialList()), fwd);
-    PortFx::MeleeHit(dist > 0.6f ? at - d * (0.35f / dist) : eye + fwd * 0.8f, fwd, beam);
+    const CVector3f fxAt = dist > 0.6f ? at - d * (0.35f / dist) : eye + fwd * 0.8f;
+    const CMaterialFilter filter = CMaterialFilter::MakeIncludeExclude(CMaterialList(kMT_Solid), CMaterialList());
+    CPatterned* enemy = TCastToPtr< CPatterned >(act);
+    if (enemy != nullptr && enemy->GetBodyCtrl() != nullptr && enemy->GetBodyCtrl()->IsFrozen()) {
+      // Frozen: it shatters.
+      enemy->PortShatter();
+      const CDamageInfo lethal(CWeaponMode(kWT_None), h->GetHP() + 1000.f, 0.f, 10.f);
+      mgr.ApplyDamage(player.GetUniqueId(), act->GetUniqueId(), player.GetUniqueId(), lethal, filter, fwd);
+      PortFx::Shatter(fxAt);
+      ++hits;
+      continue;
+    }
+    const CDamageVulnerability* vuln = act->GetDamageVulnerability(eye, fwd, info);
+    const bool hurts = vuln == nullptr || vuln->WeaponHurts(info.GetWeaponMode(), CDamageVulnerability::kRD_No);
+    if (enemy != nullptr && !hurts) {
+      // A shield the beam can't get through: the blow breaks through it, at a little over half strength.
+      CDamageInfo breaker(CWeaponMode(kWT_None), info.GetDamage() * 0.6f, 0.f, info.GetKnockBackPower());
+      mgr.ApplyDamage(player.GetUniqueId(), act->GetUniqueId(), player.GetUniqueId(), breaker, filter, fwd);
+      PortFx::ShieldBreak(fxAt, fwd);
+    } else {
+      mgr.ApplyDamage(player.GetUniqueId(), act->GetUniqueId(), player.GetUniqueId(), info, filter, fwd);
+      PortFx::MeleeHit(fxAt, fwd, beam);
+    }
+    // The Ice Beam's blow freezes.
+    if (enemy != nullptr && enemy->IsAlive() && beam == CPlayerState::kBI_Ice && enemy->GetBodyCtrl() != nullptr &&
+        !enemy->GetBodyCtrl()->IsFrozen() && !IsBoss(enemy->GetCharacterType()) &&
+        (vuln == nullptr || vuln->WeaponHurts(CWeaponMode(kWT_Ice), CDamageVulnerability::kRD_No))) {
+      enemy->Freeze(mgr, at, CUnitVector3f(fwd), 5.f);
+    }
     ++hits;
+  }
+  // Grenades within reach go back the way they came, along the aim.
+  for (Grenade& gr : sGrenades) {
+    const CVector3f d = gr.pos - eye;
+    const float dist = Len(d);
+    if (gr.returned || dist > 3.5f || (dist > 0.5f && CVector3f::Dot(d * (1.f / dist), fwd) < 0.2f)) {
+      continue;
+    }
+    gr.returned = true;
+    gr.vel = fwd * 22.f + CVector3f(0.f, 0.f, 2.5f);
+    gr.fuse = std::max(gr.fuse, 1.6f);
+    PortFx::MeleeHit(gr.pos, fwd, beam);
   }
 }
 
@@ -487,7 +843,30 @@ float SpeedScale(const CPatterned& self) {
   if (!self.IsAlive() || IsBoss(self.GetCharacterType())) {
     return 1.f;
   }
-  return float(PortDebug::EnemySpeed()) / 100.f;
+  float scale = float(PortDebug::EnemySpeed()) / 100.f;
+  if (Hard()) {
+    scale = std::max(scale, 1.75f);
+  }
+  if (Smart()) {
+    const auto it = sAi.find(self.GetUniqueId().value);
+    if (it != sAi.end() && it->second.rage) {
+      scale *= 1.35f;
+    }
+  }
+  return scale;
+}
+
+float PlayerDamageScale() { return Hard() ? 2.f : 1.f; }
+
+void Update(CStateManager& mgr, float dt) {
+  if (dt <= 0.f || mgr.GetPlayer() == nullptr) {
+    return;
+  }
+  if (!Smart()) {
+    sGrenades.clear();
+    return;
+  }
+  UpdateGrenades(mgr, dt);
 }
 
 void Think(CPatterned& self, float dt, CStateManager& mgr) {
@@ -495,11 +874,18 @@ void Think(CPatterned& self, float dt, CStateManager& mgr) {
   if ((sCounter & 255) == 0) {
     Prune();
   }
-  if (!PortDebug::SmarterEnemies() || !self.IsAlive() || mgr.GetPlayer() == nullptr ||
-      IsBoss(self.GetCharacterType()) || self.BodyCtrl() == nullptr || dt <= 0.f) {
+  if (!Smart() || !self.IsAlive() || mgr.GetPlayer() == nullptr || IsBoss(self.GetCharacterType()) ||
+      self.BodyCtrl() == nullptr || dt <= 0.f) {
     return;
   }
   Ai& a = StateOf(self);
+  // Hard+: half as much health again, once.
+  if (Hard() && !a.hpScaled) {
+    a.hpScaled = true;
+    if (CHealthInfo* h = self.HealthInfo(mgr)) {
+      h->SetHP(h->GetHP() * 1.5f);
+    }
+  }
   const float hp = HpOf(self, mgr);
   if (a.lastHp < 0.f) {
     a.maxHp = a.lastHp = hp;
@@ -515,6 +901,21 @@ void Think(CPatterned& self, float dt, CStateManager& mgr) {
   }
   if (Pirate(self)) {
     Heal(self, a, dt, mgr);
+    CheckPartner(self, a, mgr);
+    if (a.rage) {
+      a.rageFx -= dt;
+      if (a.rageFx <= 0.f) {
+        a.rageFx = 0.35f;
+        PortFx::RageAura(self.GetTranslation() + CVector3f(0.f, 0.f, 1.f));
+      }
+      // Enraged: it keeps coming at Samus to strike.
+      if (a.chargeT <= 0.f && a.chargeCd <= 0.f) {
+        a.chargeT = 6.f;
+        a.chargeCd = 3.f;
+        a.struck = false;
+        a.coverPhase = 0;
+      }
+    }
   }
   const bool mobile = Mobile(self.GetCharacterType());
   if (!mobile) {
@@ -531,14 +932,40 @@ void Think(CPatterned& self, float dt, CStateManager& mgr) {
     return;
   }
   if (a.chargeT > 0.f) {
+    a.coverPhase = 0;
     Charge(self, a, dt, mgr);
     return;
+  }
+  if (Pirate(self)) {
+    // Grenades now and then, when Samus is in sight and not too close.
+    if (a.grenadeCd < 0.f) {
+      a.grenadeCd = RandRange(mgr, 5.f, 12.f);
+    }
+    a.grenadeCd -= dt;
+    if (a.grenadeCd <= 0.f && a.coverPhase != 1) {
+      a.grenadeCd = RandRange(mgr, 8.f, 14.f) * (Hard() ? 0.65f : 1.f);
+      const CVector3f eye = EyeOf(*mgr.Player());
+      const float dist = Len(Flat(eye - self.GetTranslation()));
+      if (dist > 7.f && dist < 22.f && Rand(mgr) < 0.5f &&
+          !Blocked(mgr, self.GetTranslation() + CVector3f(0.f, 0.f, 1.8f), eye)) {
+        Throw(self, mgr);
+      }
+    }
+    if (a.coverPhase == 0) {
+      MaybeTakeCover(self, a, dt, mgr);
+    }
+    if (a.coverPhase != 0 && Cover(self, a, dt, mgr, hurt)) {
+      return;
+    }
+  }
+  if (a.coverPhase == 0) {
+    Flank(self, a, dt, mgr);
   }
   Dodge(self, a, dt, mgr);
 }
 
 bool SeedlingTouch(CSeedling& self, CStateManager& mgr) {
-  if (!PortDebug::SmarterEnemies() || !self.IsAlive()) {
+  if (!Smart() || !self.IsAlive()) {
     return false;
   }
   Ai& a = StateOf(self);
@@ -564,7 +991,7 @@ bool SeedlingTouch(CSeedling& self, CStateManager& mgr) {
 }
 
 bool SeedlingThink(CSeedling& self, float dt, CStateManager& mgr) {
-  if (!PortDebug::SmarterEnemies()) {
+  if (!Smart()) {
     return false;
   }
   Ai& a = StateOf(self);
@@ -614,7 +1041,7 @@ bool SeedlingThink(CSeedling& self, float dt, CStateManager& mgr) {
     self.SetTransform(CTransform4f::FromColumns(right, u, f, pos));
   }
   self.SetVelocityWR(CVector3f::Zero());
-  const CDamageInfo info(CWeaponMode(kWT_PoisonWater), 9.f * dt, 0.f, 0.f, true);
+  const CDamageInfo info(CWeaponMode(kWT_PoisonWater), (Hard() ? 14.f : 9.f) * dt, 0.f, 0.f, true);
   player.SetNoDamageLoopSfx(true);
   mgr.ApplyDamage(self.GetUniqueId(), player.GetUniqueId(), self.GetUniqueId(), info,
                   CMaterialFilter::MakeIncludeExclude(CMaterialList(kMT_Solid), CMaterialList()), CVector3f::Zero());
@@ -623,7 +1050,7 @@ bool SeedlingThink(CSeedling& self, float dt, CStateManager& mgr) {
   return true;
 }
 
-float SeedlingCoolOffScale() { return PortDebug::SmarterEnemies() ? 0.45f : 1.f; }
+float SeedlingCoolOffScale() { return Smart() ? 0.45f : 1.f; }
 
 void PlayerInput(CPlayer& player, const CFinalInput& input, CStateManager& mgr) {
   const float dt = input.Time();
@@ -681,6 +1108,7 @@ CTransform4f MeleeGunTurn() {
 
 void Reset() {
   sAi.clear();
+  sGrenades.clear();
   sMeleeT = -1.f;
 }
 } // namespace PortEnemyAi

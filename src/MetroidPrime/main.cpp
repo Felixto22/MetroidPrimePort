@@ -9,6 +9,7 @@
 #include <chrono>
 #include <aurora/aurora.h>
 #include <aurora/event.h>
+#include <aurora/gfx.h>
 #include <aurora/phase.hpp>
 #include <dolphin/gx/GXExtra.h>
 #include <SDL3/SDL_mouse.h>
@@ -260,8 +261,12 @@ static void EndFrame(uint64_t loopStartNs, uint64_t workEndNs) {
     Top(sPeriod, sPeriodCount, sPeriodFrames, phases, sizeof(phases));
     char gpu[512];
     GpuPasses(gpu, sizeof(gpu));
-    PortLog::Write("MP slow: %.1f ms of work a frame over %u frames; main: %s%s%s\n", avg, sPeriodFrames, phases,
-                   gpu[0] != '\0' ? "; gpu: " : "", gpu);
+    const AuroraStats* stats = aurora_get_stats();
+    PortLog::Write("MP slow: %.1f ms of work a frame over %u frames; main: %s%s%s; last frame: %u draws (%u merged), "
+                   "%u passes, framebuffer scale %u\n",
+                   avg, sPeriodFrames, phases, gpu[0] != '\0' ? "; gpu: " : "", gpu,
+                   stats != nullptr ? stats->drawCallCount : 0u, stats != nullptr ? stats->mergedDrawCallCount : 0u,
+                   stats != nullptr ? stats->renderPassCount : 0u, aurora_get_frame_buffer_scale());
     sLastSlowNs = workEndNs;
     if (!sGpuTimesOn && GXPortGpuTimesSupported()) {
       sGpuTimesOn = true;
