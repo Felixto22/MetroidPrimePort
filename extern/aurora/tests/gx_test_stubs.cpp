@@ -7,6 +7,7 @@
 #include "gfx/volfog.hpp"
 #include "gfx/ssao.hpp"
 #include "gfx/ssgi.hpp"
+#include "gfx/post.hpp"
 #include "gfx/rt.hpp"
 #include "gfx/scenecap.hpp"
 #include "gfx/thermal.hpp"
@@ -313,6 +314,12 @@ bool ensure_task() { return false; }
 bool record(const Params& params) { return false; }
 void shutdown() {}
 } // namespace aurora::gfx::ssgi
+
+namespace aurora::gfx::post {
+bool ensure_task() { return false; }
+bool record(const Params& params) { return false; }
+void shutdown() {}
+} // namespace aurora::gfx::post
 
 namespace aurora::gfx::rt {
 bool available() { return false; }

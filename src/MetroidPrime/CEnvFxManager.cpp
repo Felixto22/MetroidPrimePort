@@ -38,6 +38,7 @@
 #ifdef TARGET_PC
 #include "MetroidPrime/CActor.hpp"
 #include "port_debug.h"
+#include "port_fx.h"
 #endif
 
 static const float gkReal32Max = FLT_MAX;
@@ -797,6 +798,12 @@ void CEnvFxManager::SetupRainTevs() {
 
 void CEnvFxManager::Render(const CStateManager& mgr) {
   EEnvFxType fxType = mgr.GetWorld()->GetNeededEnvFx();
+#ifdef TARGET_PC
+  // The GPU's rain and snow stand in for these (port_fx.h).
+  if (PortFx::ReplacesEnvFx(fxType)) {
+    return;
+  }
+#endif
   if (fxType != kEFX_None) {
     if (mgr.GetPlayer()->GetMorphballTransitionState() != CPlayer::kMS_Unmorphed ||
         (mgr.GetPlayerState()->GetCurrentVisor() != CPlayerState::kPV_Thermal &&

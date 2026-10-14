@@ -10,6 +10,7 @@
 #include "port_foliage.h"
 #include "port_dynamic_lights.h"
 #include "port_rt_shadows.h"
+#include "port_fx.h"
 #include "port_gpu_geo.h"
 #include "port_env.h"
 #include "port_freecam.h"
@@ -757,6 +758,7 @@ CStateManager::~CStateManager() {
   PortRetailWater::Reset();
   PortFoliage::Reset();
   PortGpuGeo::Reset();
+  PortFx::Reset();
   CMemory::OffsetFakeStatics(
       -(x808_objectLists.size() * sizeof(CObjectList) + 0x11c)); // TODO what is this 11c?
   x88c_rumbleManager->HardStopAll();
@@ -3585,11 +3587,13 @@ void CStateManager::DrawWorld() const {
   PortRtShadows::Trace();
   PortDrawAmbientOcclusion(*this);
   PortDrawGlobalIllumination(*this);
+  // Clouds over the sky, then the volumetric fog, caustics and wet or snowy ground (port_fx.h).
+  PortFx::DrawAtmosphere(*this, backupViewMatrix, sPortSunTravel);
   // The opaque frame for glass to reflect (GXPortSetGlass) and soft particles to fade against.
+  bool portCaptured = false;
   {
     const bool portSoft = PortDebug::SoftParticles();
-    bool portCaptured = false;
-    if (PortDebug::GlassReflections() > 0 || portSoft) {
+    if (PortDebug::GlassReflections() > 0 || portSoft || PortFx::WantsSceneCapture()) {
       const CGraphics::CProjectionState& portProj = CGraphics::GetProjectionState();
       const float portDepth[4] = {portProj.GetNear(), portProj.GetFar(), 0.125f, 1.f};
       portCaptured = GXPortSceneCapture(portDepth) != GX_FALSE;
@@ -3905,8 +3909,20 @@ void CStateManager::DrawWorld() const {
   }
 
 #ifdef TARGET_PC
+  // The GPU particles and weather (port_fx.h). The heat haze bends the frame as it is now, the
+  // fluids and transparents included: capture it again.
+  if (portCaptured && PortDebug::HeatDistortion()) {
+    const CGraphics::CProjectionState& portProj = CGraphics::GetProjectionState();
+    const float portDepth[4] = {portProj.GetNear(), portProj.GetFar(), 0.125f, 1.f};
+    GXPortSceneCapture(portDepth);
+  }
+  PortFx::DrawParticles(*this, backupViewMatrix, portCaptured);
   // Burning plants, their smoke and the rain splashing on them (PortFoliage).
   PortFoliage::DrawEffects(*this);
+  // Motion blur and depth of field over the world, the gun left sharp (port_fx.h).
+  if (!portZoomed) {
+    PortFx::DrawFinish(*this, backupViewMatrix);
+  }
   // The HUD, visor and the next pass's draws before its capture don't fade against this frame.
   GXPortSetSoftParticles(GX_FALSE);
 #endif

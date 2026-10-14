@@ -108,6 +108,12 @@ public:
     void SetFogExplicit(ERglFogMode mode, const CColor& color, const CVector2f& range);
     bool IsFogDisabled() const;
     void DisableFog();
+#ifdef TARGET_PC
+    // The fog as it is now (port_fx.h: the volumetric fog takes its colour and range).
+    const CVector3f& PortColor() const { return x1c_colorCur; }
+    const CVector2f& PortRange() const { return x4_rangeCur; }
+    ERglFogMode PortMode() const { return x0_fogMode; }
+#endif
   };
 
   class CChainIterator {

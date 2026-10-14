@@ -5,6 +5,7 @@
 #include "../gfx/volfog.hpp"
 #include "../gfx/ssao.hpp"
 #include "../gfx/ssgi.hpp"
+#include "../gfx/post.hpp"
 #include "../gfx/rt.hpp"
 #include "../gfx/scenecap.hpp"
 #include "../gfx/thermal.hpp"
@@ -1353,6 +1354,14 @@ void handle_aurora(ByteReader& reader) noexcept {
     }
     std::memcpy(&params, words, sizeof(params));
     gfx::ssgi::record(params);
+  } else if (subCmd == GX_AURORA_PORT_POST) {
+    gfx::post::Params params;
+    u32 words[sizeof(params) / sizeof(u32)];
+    for (u32& word : words) {
+      word = reader.read<u32>();
+    }
+    std::memcpy(&params, words, sizeof(params));
+    gfx::post::record(params);
   } else if (subCmd == GX_AURORA_PORT_RELIEF) {
     const f32 strength = std::clamp(reader.read<f32>(), 0.f, 2.f);
     if (g_gxState.pbrRelief.x() != strength) {

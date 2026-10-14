@@ -366,6 +366,8 @@ extern "C" {
 #define GX_AURORA_PORT_RT_SHADOWS 0x007C
 // Port extension: relief (parallax) on the Remastered surfaces with normal maps (GXPortSetRelief). Payload: f32 strength.
 #define GX_AURORA_PORT_RELIEF 0x007D
+// Port extension: a full-screen atmosphere, clouds or finish pass (GXPortPost). Payload: 140 u32 words.
+#define GX_AURORA_PORT_POST 0x007E
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

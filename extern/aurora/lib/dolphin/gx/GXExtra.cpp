@@ -8,6 +8,7 @@
 #include "../../gfx/volfog.hpp"
 #include "../../gfx/ssao.hpp"
 #include "../../gfx/ssgi.hpp"
+#include "../../gfx/post.hpp"
 #include "../../gfx/rt.hpp"
 #include "../../gfx/scenecap.hpp"
 #include "../../gfx/thermal.hpp"
@@ -227,6 +228,23 @@ GXBool GXPortSSGI(const GXPortSsgiParams* ssgi) {
   u32 words[sizeof(GXPortSsgiParams) / sizeof(u32)];
   std::memcpy(words, ssgi, sizeof(words));
   GX_WRITE_AURORA(GX_AURORA_PORT_SSGI);
+  for (const u32 word : words) {
+    GX_WRITE_U32(word);
+  }
+  return true;
+}
+
+GXBool GXPortPost(const GXPortPostParams* post) {
+  if (post == nullptr || sDrawIdMode) {
+    return true;
+  }
+  if (!aurora::gfx::post::ensure_task()) {
+    return false;
+  }
+  static_assert(sizeof(GXPortPostParams) == sizeof(aurora::gfx::post::Params));
+  u32 words[sizeof(GXPortPostParams) / sizeof(u32)];
+  std::memcpy(words, post, sizeof(words));
+  GX_WRITE_AURORA(GX_AURORA_PORT_POST);
   for (const u32 word : words) {
     GX_WRITE_U32(word);
   }

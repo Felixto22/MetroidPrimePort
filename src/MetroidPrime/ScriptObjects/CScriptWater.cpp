@@ -28,6 +28,7 @@
 #include "Kyoto/Particles/CGenDescription.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 #ifdef TARGET_PC
+#include "port_fx.h"
 #include "port_room_liquid.h"
 #include "port_retail_water.h"
 #endif
@@ -276,6 +277,10 @@ void CScriptWater::Render(const CStateManager& mgr) const {
         mgr.GetWorld()->GetAreaAlways(mgr.GetNextAreaId()).GetAABB().GetCenterPoint();
     bool remastered = false;
 #ifdef TARGET_PC
+    // The modern effects' caustics, bubbles and heat haze know where the fluids are (port_fx.h).
+    PortFx::NoteFluid(int(x1b4_fluidPlane->GetFluidType()), GetTranslation() + x130_bounds.GetMinPoint(),
+                      GetTranslation() + x130_bounds.GetMaxPoint(),
+                      GetTranslation().GetZ() + x130_bounds.GetMaxPoint().GetZ());
     // A mod's surface stands in for the fluid plane (port_room_liquid.h).
     remastered = PortRoomLiquid::Draw(mgr, mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()), GetUniqueId().value,
                                       GetTranslation(), x1b4_fluidPlane->GetFluidType(),

@@ -305,6 +305,29 @@ typedef struct {
   u32 misc[4];    // rays per texel (2..16), steps per ray (4..24), 0, 0
 } GXPortSsgiParams;
 GXBool GXPortSSGI(const GXPortSsgiParams* params);
+// Port extension: full-screen passes over the frame as drawn so far (aurora::gfx::post):
+// misc[0] 0 = atmosphere (volumetric fog lit by the sun and up to 8 lights, caustics under water,
+// wet ground in the rain), 1 = clouds (a volumetric layer on the sky's pixels), 2 = finish (motion
+// blur from the camera's motion, depth of field). View space is GX's.
+typedef struct {
+  f32 frustum[4];     // left, right, bottom, top at a view depth of 1
+  f32 depth[4];       // near, far, and the GX z range the world draws in (min, max)
+  f32 view[12];       // view to world, rows (right, up, towards the camera; w the eye)
+  f32 prevView[12];   // the same for the last frame
+  f32 fog[4];         // density (1/m), height falloff (1/m), base height, noise (0..1)
+  f32 fogColor[4];    // ambient in-scatter (linear rgb), anisotropy
+  f32 sun[4];         // direction to the sun (world), intensity
+  f32 sunColor[4];    // linear rgb, max fog distance (m)
+  f32 lights[8][8];   // position xyz, radius; colour rgb, intensity
+  f32 water[4];       // surface height, caustics strength, eye under water, depth they reach (m)
+  f32 waterBox[4];    // min x, min y, max x, max y
+  f32 weather[4];     // wetness (0..1), time (s), snow cover (0..1), 0
+  f32 clouds[4];      // coverage, base height above the eye (m), thickness (m), wind speed
+  f32 cloudColor[4];  // lit colour (linear rgb), density
+  f32 finish[4];      // motion blur (0..1), depth of field (0..1), focus distance (m; negative: the screen centre's), focus range (m)
+  u32 misc[4];        // mode, light count, frame counter, 0
+} GXPortPostParams;
+GXBool GXPortPost(const GXPortPostParams* params);
 // Port extension: ray-traced sun shadows (aurora::gfx::rt), with DirectX Raytracing on Dawn's
 // D3D12 device (Windows, a DXR 1.1 GPU). Whether this device can: the first call sets it up.
 GXBool GXPortRtAvailable(void);

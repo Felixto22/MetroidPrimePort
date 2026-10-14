@@ -272,6 +272,16 @@ bool sRayTracedReflections = true;
 int sGpuGrass = PortDebug::kGpuGrassDefault;
 int sRelief = PortDebug::kReliefDefault;
 bool sDebris = true;
+bool sModernParticles = true;
+bool sModernRain = true;
+int sVolumetricFogAmount = PortDebug::kVolumetricFogAmountDefault;
+bool sVolumetricClouds = true;
+int sMotionBlur = PortDebug::kMotionBlurDefault;
+bool sDepthOfField = true;
+bool sHeatDistortion = true;
+bool sUnderwaterEffects = true;
+bool sSnowFootprints = true;
+bool sAmbientParticles = true;
 bool sCinematicLook = true;
 int sGlobalIllumination = PortDebug::kGlobalIlluminationDefault;
 float sGunOffset[3] = {};
@@ -717,6 +727,26 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sRelief = std::clamp(std::atoi(value.c_str()), PortDebug::kReliefMin, PortDebug::kReliefMax);
   } else if (key == "debris") {
     sDebris = ParseBool(value);
+  } else if (key == "modern_particles") {
+    sModernParticles = ParseBool(value);
+  } else if (key == "modern_rain") {
+    sModernRain = ParseBool(value);
+  } else if (key == "volumetric_fog") {
+    sVolumetricFogAmount = std::clamp(std::atoi(value.c_str()), PortDebug::kVolumetricFogAmountMin, PortDebug::kVolumetricFogAmountMax);
+  } else if (key == "volumetric_clouds") {
+    sVolumetricClouds = ParseBool(value);
+  } else if (key == "motion_blur") {
+    sMotionBlur = std::clamp(std::atoi(value.c_str()), PortDebug::kMotionBlurMin, PortDebug::kMotionBlurMax);
+  } else if (key == "depth_of_field") {
+    sDepthOfField = ParseBool(value);
+  } else if (key == "heat_distortion") {
+    sHeatDistortion = ParseBool(value);
+  } else if (key == "underwater_effects") {
+    sUnderwaterEffects = ParseBool(value);
+  } else if (key == "snow_footprints") {
+    sSnowFootprints = ParseBool(value);
+  } else if (key == "ambient_particles") {
+    sAmbientParticles = ParseBool(value);
   } else if (key == "cinematic_look") {
     sCinematicLook = ParseBool(value);
   } else if (key == "global_illumination") {
@@ -927,6 +957,16 @@ std::string SettingsText() {
   file << "gpu_grass=" << sGpuGrass << '\n';
   file << "relief=" << sRelief << '\n';
   file << "debris=" << (sDebris ? 1 : 0) << '\n';
+  file << "modern_particles=" << (sModernParticles ? 1 : 0) << '\n';
+  file << "modern_rain=" << (sModernRain ? 1 : 0) << '\n';
+  file << "volumetric_fog=" << sVolumetricFogAmount << '\n';
+  file << "volumetric_clouds=" << (sVolumetricClouds ? 1 : 0) << '\n';
+  file << "motion_blur=" << sMotionBlur << '\n';
+  file << "depth_of_field=" << (sDepthOfField ? 1 : 0) << '\n';
+  file << "heat_distortion=" << (sHeatDistortion ? 1 : 0) << '\n';
+  file << "underwater_effects=" << (sUnderwaterEffects ? 1 : 0) << '\n';
+  file << "snow_footprints=" << (sSnowFootprints ? 1 : 0) << '\n';
+  file << "ambient_particles=" << (sAmbientParticles ? 1 : 0) << '\n';
   file << "cinematic_look=" << (sCinematicLook ? 1 : 0) << '\n';
   file << "global_illumination=" << sGlobalIllumination << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
@@ -2009,6 +2049,116 @@ bool Debris() {
 void SetDebris(bool enabled) {
   EnsureInitialized();
   sDebris = enabled;
+  MarkDirty();
+}
+
+bool ModernParticles() {
+  EnsureInitialized();
+  return sModernParticles && !sOriginalExperience;
+}
+
+void SetModernParticles(bool enabled) {
+  EnsureInitialized();
+  sModernParticles = enabled;
+  MarkDirty();
+}
+
+bool ModernRain() {
+  EnsureInitialized();
+  return sModernRain && !sOriginalExperience;
+}
+
+void SetModernRain(bool enabled) {
+  EnsureInitialized();
+  sModernRain = enabled;
+  MarkDirty();
+}
+
+int VolumetricFogAmount() {
+  EnsureInitialized();
+  return sOriginalExperience ? 0 : sVolumetricFogAmount;
+}
+
+void SetVolumetricFogAmount(int percent) {
+  EnsureInitialized();
+  sVolumetricFogAmount = std::clamp(percent, kVolumetricFogAmountMin, kVolumetricFogAmountMax);
+  MarkDirty();
+}
+
+bool VolumetricClouds() {
+  EnsureInitialized();
+  return sVolumetricClouds && !sOriginalExperience;
+}
+
+void SetVolumetricClouds(bool enabled) {
+  EnsureInitialized();
+  sVolumetricClouds = enabled;
+  MarkDirty();
+}
+
+int MotionBlur() {
+  EnsureInitialized();
+  return sOriginalExperience ? 0 : sMotionBlur;
+}
+
+void SetMotionBlur(int percent) {
+  EnsureInitialized();
+  sMotionBlur = std::clamp(percent, kMotionBlurMin, kMotionBlurMax);
+  MarkDirty();
+}
+
+bool DepthOfField() {
+  EnsureInitialized();
+  return sDepthOfField && !sOriginalExperience;
+}
+
+void SetDepthOfField(bool enabled) {
+  EnsureInitialized();
+  sDepthOfField = enabled;
+  MarkDirty();
+}
+
+bool HeatDistortion() {
+  EnsureInitialized();
+  return sHeatDistortion && !sOriginalExperience;
+}
+
+void SetHeatDistortion(bool enabled) {
+  EnsureInitialized();
+  sHeatDistortion = enabled;
+  MarkDirty();
+}
+
+bool UnderwaterEffects() {
+  EnsureInitialized();
+  return sUnderwaterEffects && !sOriginalExperience;
+}
+
+void SetUnderwaterEffects(bool enabled) {
+  EnsureInitialized();
+  sUnderwaterEffects = enabled;
+  MarkDirty();
+}
+
+bool SnowFootprints() {
+  EnsureInitialized();
+  return sSnowFootprints && !sOriginalExperience;
+}
+
+void SetSnowFootprints(bool enabled) {
+  EnsureInitialized();
+  sSnowFootprints = enabled;
+  MarkDirty();
+}
+
+bool AmbientParticles() {
+  EnsureInitialized();
+  return sAmbientParticles && !sOriginalExperience;
+}
+
+void SetAmbientParticles(bool enabled) {
+  EnsureInitialized();
+  sAmbientParticles = enabled;
   MarkDirty();
 }
 
@@ -6906,6 +7056,59 @@ void DrawVideoDisplay() {
     SetDebris(debris);
   }
   ImGui::SetItemTooltip("Shots that hit the world knock loose chunks of rock that bounce and settle.");
+  bool modernParticles = sModernParticles;
+  if (ImGui::Checkbox("Modern particles", &modernParticles)) {
+    SetModernParticles(modernParticles);
+  }
+  ImGui::SetItemTooltip("GPU particles over the game's own: sparks, smoke and glow trailing every beam and missile,\n"
+                        "bursts of sparks, smoke and embers where they hit, and the charge beam gathering light.");
+  bool modernRain = sModernRain;
+  if (ImGui::Checkbox("Modern rain", &modernRain)) {
+    SetModernRain(modernRain);
+  }
+  ImGui::SetItemTooltip("Rain and snow drawn by the GPU in place of the game's: thousands of streaks in the wind,\n"
+                        "kept out from under roofs, splashing where they land; snowflakes that drift.");
+  int volumetricFogAmount = sVolumetricFogAmount;
+  if (ImGui::SliderInt("Volumetric fog", &volumetricFogAmount, kVolumetricFogAmountMin, kVolumetricFogAmountMax, volumetricFogAmount == 0 ? "Off" : "%d%%")) {
+    SetVolumetricFogAmount(volumetricFogAmount);
+  }
+  ImGui::SetItemTooltip("Fog marched through in 3D: thicker low down, drifting, lit by the sun and every light in it\n"
+                        "(light shafts, glows around lamps and shots). 0 turns it off.");
+  bool volumetricClouds = sVolumetricClouds;
+  if (ImGui::Checkbox("Volumetric clouds", &volumetricClouds)) {
+    SetVolumetricClouds(volumetricClouds);
+  }
+  ImGui::SetItemTooltip("A layer of 3D clouds over the sky outdoors, drifting with the wind and lit by the sun.");
+  int motionBlur = sMotionBlur;
+  if (ImGui::SliderInt("Motion blur", &motionBlur, kMotionBlurMin, kMotionBlurMax, motionBlur == 0 ? "Off" : "%d%%")) {
+    SetMotionBlur(motionBlur);
+  }
+  ImGui::SetItemTooltip("Blur along the camera's motion when turning or moving fast. 0 turns it off.");
+  bool depthOfField = sDepthOfField;
+  if (ImGui::Checkbox("Depth of field", &depthOfField)) {
+    SetDepthOfField(depthOfField);
+  }
+  ImGui::SetItemTooltip("In cutscenes and while scanning, what is far from the focus blurs like a camera lens.");
+  bool heatDistortion = sHeatDistortion;
+  if (ImGui::Checkbox("Heat distortion", &heatDistortion)) {
+    SetHeatDistortion(heatDistortion);
+  }
+  ImGui::SetItemTooltip("The air shimmers over lava and around hot shots and explosions.");
+  bool underwaterEffects = sUnderwaterEffects;
+  if (ImGui::Checkbox("Underwater effects", &underwaterEffects)) {
+    SetUnderwaterEffects(underwaterEffects);
+  }
+  ImGui::SetItemTooltip("Light caustics dancing on what is under water, and bubbles rising when Samus is submerged.");
+  bool snowFootprints = sSnowFootprints;
+  if (ImGui::Checkbox("Snow footprints", &snowFootprints)) {
+    SetSnowFootprints(snowFootprints);
+  }
+  ImGui::SetItemTooltip("Samus leaves footprints (and the morph ball a track) in the snow, and snow settles on the ground.");
+  bool ambientParticles = sAmbientParticles;
+  if (ImGui::Checkbox("Ambient particles", &ambientParticles)) {
+    SetAmbientParticles(ambientParticles);
+  }
+  ImGui::SetItemTooltip("Dust motes floating in the air (catching the light), embers and ash over lava.");
   bool cinematicLook = sCinematicLook;
   if (ImGui::Checkbox("Cinematic look", &cinematicLook)) {
     SetCinematicLook(cinematicLook);

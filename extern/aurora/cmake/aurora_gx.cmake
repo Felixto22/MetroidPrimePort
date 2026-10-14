@@ -5,6 +5,8 @@ add_library(aurora_gx STATIC
         lib/gfx/ssgi.cpp
         lib/gfx/rt.cpp
         lib/gfx/geo.cpp
+        lib/gfx/fxp.cpp
+        lib/gfx/post.cpp
         lib/gfx/scenecap.cpp
         lib/gfx/cluster.cpp
         lib/gfx/thermal.cpp

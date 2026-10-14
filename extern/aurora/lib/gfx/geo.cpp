@@ -1,5 +1,6 @@
 #include <aurora/geo.hpp>
 
+#include "../gx/fifo.hpp"
 #include "../gx/gx.hpp"
 #include "../logging.hpp"
 #include "../webgpu/gpu.hpp"
@@ -429,6 +430,9 @@ void draw_grass(const GrassDraw& draw) {
   if (draw.count == 0 || !ensure_type()) {
     return;
   }
+  // The recorder and the GX state belong to the FIFO thread: let it catch up first (the draw then
+  // lands after everything recorded so far, with the matrices just set).
+  gx::fifo::drain();
   Payload p{};
   p.kind = KindGrass;
   p.count = draw.count;
@@ -445,6 +449,7 @@ void draw_rocks(const Rock* rocks, uint32_t count) {
   if (rocks == nullptr || count == 0 || !ensure_type()) {
     return;
   }
+  gx::fifo::drain();
   Payload p{};
   p.kind = KindRocks;
   p.count = count;

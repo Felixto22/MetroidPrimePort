@@ -226,6 +226,16 @@ enum EPortOption {
   kPO_GpuGrass,
   kPO_Relief,
   kPO_Debris,
+  kPO_ModernParticles,
+  kPO_ModernRain,
+  kPO_VolumetricFogAmount,
+  kPO_VolumetricClouds,
+  kPO_MotionBlur,
+  kPO_DepthOfField,
+  kPO_HeatDistortion,
+  kPO_UnderwaterEffects,
+  kPO_SnowFootprints,
+  kPO_AmbientParticles,
 };
 #define PORT_OPTION(opt) static_cast< EGameOption >(opt)
 
@@ -289,6 +299,18 @@ static const SGameOption skPortDisplayOptions[] = {
     {PORT_OPTION(kPO_Relief), -1, static_cast< float >(PortDebug::kReliefMin),
      static_cast< float >(PortDebug::kReliefMax), 10.f, kOT_Float},
     {PORT_OPTION(kPO_Debris), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_ModernParticles), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_ModernRain), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_VolumetricFogAmount), -1, static_cast< float >(PortDebug::kVolumetricFogAmountMin),
+     static_cast< float >(PortDebug::kVolumetricFogAmountMax), 10.f, kOT_Float},
+    {PORT_OPTION(kPO_VolumetricClouds), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_MotionBlur), -1, static_cast< float >(PortDebug::kMotionBlurMin),
+     static_cast< float >(PortDebug::kMotionBlurMax), 10.f, kOT_Float},
+    {PORT_OPTION(kPO_DepthOfField), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_HeatDistortion), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_UnderwaterEffects), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_SnowFootprints), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_AmbientParticles), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_CinematicLook), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_GlobalIllumination), -1, static_cast< float >(PortDebug::kGlobalIlluminationMin),
      static_cast< float >(PortDebug::kGlobalIlluminationMax), 10.f, kOT_Float},
@@ -327,7 +349,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {31, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {41, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -387,6 +409,26 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     return L"Relief";
   case kPO_Debris:
     return L"Debris";
+  case kPO_ModernParticles:
+    return L"Modern Particles";
+  case kPO_ModernRain:
+    return L"Modern Rain";
+  case kPO_VolumetricFogAmount:
+    return L"Volumetric Fog";
+  case kPO_VolumetricClouds:
+    return L"Volumetric Clouds";
+  case kPO_MotionBlur:
+    return L"Motion Blur";
+  case kPO_DepthOfField:
+    return L"Depth of Field";
+  case kPO_HeatDistortion:
+    return L"Heat Distortion";
+  case kPO_UnderwaterEffects:
+    return L"Underwater Effects";
+  case kPO_SnowFootprints:
+    return L"Snow Footprints";
+  case kPO_AmbientParticles:
+    return L"Ambient Particles";
   case kPO_CinematicLook:
     return L"Cinematic Look";
   case kPO_GlobalIllumination:
@@ -474,6 +516,26 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::Relief();
   case kPO_Debris:
     return PortDebug::Debris() ? 1 : 0;
+  case kPO_ModernParticles:
+    return PortDebug::ModernParticles() ? 1 : 0;
+  case kPO_ModernRain:
+    return PortDebug::ModernRain() ? 1 : 0;
+  case kPO_VolumetricFogAmount:
+    return PortDebug::VolumetricFogAmount();
+  case kPO_VolumetricClouds:
+    return PortDebug::VolumetricClouds() ? 1 : 0;
+  case kPO_MotionBlur:
+    return PortDebug::MotionBlur();
+  case kPO_DepthOfField:
+    return PortDebug::DepthOfField() ? 1 : 0;
+  case kPO_HeatDistortion:
+    return PortDebug::HeatDistortion() ? 1 : 0;
+  case kPO_UnderwaterEffects:
+    return PortDebug::UnderwaterEffects() ? 1 : 0;
+  case kPO_SnowFootprints:
+    return PortDebug::SnowFootprints() ? 1 : 0;
+  case kPO_AmbientParticles:
+    return PortDebug::AmbientParticles() ? 1 : 0;
   case kPO_CinematicLook:
     return PortDebug::CinematicLook() ? 1 : 0;
   case kPO_GlobalIllumination:
@@ -538,6 +600,16 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_GpuGrass:
   case kPO_Relief:
   case kPO_Debris:
+  case kPO_ModernParticles:
+  case kPO_ModernRain:
+  case kPO_VolumetricFogAmount:
+  case kPO_VolumetricClouds:
+  case kPO_MotionBlur:
+  case kPO_DepthOfField:
+  case kPO_HeatDistortion:
+  case kPO_UnderwaterEffects:
+  case kPO_SnowFootprints:
+  case kPO_AmbientParticles:
   case kPO_CinematicLook:
   case kPO_GlobalIllumination:
   case kPO_AntiAliasing:
@@ -637,6 +709,36 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_Debris:
     PortDebug::SetDebris(value > 0);
+    break;
+  case kPO_ModernParticles:
+    PortDebug::SetModernParticles(value > 0);
+    break;
+  case kPO_ModernRain:
+    PortDebug::SetModernRain(value > 0);
+    break;
+  case kPO_VolumetricFogAmount:
+    PortDebug::SetVolumetricFogAmount(value);
+    break;
+  case kPO_VolumetricClouds:
+    PortDebug::SetVolumetricClouds(value > 0);
+    break;
+  case kPO_MotionBlur:
+    PortDebug::SetMotionBlur(value);
+    break;
+  case kPO_DepthOfField:
+    PortDebug::SetDepthOfField(value > 0);
+    break;
+  case kPO_HeatDistortion:
+    PortDebug::SetHeatDistortion(value > 0);
+    break;
+  case kPO_UnderwaterEffects:
+    PortDebug::SetUnderwaterEffects(value > 0);
+    break;
+  case kPO_SnowFootprints:
+    PortDebug::SetSnowFootprints(value > 0);
+    break;
+  case kPO_AmbientParticles:
+    PortDebug::SetAmbientParticles(value > 0);
     break;
   case kPO_CinematicLook:
     PortDebug::SetCinematicLook(value > 0);

@@ -38,6 +38,7 @@
 
 #include "Kyoto/Graphics/CCubeModel.hpp"
 #include "port_debug.h"
+#include "port_fx.h"
 #include "port_room_env.h"
 #include "port_room_geo.h"
 #include "port_room_sky.h"
@@ -798,6 +799,7 @@ static f32 sPortSkyRadiance[PortRoomGeo::kMaxSkyLayers][3];
 
 void CWorld::DrawSky(const CTransform4f& xf) const {
 #ifdef TARGET_PC
+  PortFx::NoteSky(false);
   // Remastered gives each room a sky of its own, turned and scaled to suit the room, where
   // retail has one per world, and outdoors in Tallon dome actors in the room (which
   // PortRoomGeo::HidesSky leaves out while these are drawn): the camera's area's skies if it
@@ -821,6 +823,7 @@ void CWorld::DrawSky(const CTransform4f& xf) const {
     }
   }
   if (count != 0) {
+    PortFx::NoteSky(true);
     PortRoomGeo::sSkyDrawnFor = skyArea->GetAreaAssetId();
     // Remastered draws a sky unlit, its base map times the Skybox's colour and intensity in
     // HDR, exposed as the frame is. Without that colour or the room's exposure, the sky is
@@ -848,6 +851,9 @@ void CWorld::DrawSky(const CTransform4f& xf) const {
   }
 #endif
   if ((xa4_skyboxWorldLoaded || xb4_skyboxOverride) && x70_27_skyboxVisible) {
+#ifdef TARGET_PC
+    PortFx::NoteSky(true);
+#endif
     CGraphics::DisableAllLights();
     gpRender->SetModelMatrix(xf);
     gpRender->SetAmbientColor(CColor::White());

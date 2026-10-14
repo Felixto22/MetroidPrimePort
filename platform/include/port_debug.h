@@ -402,6 +402,45 @@ void SetRelief(int percent);
 // original experience.
 bool Debris();
 void SetDebris(bool enabled);
+// Modern particles: GPU particles over the game's own effects (aurora::gfx::fxp): beam and missile trails,
+// impact bursts, the charge beam gathering light, underwater bubbles, the heat haze.
+bool ModernParticles();
+void SetModernParticles(bool enabled);
+// Modern rain: the GPU's rain (streaks, splashes on what they land on, none under roofs) and snow in
+// place of the game's own.
+bool ModernRain();
+void SetModernRain(bool enabled);
+// Volumetric fog: height fog marched per pixel, lit by the sun and the nearest lights (aurora::gfx::post),
+// as a percentage of its density (0: off, up to 200). Off in the original experience.
+const int kVolumetricFogAmountDefault = 100;
+const int kVolumetricFogAmountMin = 0;
+const int kVolumetricFogAmountMax = 200;
+int VolumetricFogAmount();
+void SetVolumetricFogAmount(int percent);
+// Volumetric clouds: a raymarched layer of clouds over the sky's pixels outdoors (aurora::gfx::post).
+bool VolumetricClouds();
+void SetVolumetricClouds(bool enabled);
+// Motion blur: per-pixel blur from the camera's motion (aurora::gfx::post), as a percentage (0: off).
+const int kMotionBlurDefault = 50;
+const int kMotionBlurMin = 0;
+const int kMotionBlurMax = 100;
+int MotionBlur();
+void SetMotionBlur(int percent);
+// Depth of field: in cinematics and while scanning, a lens blur away from the focus (aurora::gfx::post).
+bool DepthOfField();
+void SetDepthOfField(bool enabled);
+// Heat distortion: the air over lava and around plasma and explosions bends what is behind it.
+bool HeatDistortion();
+void SetHeatDistortion(bool enabled);
+// Underwater effects: caustics under water surfaces and bubbles around Samus when submerged.
+bool UnderwaterEffects();
+void SetUnderwaterEffects(bool enabled);
+// Snow footprints: prints and morph ball tracks in snowy rooms, and snow settling on what faces up.
+bool SnowFootprints();
+void SetSnowFootprints(bool enabled);
+// Ambient particles: dust motes in the air, embers and ash rising where there is lava.
+bool AmbientParticles();
+void SetAmbientParticles(bool enabled);
 // Global illumination: screen-space bounce light traced by a compute shader (aurora::gfx::ssgi),
 // as a percentage (0: off, up to 200). Off in the original experience.
 const int kGlobalIlluminationDefault = 100;
