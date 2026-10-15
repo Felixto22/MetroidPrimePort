@@ -201,7 +201,10 @@ bool sPlanetWorld = false;
 // scripted actors whose bounds hold the eye, so a big cliff or backdrop is never one.
 TUniqueId sDomes[8];
 int sDomeCount = 0;
-bool Outdoors() { return sPlanetWorld && (sSkyDrawn || sDomeCount > 0); }
+// Otherwise how far off the painted sky is (the biggest actor around the eye, taken as a dome
+// left in place): what lies beyond is sky, and the new one is drawn over it. 0: none.
+float sDomeDist = 0.f;
+bool Outdoors() { return sPlanetWorld && (sSkyDrawn || sDomeCount > 0 || sDomeDist > 0.f); }
 bool DayNightOn() { return PortDebug::DayNight() && Outdoors(); }
 bool WeatherOn() { return PortDebug::DynamicWeather() && Outdoors(); }
 
@@ -1098,6 +1101,8 @@ void SkyTick(const CStateManager& mgr) {
     sPlanetWorld = id == 0x39F2DE28u || id == 0x83F6FF6Fu || id == 0xA8BE6291u;
   }
   sDomeCount = 0;
+  sDomeDist = 0.f;
+  float bigReach = 0.f;
   if (sPlanetWorld && PortDebug::DayNight()) {
     const CVector3f eye = mgr.GetCameraManager()->GetCurrentCamera(mgr).GetTranslation();
     const CObjectList& actors = mgr.GetObjectListById(kOL_Actor);
@@ -1118,7 +1123,21 @@ void SkyTick(const CStateManager& mgr) {
       }
       if (dome) {
         sDomes[sDomeCount++] = actor->GetUniqueId();
+        continue;
       }
+      // The nearest the sky could be: the round dome inside these bounds, from where the eye is.
+      const CAABox box = actor->GetModelData()->GetBounds(actor->GetTransform());
+      const CVector3f lo = box.GetMinPoint(), hi = box.GetMaxPoint();
+      const float r = 0.5f * std::min(hi.GetX() - lo.GetX(), hi.GetY() - lo.GetY());
+      const float cx = 0.5f * (lo.GetX() + hi.GetX()) - eye.GetX(), cy = 0.5f * (lo.GetY() + hi.GetY()) - eye.GetY();
+      const float reach = r - std::sqrt(cx * cx + cy * cy);
+      if (r > bigReach) {
+        bigReach = r;
+        sDomeDist = reach > 40.f ? reach * 0.85f : 0.f;
+      }
+    }
+    if (sDomeCount > 0) {
+      sDomeDist = 0.f;
     }
   }
   const float clock = CGraphics::GetSecondsMod900();
@@ -1148,8 +1167,8 @@ void SkyTick(const CStateManager& mgr) {
   sLogIn -= dt;
   if (sLogIn <= 0.f) {
     sLogIn = 10.f;
-    PortLog::Write("port: sky: %05.2f h, planet %d, sky %d, domes %d, weather %d (cover %.2f rain %.2f storm %.2f)\n",
-                   double(sDayClock * 24.f), int(sPlanetWorld), int(sSkyDrawn), sDomeCount, sWeatherState, double(sCover),
+    PortLog::Write("port: sky: %05.2f h, planet %d, sky %d, domes %d, dome at %.0f, weather %d (cover %.2f rain %.2f storm %.2f)\n",
+                   double(sDayClock * 24.f), int(sPlanetWorld), int(sSkyDrawn), sDomeCount, double(sDomeDist), sWeatherState, double(sCover),
                    double(sPrecip), double(sStorm));
   }
   static const float kCover[4] = {0.3f, 0.6f, 0.82f, 0.95f};
@@ -1260,7 +1279,7 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
     l0[4] = 1.f, l0[5] = 0.95f - 0.45f * warm, l0[6] = 0.88f - 0.68f * warm, l0[7] = elev;
     float* l1 = p.lights[1];
     l1[0] = moon[0], l1[1] = moon[1], l1[2] = moon[2], l1[3] = moonI * 0.3f;
-    l1[4] = 0.55f, l1[5] = 0.65f, l1[6] = 0.9f, l1[7] = 0.f;
+    l1[4] = 0.55f, l1[5] = 0.65f, l1[6] = 0.9f, l1[7] = dayNight ? sDomeDist : 0.f;
     float* l2 = p.lights[2];
     l2[0] = !dayNight ? 0.f : sDomeCount > 0 && !sSkyDrawn ? 2.f : 1.f;
     l2[1] = dayNight ? std::clamp(-elev / 0.15f, 0.f, 1.f) * (1.f - sCover) : 0.f;

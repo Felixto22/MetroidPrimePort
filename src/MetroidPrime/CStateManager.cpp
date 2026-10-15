@@ -4239,12 +4239,33 @@ void CStateManager::SetActorAreaId(CActor& actor, const TAreaId aid) {
 }
 
 const rstl::string& CStateManager::HashInstanceName(CInputStream& in) {
+#ifdef TARGET_PC
+  // The port keeps the script names (retail drops them): the port's own fixes find objects by
+  // them, such as the rooms' sky domes. A few in turn, so a held reference outlives the next read.
+  static rstl::string names[4];
+  static int next = 0;
+  char buf[256];
+  int len = 0;
+  uchar n = 0;
+  do {
+    n = in.ReadChar();
+    if (n != '\0' && len < int(sizeof(buf)) - 1) {
+      buf[len++] = char(n);
+    }
+  } while (n != '\0');
+  buf[len] = 0;
+  rstl::string& out = names[next];
+  next = (next + 1) & 3;
+  out = rstl::string(buf, len);
+  return out;
+#else
   static rstl::string empty = rstl::string_l("");
   uchar n = 0;
   do {
     n = in.ReadChar();
   } while (n != '\0');
   return empty;
+#endif
 }
 
 void CStateManager::MurderScriptInstanceNames() {
