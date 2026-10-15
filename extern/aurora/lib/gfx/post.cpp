@@ -300,7 +300,7 @@ fn fs_atmosphere(in: VertexOutput) -> @location(0) vec4f {
 // moon) with a powder term and a two-lobe phase, plus the sky's light from above, fading into
 // the haze with distance; lightning lights them from inside.
 //   lights[0]: direction to the sun (world), its intensity; lights[1]: its colour, its elevation
-//   lights[2]: direction to the moon, its intensity;        lights[3]: its colour, w: how far a painted dome left in place is (0: none)
+//   lights[2]: direction to the moon, its intensity;        lights[3]: its colour
 //   lights[4]: how much of the painted sky the analytic one replaces, stars, clouds on, flash
 fn sky_color(dir: vec3f) -> vec3f {
   let sunDir = p.lights[0].xyz;
@@ -365,11 +365,8 @@ fn fs_clouds(in: VertexOutput) -> @location(0) vec4f {
   let f = textureLoad(src, px, 0);
   let dsize = vec2i(textureDimensions(depthTex));
   let dat = min(vec2i(in.uv * vec2f(dsize)), dsize - vec2i(1));
-  let z = raw_z(dat);
-  // A painted dome left in place: what lies at or past it is its sky.
-  let dome = p.lights[3].w;
-  let pastDome = dome > 0.0 && !is_viewmodel(z) && linear_of(z) * length(view_ray(in.uv)) >= dome;
-  if (!is_sky(z) && !pastDome) {
+  // 3 (lights[4].x): drawn first, behind the world, over the whole view.
+  if (p.lights[4].x < 2.5 && !is_sky(raw_z(dat))) {
     return f;
   }
   let dir = normalize(to_world_dir(view_ray(in.uv)));

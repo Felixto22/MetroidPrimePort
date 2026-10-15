@@ -3589,6 +3589,9 @@ void CStateManager::DrawWorld() const {
     const f32 upView[3] = {r.GetZ(), u.GetZ(), -f.GetZ()};
     GXPortSetModernMaterial(on ? 1.f : 0.f, sunView, sunLen > 1e-3f ? sPortSkyIntensity : 0.f, upView);
   };
+  // The day and night's sky first, behind everything the world draws (port_fx.h).
+  if (!thermal && visor != CPlayerState::kPV_XRay && !portCollisionOnly)
+    PortFx::DrawSkyFirst(*this, backupViewMatrix, sPortSunTravel);
   if (portModern)
     portSetModern(true);
   // Smooth silhouettes: the lit models' triangles subdivided and rounded (port_debug.h).

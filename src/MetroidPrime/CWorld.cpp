@@ -834,6 +834,10 @@ void CWorld::DrawSky(const CTransform4f& xf) const {
     for (int i = 0; i < count; ++i) {
       std::copy(layers[i].radiance, layers[i].radiance + 3, sPortSkyRadiance[i]);
     }
+    // The day and night's sky stands in for these (drawn first: PortFx::DrawSkyFirst).
+    if (PortFx::SkyFirstDrawn() && !CCubeMaterial::sPortCapturingProbe) {
+      return;
+    }
     CGraphics::DisableAllLights();
     gpRender->SetAmbientColor(CColor::White());
     CGraphics::SetDepthRange(0.999f, 1.f);
@@ -853,6 +857,9 @@ void CWorld::DrawSky(const CTransform4f& xf) const {
   if ((xa4_skyboxWorldLoaded || xb4_skyboxOverride) && x70_27_skyboxVisible) {
 #ifdef TARGET_PC
     PortFx::NoteSky(true);
+    if (PortFx::SkyFirstDrawn() && !CCubeMaterial::sPortCapturingProbe) {
+      return;
+    }
 #endif
     CGraphics::DisableAllLights();
     gpRender->SetModelMatrix(xf);

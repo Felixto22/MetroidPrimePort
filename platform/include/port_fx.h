@@ -29,6 +29,10 @@ bool WantsSceneCapture();
 // After the opaque world's SSAO and SSGI, before the scene capture: clouds, then the fog,
 // caustics and wet or snowy ground. sunTravel: the sun light's direction (zero: no sun).
 void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const float sunTravel[3]);
+// Outdoors on the planet with the day and night on: the new sky and its clouds drawn first, over
+// the whole view, for the world to draw over (retail's skies and cloud domes are left out).
+bool DrawSkyFirst(const CStateManager& mgr, const CTransform4f& view, const float sunTravel[3]);
+bool SkyFirstDrawn();
 // After the world, the gun and the transparents: the particles and weather fields.
 void DrawParticles(const CStateManager& mgr, const CTransform4f& view, bool sceneCaptured);
 // After the particles, before the HUD: motion blur and depth of field.

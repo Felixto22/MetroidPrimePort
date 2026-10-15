@@ -1795,13 +1795,16 @@ bool IsBigActor(const CActor& actor) {
 
 bool IsSkyDome(const CActor& actor) {
   // Size alone takes in the big terrain and backdrop pieces too (hiding those left holes): the
-  // dome is also named for the sky in retail's scripts.
+  // dome is also named for the sky in retail's scripts ("Actor-cloud layer upper" in Tallon).
   if (!IsBigActor(actor)) {
     return false;
   }
   const char* name = actor.GetDebugName().c_str();
   for (const char* c = name; c != nullptr && *c != 0 && c[1] != 0 && c[2] != 0; ++c) {
     if ((c[0] | 0x20) == 's' && (c[1] | 0x20) == 'k' && (c[2] | 0x20) == 'y') {
+      return true;
+    }
+    if (std::strncmp(c, "cloud", 5) == 0 || std::strncmp(c, "Cloud", 5) == 0) {
       return true;
     }
   }
