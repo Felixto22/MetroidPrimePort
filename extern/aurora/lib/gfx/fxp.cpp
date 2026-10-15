@@ -118,6 +118,16 @@ fn quad(corner: vec2f, pos: vec3f, vel: vec3f, size: f32, stretch: f32, mode: u3
     vp = to_view(pos + ax * (corner.x * size * 0.35) + ay * (corner.y * size * 0.5) + vec3f(0.0, 0.0, 0.03));
   } else {
     vp = to_view(pos);
+    // Nothing right at or behind the eye, and nothing that would spread over the screen: a quad
+    // there turns into great wedges across the view.
+    let cw = (vec4f(vp, 1.0) * u.proj).w;
+    var reach = size * 0.5;
+    if (mode == 1u) {
+      reach = max(reach, length(vel) * stretch * 0.5);
+    }
+    if (cw < 0.08 || reach > cw * 0.8) {
+      return vec4f(0.0, 0.0, -2.0, 1.0);
+    }
     if (mode == 1u) {
       let vv = to_view(pos + vel * 0.01) - vp;
       var dir = vec2f(0.0, 1.0);

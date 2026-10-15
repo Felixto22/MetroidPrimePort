@@ -1103,10 +1103,20 @@ void SkyTick(const CStateManager& mgr) {
     const CObjectList& actors = mgr.GetObjectListById(kOL_Actor);
     for (int idx = actors.GetFirstObjectIndex(); idx != -1 && sDomeCount < 8; idx = actors.GetNextObjectIndex(idx)) {
       const CActor* actor = TCastToConstPtr< CActor >(actors.GetObjectByIndex(idx));
-      if (actor == nullptr || !actor->GetActive() || !PortRoomGeo::IsSkyDome(*actor)) {
+      if (actor == nullptr || !actor->GetActive() || !PortRoomGeo::IsBigActor(*actor) ||
+          !actor->GetModelData()->GetBounds(actor->GetTransform()).PointInside(eye)) {
         continue;
       }
-      if (actor->GetModelData()->GetBounds(actor->GetTransform()).PointInside(eye)) {
+      const bool dome = PortRoomGeo::IsSkyDome(*actor);
+      // Each big actor around the eye once in the log, so a dome under another name can be found.
+      static std::vector< uint32_t > sSeen;
+      const uint32_t key = uint32_t(actor->GetEditorId().Value());
+      if (std::find(sSeen.begin(), sSeen.end(), key) == sSeen.end() && sSeen.size() < 256) {
+        sSeen.push_back(key);
+        PortLog::Write("port: sky: big actor %08x \"%s\"%s\n", key, actor->GetDebugName().c_str(),
+                       dome ? " (sky dome)" : "");
+      }
+      if (dome) {
         sDomes[sDomeCount++] = actor->GetUniqueId();
       }
     }

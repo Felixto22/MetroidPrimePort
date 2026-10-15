@@ -1783,7 +1783,7 @@ bool HasSky(const CGameArea& gameArea) {
 
 uint32_t sSkyDrawnFor = 0;
 
-bool IsSkyDome(const CActor& actor) {
+bool IsBigActor(const CActor& actor) {
   constexpr float kDomeSize = 250.f;
   if (TCastToConstPtr< CScriptActor >(&actor) == nullptr || !actor.HasModelData()) {
     return false;
@@ -1791,6 +1791,21 @@ bool IsSkyDome(const CActor& actor) {
   const CAABox box = actor.GetModelData()->GetBounds();
   const CVector3f size = box.GetMaxPoint() - box.GetMinPoint();
   return std::max({std::fabs(size.GetX()), std::fabs(size.GetY()), std::fabs(size.GetZ())}) > kDomeSize;
+}
+
+bool IsSkyDome(const CActor& actor) {
+  // Size alone takes in the big terrain and backdrop pieces too (hiding those left holes): the
+  // dome is also named for the sky in retail's scripts.
+  if (!IsBigActor(actor)) {
+    return false;
+  }
+  const char* name = actor.GetDebugName().c_str();
+  for (const char* c = name; c != nullptr && *c != 0 && c[1] != 0 && c[2] != 0; ++c) {
+    if ((c[0] | 0x20) == 's' && (c[1] | 0x20) == 'k' && (c[2] | 0x20) == 'y') {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool HidesSky(const CGameArea& gameArea, const CActor& actor) {

@@ -252,6 +252,7 @@ extern uint32_t sSkyDrawnFor;
 // hundreds of units across), which the room's own skies stand in for while one is drawn.
 bool HidesSky(const CGameArea& area, const CActor& actor);
 // Whether an actor is one of retail's sky domes (a scripted actor over 250 units across).
+bool IsBigActor(const CActor& actor);
 bool IsSkyDome(const CActor& actor);
 // Whether the retail object `editorId` of the area is one its room geometry stands in for
 // right now (Script::hidden, its instance shown). The caller asks only while that geometry
