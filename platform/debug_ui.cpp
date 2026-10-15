@@ -287,6 +287,7 @@ int sEnemySpeed = PortDebug::kEnemySpeedDefault;
 bool sCannonMelee = true;
 bool sHardPlus = false;
 bool sEnhancedSamus = true;
+bool sModernGameplay = true;
 bool sCinematicLook = true;
 int sGlobalIllumination = PortDebug::kGlobalIlluminationDefault;
 float sGunOffset[3] = {};
@@ -762,6 +763,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sHardPlus = ParseBool(value);
   } else if (key == "enhanced_samus") {
     sEnhancedSamus = ParseBool(value);
+  } else if (key == "modern_gameplay") {
+    sModernGameplay = ParseBool(value);
   } else if (key == "cinematic_look") {
     sCinematicLook = ParseBool(value);
   } else if (key == "global_illumination") {
@@ -987,6 +990,7 @@ std::string SettingsText() {
   file << "cannon_melee=" << (sCannonMelee ? 1 : 0) << '\n';
   file << "hard_plus=" << (sHardPlus ? 1 : 0) << '\n';
   file << "enhanced_samus=" << (sEnhancedSamus ? 1 : 0) << '\n';
+  file << "modern_gameplay=" << (sModernGameplay ? 1 : 0) << '\n';
   file << "cinematic_look=" << (sCinematicLook ? 1 : 0) << '\n';
   file << "global_illumination=" << sGlobalIllumination << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
@@ -2213,9 +2217,20 @@ void SetAmbientParticles(bool enabled) {
   MarkDirty();
 }
 
+bool ModernGameplay() {
+  EnsureInitialized();
+  return sModernGameplay && !sOriginalExperience;
+}
+
+void SetModernGameplay(bool enabled) {
+  EnsureInitialized();
+  sModernGameplay = enabled;
+  MarkDirty();
+}
+
 bool SmarterEnemies() {
   EnsureInitialized();
-  return sSmarterEnemies && !sOriginalExperience;
+  return sSmarterEnemies && sModernGameplay && !sOriginalExperience;
 }
 
 void SetSmarterEnemies(bool enabled) {
@@ -2226,7 +2241,7 @@ void SetSmarterEnemies(bool enabled) {
 
 int EnemySpeed() {
   EnsureInitialized();
-  return sOriginalExperience ? 100 : sEnemySpeed;
+  return sOriginalExperience || !sModernGameplay ? 100 : sEnemySpeed;
 }
 
 void SetEnemySpeed(int percent) {
@@ -2237,7 +2252,7 @@ void SetEnemySpeed(int percent) {
 
 bool CannonMelee() {
   EnsureInitialized();
-  return sCannonMelee && !sOriginalExperience;
+  return sCannonMelee && sModernGameplay && !sOriginalExperience;
 }
 
 void SetCannonMelee(bool enabled) {
@@ -2248,7 +2263,7 @@ void SetCannonMelee(bool enabled) {
 
 bool EnhancedSamus() {
   EnsureInitialized();
-  return sEnhancedSamus && !sOriginalExperience;
+  return sEnhancedSamus && sModernGameplay && !sOriginalExperience;
 }
 
 void SetEnhancedSamus(bool enabled) {
@@ -2259,7 +2274,7 @@ void SetEnhancedSamus(bool enabled) {
 
 bool HardPlus() {
   EnsureInitialized();
-  return sHardPlus && !sOriginalExperience;
+  return sHardPlus && sModernGameplay && !sOriginalExperience;
 }
 
 void SetHardPlus(bool enabled) {
@@ -7215,6 +7230,12 @@ void DrawVideoDisplay() {
     SetAmbientParticles(ambientParticles);
   }
   ImGui::SetItemTooltip("Dust motes floating in the air (catching the light), embers and ash over lava.");
+  bool modernGameplay = sModernGameplay;
+  if (ImGui::Checkbox("Modern gameplay", &modernGameplay)) {
+    SetModernGameplay(modernGameplay);
+  }
+  ImGui::SetItemTooltip("Every gameplay change at once: the smarter, faster enemies, Hard+, Samus enhanced and the\n"
+                        "cannon strike. Off plays as the original; the graphics and effects stay as they are.");
   bool smarterEnemies = sSmarterEnemies;
   if (ImGui::Checkbox("Smarter enemies", &smarterEnemies)) {
     SetSmarterEnemies(smarterEnemies);

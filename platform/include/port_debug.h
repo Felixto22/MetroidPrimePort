@@ -443,6 +443,10 @@ bool AmbientParticles();
 void SetAmbientParticles(bool enabled);
 // Smarter enemies: they dodge shots and flee when nearly dead; pirates defend and heal each other;
 // Seedlings latch onto Samus' visor until she morphs (port_enemy_ai.h).
+// Modern gameplay: the switch over every gameplay change (SmarterEnemies, EnemySpeed, CannonMelee,
+// EnhancedSamus, HardPlus); off, they all read as the original's. Graphics are not affected.
+bool ModernGameplay();
+void SetModernGameplay(bool enabled);
 bool SmarterEnemies();
 void SetSmarterEnemies(bool enabled);
 // Enemy speed: how fast enemies move, animate and attack (bosses excluded), as a percentage

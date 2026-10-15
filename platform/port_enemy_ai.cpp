@@ -1081,7 +1081,8 @@ bool SeedlingTouch(CSeedling& self, CStateManager& mgr) {
 }
 
 bool SeedlingThink(CSeedling& self, float dt, CStateManager& mgr) {
-  if (!Smart()) {
+  const auto found = sAi.find(self.GetUniqueId().value);
+  if (!Smart() && (found == sAi.end() || !found->second.latched)) {
     return false;
   }
   Ai& a = StateOf(self);
@@ -1092,7 +1093,7 @@ bool SeedlingThink(CSeedling& self, float dt, CStateManager& mgr) {
     return false;
   }
   CPlayer& player = *mgr.Player();
-  const bool keep = self.IsAlive() && mgr.GetPlayerState()->IsAlive() &&
+  const bool keep = Smart() && self.IsAlive() && mgr.GetPlayerState()->IsAlive() &&
                     player.GetMorphballTransitionState() == CPlayer::kMS_Unmorphed &&
                     player.GetAttachedActor() == self.GetUniqueId();
   if (!keep) {

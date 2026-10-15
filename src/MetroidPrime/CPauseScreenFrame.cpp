@@ -236,6 +236,7 @@ enum EPortOption {
   kPO_UnderwaterEffects,
   kPO_SnowFootprints,
   kPO_AmbientParticles,
+  kPO_ModernGameplay,
   kPO_SmarterEnemies,
   kPO_EnemySpeed,
   kPO_CannonMelee,
@@ -316,6 +317,7 @@ static const SGameOption skPortDisplayOptions[] = {
     {PORT_OPTION(kPO_UnderwaterEffects), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_SnowFootprints), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_AmbientParticles), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_ModernGameplay), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_SmarterEnemies), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_EnemySpeed), -1, static_cast< float >(PortDebug::kEnemySpeedMin),
      static_cast< float >(PortDebug::kEnemySpeedMax), 10.f, kOT_Float},
@@ -360,7 +362,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {46, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {47, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -440,6 +442,8 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     return L"Snow Footprints";
   case kPO_AmbientParticles:
     return L"Ambient Particles";
+  case kPO_ModernGameplay:
+    return L"Modern Gameplay";
   case kPO_SmarterEnemies:
     return L"Smarter Enemies";
   case kPO_EnemySpeed:
@@ -557,6 +561,8 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::SnowFootprints() ? 1 : 0;
   case kPO_AmbientParticles:
     return PortDebug::AmbientParticles() ? 1 : 0;
+  case kPO_ModernGameplay:
+    return PortDebug::ModernGameplay() ? 1 : 0;
   case kPO_SmarterEnemies:
     return PortDebug::SmarterEnemies() ? 1 : 0;
   case kPO_EnemySpeed:
@@ -641,6 +647,7 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_UnderwaterEffects:
   case kPO_SnowFootprints:
   case kPO_AmbientParticles:
+  case kPO_ModernGameplay:
   case kPO_SmarterEnemies:
   case kPO_EnemySpeed:
   case kPO_CannonMelee:
@@ -775,6 +782,9 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_AmbientParticles:
     PortDebug::SetAmbientParticles(value > 0);
+    break;
+  case kPO_ModernGameplay:
+    PortDebug::SetModernGameplay(value > 0);
     break;
   case kPO_SmarterEnemies:
     PortDebug::SetSmarterEnemies(value > 0);

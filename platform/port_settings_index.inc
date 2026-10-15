@@ -132,6 +132,7 @@
 {"Video", "Display", "HUD and view", "Underwater effects", "underwater caustics bubbles water light"},
 {"Video", "Display", "HUD and view", "Snow footprints", "snow footprints tracks accumulation phendrana"},
 {"Video", "Display", "HUD and view", "Ambient particles", "dust motes embers ash ambient air particles"},
+{"Video", "Display", "HUD and view", "Modern gameplay", "modern gameplay original classic combat enemies samus disable all"},
 {"Video", "Display", "HUD and view", "Smarter enemies", "enemies ai dodge flee pirates melee heal seedling latch smarter difficulty"},
 {"Video", "Display", "HUD and view", "Enemy speed", "enemies speed fast faster difficulty pace"},
 {"Video", "Display", "HUD and view", "Cannon melee", "melee cannon strike punch lb hit close"},
