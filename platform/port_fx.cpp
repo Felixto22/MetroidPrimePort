@@ -140,6 +140,9 @@ struct Fluid {
 std::vector< Fluid > sFluids, sFluidsLast;
 int sFluidFrame = -1;
 bool sSkyDrawn = false;
+// Lightning (in a rainstorm under the sky): the flash's brightness, and the time to the next strike.
+float sFlash = 0.f;
+float sNextStrike = 6.f;
 
 void RollFluids() {
   const int frame = CGraphics::GetFrameCounter();
@@ -272,7 +275,37 @@ ShotKind KindOf(const CGameProjectile& proj, bool player) {
   }
 }
 
+// The beams as energy: a white-hot heart in a coloured halo, wisps of glowing smoke streaming off
+// behind, and arcs of lightning crackling around it (more and larger when charged).
+void EnergyTrail(const Shot& s, const CVector3f& from, const CVector3f& to) {
+  if (s.kind == kMissile || s.kind == kEnemy) {
+    return;
+  }
+  const Palette c = ColorsOf(s.kind);
+  const float k = s.charged ? 1.8f : 1.f;
+  const CVector3f d = to - from;
+  const float len = Len(d);
+  const CVector3f dir = Norm(d);
+  const uint32_t wisp = (c.core & 0x00ffffff) | 0x70000000;
+  // The halo and the white heart at the shot's head.
+  Emit(to, dir * 2.f, 0.06f, 0.55f * k, (c.core & 0x00ffffff) | 0x90000000, fxp::Glow | fxp::Shrink, 8.f);
+  Emit(to, dir * 2.f, 0.05f, 0.22f * k, 0xfff8f4ff, fxp::Glow | fxp::Shrink, 8.f);
+  const int wisps = std::clamp(Count(len * 7.f * k), 1, 30);
+  for (int i = 0; i < wisps; ++i) {
+    const CVector3f at = from + d * sRng.Unit();
+    Emit(at, sRng.Dir() * sRng.Range(0.3f, 0.9f) - dir * 0.6f, sRng.Range(0.35f, 0.7f), sRng.Range(0.18f, 0.32f) * k,
+         wisp, fxp::Wisp, 2.5f, -0.2f);
+  }
+  const int arcs = std::clamp(Count(len * (s.charged ? 3.f : 1.4f)), 0, 12);
+  for (int i = 0; i < arcs; ++i) {
+    const CVector3f at = to - d * (0.3f * sRng.Unit());
+    Emit(at + sRng.Dir() * 0.08f * k, sRng.Dir() * sRng.Range(4.f, 8.f), sRng.Range(0.05f, 0.1f), 0.04f * k,
+         s.kind == kWave ? c.spark : 0xffd8f0ff, fxp::Arc | fxp::Static, 0.f, 0.f, kNoFloor, 0.05f * k);
+  }
+}
+
 void Trail(const Shot& s, const CVector3f& from, const CVector3f& to, bool haze) {
+  EnergyTrail(s, from, to);
   const Palette c = ColorsOf(s.kind);
   const float k = s.charged ? 1.6f : 1.f;
   const CVector3f d = to - from;
@@ -474,6 +507,24 @@ void UpdateCharge(const CStateManager& mgr, const CTransform4f& view) {
     Emit(off, fwd, sRng.Range(0.3f, 0.55f), sRng.Range(0.025f, 0.05f) * (1.f + charge), sRng.Unit() < 0.5f ? c.core : c.spark,
          fxp::Glow | fxp::Attached);
   }
+  // A ball of energy forming at the muzzle: a white heart, a halo in the beam's colour, glowing
+  // wisps swirling into it and arcs of lightning leaping off it, all growing with the charge.
+  {
+    const float ball = 0.06f + 0.22f * charge;
+    // At the anchor (an attached particle with no offset), drawn over the gun as the charge is.
+    Emit(CVector3f::Zero(), fwd, 0.05f, ball * 2.6f, (c.core & 0x00ffffff) | 0x80000000, fxp::Glow | fxp::Attached);
+    Emit(CVector3f::Zero(), fwd, 0.05f, ball * 1.1f, 0xfffaf6ff, fxp::Glow | fxp::Attached);
+    const uint32_t wisp = (c.core & 0x00ffffff) | 0x60000000;
+    for (int i = 0, n = Count((20.f + 60.f * charge) * sDt); i < n; ++i) {
+      const CVector3f off = sRng.Dir() * sRng.Range(0.12f, 0.2f + 0.3f * charge);
+      Emit(off, fwd, sRng.Range(0.3f, 0.5f), sRng.Range(0.08f, 0.16f) * (1.f + charge), wisp, fxp::Wisp | fxp::Attached);
+    }
+    for (int i = 0, n = Count((6.f + 40.f * charge) * sDt); i < n; ++i) {
+      const CVector3f v = sRng.Dir() * sRng.Range(2.f, 3.f + 4.f * charge);
+      Emit(sAnchor + v * (ball * 0.12f), v, sRng.Range(0.05f, 0.09f), 0.025f + 0.02f * charge,
+           kind == kWave ? c.spark : 0xffd8f0ff, fxp::Arc | fxp::Static, 0.f, 0.f, kNoFloor, ball * 0.12f);
+    }
+  }
   // Crackling once it is well charged.
   if (charge > 0.35f) {
     for (int i = 0, n = Count(30.f * charge * sDt); i < n; ++i) {
@@ -481,6 +532,56 @@ void UpdateCharge(const CStateManager& mgr, const CTransform4f& view) {
            kind == kWave ? fxp::Arc : fxp::Spark, 0.f, 0.f, kNoFloor, 0.04f);
     }
   }
+}
+
+// ---- Lightning ----
+// A jagged chain of glowing static segments from a to b, with the odd branch off it.
+void Bolt(CVector3f a, const CVector3f& b, int segments, float width, float life, bool branches) {
+  const float span = Len(b - a);
+  for (int i = 0; i < segments; ++i) {
+    CVector3f next = a + (b - a) * (1.f / float(segments - i)) +
+                     CVector3f(sRng.Range(-1.f, 1.f), sRng.Range(-1.f, 1.f), 0.f) * (span * 0.08f);
+    if (i == segments - 1) {
+      next = b;
+    }
+    const CVector3f d = next - a;
+    // A static streak centred between the two: its length is speed x stretch (10 x 0.1).
+    Emit((a + next) * 0.5f, d * 10.f, life, width, 0xffe8f0ff, fxp::Arc | fxp::Static, 0.f, 0.f, kNoFloor, 0.1f);
+    Emit((a + next) * 0.5f, d * 10.f, life, width * 6.f, 0x806080ff, fxp::Spark | fxp::Static, 0.f, 0.f, kNoFloor, 0.1f);
+    if (branches && i > 1 && i < segments - 2 && sRng.Unit() < 0.3f) {
+      const float rest = float(segments - i) / float(segments);
+      const CVector3f end =
+          next + CVector3f(sRng.Range(-1.f, 1.f), sRng.Range(-1.f, 1.f), -0.7f) * (span * 0.3f * rest);
+      Bolt(next, end, 4, width * 0.6f, life * 0.8f, false);
+    }
+    a = next;
+  }
+}
+
+// In a rainstorm under the open sky: now and then a bolt from the clouds to the ground some way
+// off, a jagged chain of glowing segments with branches, and a flash that lights the clouds and air.
+void UpdateLightning(const CStateManager& mgr, const CTransform4f& view) {
+  sFlash = std::max(0.f, sFlash - sDt * 5.f);
+  if (!PortDebug::ModernRain() || EnvFx(mgr) != kEFX_Rain || EnvMagnitude(mgr) < 0.25f || !sSkyDrawn) {
+    return;
+  }
+  sNextStrike -= sDt;
+  if (sNextStrike > 0.f) {
+    return;
+  }
+  sNextStrike = sRng.Range(7.f, 18.f) / (0.5f + EnvMagnitude(mgr));
+  const CVector3f eye = view.GetTranslation();
+  // Somewhere ahead and to the side, 70-160 m away.
+  const CVector3f fwd = view.GetForward();
+  const float yaw = std::atan2(fwd.GetY(), fwd.GetX()) + sRng.Range(-0.9f, 0.9f);
+  const float dist = sRng.Range(70.f, 160.f);
+  const CVector3f ground(eye.GetX() + std::cos(yaw) * dist, eye.GetY() + std::sin(yaw) * dist, eye.GetZ() - 5.f);
+  const CVector3f top = ground + CVector3f(sRng.Range(-15.f, 15.f), sRng.Range(-15.f, 15.f), sRng.Range(90.f, 130.f));
+  const float life = 0.35f;
+  Bolt(top, ground, 14, 0.5f, life, true);
+  Emit(top, CVector3f(0.f, 0.f, 0.f), 0.4f, 40.f, 0x90b0c8ff, fxp::Glow | fxp::Static, 0.f);
+  Emit(ground, CVector3f(0.f, 0.f, 0.f), 0.3f, 12.f, 0xa0d0e0ff, fxp::Glow | fxp::Static, 0.f);
+  sFlash = 1.f;
 }
 
 // ---- Under water, lava, snow ----
@@ -923,6 +1024,25 @@ void RageAura(const CVector3f& at) {
 
 void NoteSky(bool drawn) { sSkyDrawn = drawn; }
 
+void Fire(const CVector3f& at, float strength, float dt) {
+  if (!PortDebug::ModernParticles() || strength <= 0.f) {
+    return;
+  }
+  for (int i = 0, n = Count(70.f * strength * dt); i < n; ++i) {
+    const CVector3f p = at + CVector3f(sRng.Range(-0.15f, 0.15f), sRng.Range(-0.15f, 0.15f), sRng.Range(0.f, 0.1f));
+    Emit(p, CVector3f(sRng.Range(-0.2f, 0.2f), sRng.Range(-0.2f, 0.2f), sRng.Range(0.8f, 1.6f)), sRng.Range(0.45f, 0.8f),
+         sRng.Range(0.35f, 0.65f) * (0.7f + 0.5f * strength), 0xffffffff, fxp::Flame, 1.2f, -1.5f);
+  }
+  for (int i = 0, n = Count(14.f * strength * dt); i < n; ++i) {
+    Emit(at, CVector3f(sRng.Range(-0.6f, 0.6f), sRng.Range(-0.6f, 0.6f), sRng.Range(1.5f, 3.f)), sRng.Range(1.f, 2.2f),
+         0.03f, 0xffffa040, fxp::Ember | fxp::Shrink, 0.8f, -0.6f);
+  }
+  for (int i = 0, n = Count(5.f * strength * dt); i < n; ++i) {
+    Emit(at + CVector3f(0.f, 0.f, 0.6f), CVector3f(sRng.Range(-0.2f, 0.2f), sRng.Range(-0.2f, 0.2f), 1.2f),
+         sRng.Range(2.f, 3.2f), sRng.Range(0.5f, 0.8f), 0x70302824, fxp::Smoke, 0.6f, -0.5f);
+  }
+}
+
 bool ReplacesEnvFx(int envFxType) {
   return PortDebug::ModernRain() && (envFxType == kEFX_Rain || envFxType == kEFX_Snow);
 }
@@ -968,18 +1088,22 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
       p.sun[3] = 0.3f;
     }
     const bool rain = env == kEFX_Rain;
-    p.clouds[0] = rain ? 0.6f + 0.3f * mag : 0.5f;
-    p.clouds[1] = 220.f;
-    p.clouds[2] = 260.f;
-    p.clouds[3] = 6.f;
+    // A storm: low, heavy, nearly overcast, broken where the light comes through.
+    p.clouds[0] = rain ? 0.72f + 0.22f * mag : 0.5f;
+    p.clouds[1] = rain ? 150.f : 220.f;
+    p.clouds[2] = rain ? 420.f : 260.f;
+    p.clouds[3] = rain ? 9.f : 6.f;
     const float tint = 0.3f;
     p.cloudColor[0] = 0.95f * (1.f - tint) + fogLinear.GetX() * tint * 2.f;
     p.cloudColor[1] = 0.95f * (1.f - tint) + fogLinear.GetY() * tint * 2.f;
     p.cloudColor[2] = 0.97f * (1.f - tint) + fogLinear.GetZ() * tint * 2.f;
     if (rain) {
-      p.cloudColor[0] *= 0.55f, p.cloudColor[1] *= 0.57f, p.cloudColor[2] *= 0.6f;
+      p.cloudColor[0] *= 0.42f, p.cloudColor[1] *= 0.45f, p.cloudColor[2] *= 0.52f;
     }
-    p.cloudColor[3] = 0.6f;
+    // Lightning lights the clouds from inside.
+    const float flash = sFlash * (rain ? 1.f : 0.f);
+    p.cloudColor[0] += flash * 2.2f, p.cloudColor[1] += flash * 2.3f, p.cloudColor[2] += flash * 2.8f;
+    p.cloudColor[3] = rain ? 0.85f : 0.6f;
     GXPortPost(&p);
   }
 
@@ -1006,6 +1130,8 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
     }
     if (env == kEFX_Rain) {
       p.fog[0] *= 1.f + mag;
+      // The flash lights the air too.
+      p.fogColor[0] += sFlash * 0.5f, p.fogColor[1] += sFlash * 0.55f, p.fogColor[2] += sFlash * 0.7f;
     }
     if (sunLen > 0.f) {
       for (int i = 0; i < 3; ++i) {
@@ -1126,6 +1252,7 @@ void DrawParticles(const CStateManager& mgr, const CTransform4f& view, bool scen
       sPulse = 0.f;
     }
     if (sDt > 0.f) {
+      UpdateLightning(mgr, view);
       UpdateUnderwater(mgr, eye);
       UpdateHeat(eye, haze);
       UpdatePrints(mgr);
@@ -1216,6 +1343,8 @@ void FsrBegin() {
   GXPortFsrJitter(static_cast< u64 >(CGraphics::GetFrameCounter()), sFsrMode, &sFsrJitter[0], &sFsrJitter[1]);
   GXPortSetJitter(GX_TRUE, sFsrJitter[0], sFsrJitter[1]);
 }
+
+float LightningFlash() { return sFlash; }
 
 void FsrSolid() {
   if (sFsrMode != 0) {

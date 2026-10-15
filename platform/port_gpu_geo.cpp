@@ -33,10 +33,10 @@ using aurora::gfx::geo::GrassDraw;
 using aurora::gfx::geo::Rock;
 
 constexpr float kCell = 12.f;          // grass chunk size (m)
-constexpr float kBladesPerM2 = 9.f;    // at 100%
-constexpr uint32_t kMaxBlades = 420000; // per area
-constexpr float kFadeStart = 24.f;
-constexpr float kFadeEnd = 38.f;
+constexpr float kBladesPerM2 = 16.f;   // at 100%
+constexpr uint32_t kMaxBlades = 900000; // per area
+constexpr float kFadeStart = 32.f;
+constexpr float kFadeEnd = 52.f;
 
 struct Chunk {
   float cx, cy, z;
@@ -117,13 +117,17 @@ void BuildGrass(const CGameArea& area, int density, AreaGrass& out) {
       }
       blade.pos[2] -= 0.03f;
       blade.yaw = rng.Unit() * 6.2831853f;
-      blade.height = 0.3f + 0.5f * rng.Unit() * rng.Unit() + 0.15f * rng.Unit();
-      blade.width = 0.04f + 0.035f * rng.Unit();
-      // The ground's colour, a little greener and brighter at the tip.
+      // Clumps: taller and lusher patches, shorter in between (a slow pattern over the ground).
+      const float clump = 0.5f + 0.5f * std::sin(blade.pos[0] * 0.55f + std::sin(blade.pos[1] * 0.41f) * 2.f) *
+                                      std::cos(blade.pos[1] * 0.47f + std::sin(blade.pos[0] * 0.37f) * 2.f);
+      blade.height = (0.25f + 0.55f * rng.Unit() * rng.Unit() + 0.15f * rng.Unit()) * (0.7f + 0.7f * clump);
+      blade.width = 0.035f + 0.035f * rng.Unit();
+      // The ground's colour, greener and brighter at the tip; some blades sun-dried, yellower.
       const float j = 0.85f + 0.3f * rng.Unit();
-      const uint tr = uint(std::min(1.f, r * 0.95f * j) * 255.f);
-      const uint tg = uint(std::min(1.f, g * 1.18f * j) * 255.f);
-      const uint tb = uint(std::min(1.f, b * 0.85f * j) * 255.f);
+      const float dry = rng.Unit() < 0.12f ? 0.6f + 0.4f * rng.Unit() : 0.f;
+      const uint tr = uint(std::min(1.f, (r * 0.95f + dry * 0.35f) * j) * 255.f);
+      const uint tg = uint(std::min(1.f, g * (1.18f - dry * 0.1f) * j) * 255.f);
+      const uint tb = uint(std::min(1.f, b * (0.85f - dry * 0.3f) * j) * 255.f);
       blade.color = (tr << 16) | (tg << 8) | tb;
       blade.seed = rng.Next();
       blades.push_back(blade);

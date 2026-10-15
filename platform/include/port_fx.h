@@ -39,6 +39,10 @@ void FsrEnd(const CTransform4f& view);
 // The opaque world is drawn (before the actors and effects): FSR's reactive mask is what they add,
 // so explosions, fire and beams don't linger in its history.
 void FsrSolid();
+// Flames at a point of a burning plant this frame (strength 0..1, dt: the frame's step).
+void Fire(const CVector3f& at, float strength, float dt);
+// The lightning's flash (0..1), for what else it lights.
+float LightningFlash();
 // A health pack thrown from one point to another, landing in `seconds` (port_enemy_ai.h).
 void ThrowPack(const CVector3f& from, const CVector3f& to, float seconds);
 // A burst where the arm cannon struck (beam: CPlayerState::EBeamId).

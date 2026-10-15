@@ -2,6 +2,7 @@
 #include "port_foliage.h"
 
 #include "port_debug.h"
+#include "port_fx.h"
 
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/Basics/CBasics.hpp"
@@ -389,6 +390,17 @@ void UpdateFires(const CStateManager& mgr, float dt, bool raining) {
             fire.flames.emplace_back(MakeGen(*sFlameDesc, p, false));
           }
           break;
+        }
+      }
+    }
+    // Modern flames (port_fx.h): tongues of fire licking up from the burning part of the plant.
+    if (burning && plant != nullptr && !plant->points.empty() && dt > 0.f) {
+      const float r = fire.Radius();
+      const float strength = std::min(1.f, fire.t * 1.5f) * (fire.burnTime - fire.t < 1.5f ? (fire.burnTime - fire.t) / 1.5f : 1.f);
+      for (int k = 0; k < 4; ++k) {
+        const CVector3f& p = plant->points[size_t(PortRandom().Range(0, int(plant->points.size()) - 1))];
+        if ((p - fire.origin).Magnitude() <= r) {
+          PortFx::Fire(p, strength, dt);
         }
       }
     }

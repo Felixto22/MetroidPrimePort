@@ -1161,8 +1161,8 @@ auto modern_material_func(const ShaderConfig& config, const ShaderInfo& info, bo
         if (mhero) {{
             mglass = smoothstep(0.08, 0.25, mc.g - max(mc.r, mc.b)) * smoothstep(0.25, 0.5, mmax);
             mmetal = clamp(max(smoothstep(0.25, 0.55, msat) * smoothstep(0.12, 0.35, mmax), mgrey * 0.85), 0.0, 1.0) * (1.0 - mglass);
-            mrough = mix(mix(0.6, 0.26, mmetal), 0.06, mglass);
-            mrelief = 3.2;
+            mrough = mix(mix(0.6, 0.3, mmetal), 0.06, mglass);
+            mrelief = 4.2;
         }} else if ({3}) {{
             mglass = smoothstep(0.1, 0.3, mc.g - max(mc.r, mc.b)) * smoothstep(0.4, 0.7, mmax) * 0.6;
             mmetal = clamp(max(smoothstep(0.3, 0.6, msat) * smoothstep(0.2, 0.45, mmax) * 0.5, mgrey * 0.6), 0.0, 1.0) * (1.0 - mglass);
@@ -1172,7 +1172,9 @@ auto modern_material_func(const ShaderConfig& config, const ShaderInfo& info, bo
             mmetal = mgrey * 0.3;
             mrough = mix(mrough, 0.4, mmetal);
         }}
-        mrough = clamp(mrough + mnoise * 0.07, 0.05, 0.95);
+        // Worn metal: the raised edges polished bright, the grain rougher in between.
+        let mwear = select(0.0, smoothstep(0.015, 0.09, m11 - mavg) * mmetal, mhero);
+        mrough = clamp(mrough + mnoise * select(0.07, 0.12, mhero) - mwear * 0.18, 0.05, 0.95);
         let mslope = vec2f(-mgx, -mgy) * (mrelief * mk);
         let mslp = mslope * min(1.0, 1.5 / max(length(mslope), 1e-4));
         let mtn = normalize(vec3f(mslp.x + mnoise * 0.08 * mk, mslp.y, 1.0));
@@ -1189,7 +1191,7 @@ auto modern_material_func(const ShaderConfig& config, const ShaderInfo& info, bo
         let mV = normalize(-mp);
         let mF0 = mix(vec3f(0.04), clamp(mc * 1.2, vec3f(0.0), vec3f(1.0)), mmetal);
         let mlit = clamp(dot(prev.rgb, mw) / max(m11, 0.04), 0.1, 1.8);
-        let mao = clamp(1.0 + (m11 - mavg) * 3.0, 0.6, 1.15);
+        let mao = select(clamp(1.0 + (m11 - mavg) * 3.0, 0.6, 1.15), clamp(1.0 + (m11 - mavg) * 5.5, 0.4, 1.18), mhero);
         let msharp = clamp(1.0 + (m11 - mavg) * 1.5 / max(m11, 0.05), 0.75, 1.3);
         let msunOn = ubuf.modern_sun.w > 0.0;
         // Without a sun the key light hangs over the world (its up), so turning the camera doesn't move it.
@@ -1223,7 +1225,9 @@ auto modern_material_func(const ShaderConfig& config, const ShaderInfo& info, bo
         let mrim = pow(1.0 - mnv, 4.0) * select(0.08, 0.25, mhero) * (1.0 - mmetal * 0.5);
         mspec = min(mspec, vec3f(6.0));
         mcol = mcol + (mspec * 0.3 + mrefl + vec3f(0.55, 0.65, 0.8) * mrim) * mso * mlit * mk;
-        mcol = mcol + mc * mglass * 0.25 * mk;
+        mcol = mcol + mc * mwear * 0.3 * mlit * mk;
+        // Glass and lights glow from within (the visor, the suit's green lights), more on Samus.
+        mcol = mcol + mc * mglass * select(0.25, 0.95, mhero) * mk;
         prev = vec4f(mcol, prev.a);
     }})""",
                      map, coord, taps, lit ? "true" : "false", pos, normal, lights);

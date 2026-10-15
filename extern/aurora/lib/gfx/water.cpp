@@ -536,6 +536,25 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
     Nw = Nw + u.R[0].w * vec3f(off.x * g, amp, off.y * g);
     rainLight = (amp * u.R[0].z) * u.S[2].xyz;
   }
+  // Port extension (retail surfaces: rippleInfo.y): fine wind-driven waves over the normal
+  // map, several directions and sizes summed as slopes, fading out with distance before they alias.
+  if (u.rippleInfo.y > 0.0) {
+    let wp = in.uv.zw * u.rippleInfo.y;
+    let tm = u.S[0].x;
+    let fade = 1.0 - smoothstep(8.0, 45.0, in.clip.w);
+    var sl = vec2f(0.0);
+    let dirs = array<vec2f, 6>(vec2f(1.0, 0.2), vec2f(0.7, 0.71), vec2f(-0.3, 0.95), vec2f(0.95, -0.3),
+                               vec2f(-0.8, 0.6), vec2f(0.2, -0.98));
+    let freqs = array<f32, 6>(1.7, 2.9, 4.3, 6.1, 8.7, 12.3);
+    for (var wi = 0u; wi < 6u; wi++) {
+      let wd = normalize(dirs[wi]);
+      let f = freqs[wi];
+      let sp = sqrt(9.8 / f);
+      sl = sl + wd * cos(dot(wd, wp) * f + tm * sp * f * 0.35 + f32(wi) * 1.7) * (0.11 / sqrt(f));
+    }
+    sl = sl * fade;
+    Nw = Nw - in.t * sl.x - cross(in.n, in.t) * sl.y;
+  }
   let N = normalize(Nw);
   let V = normalize(in.vpos);
   var R = V - 2.0 * dot(V, N) * N;

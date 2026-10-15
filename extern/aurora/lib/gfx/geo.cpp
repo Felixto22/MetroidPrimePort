@@ -132,7 +132,17 @@ fn vs_grass(@builtin(vertex_index) vi: u32, @location(0) rootYaw: vec4f, @locati
   out.pos = to_clip(world);
   let tip = unpack(color);
   let shade = 0.88 + 0.24 * hash(seed + 13u);
-  out.color = mix(tip * 0.42, tip, t) * shade;
+  // Darker at the root (the blades shade each other), light coming through near the tip, a
+  // highlight where the wind turns the blade to the light; a few blades carry a flower.
+  var col = mix(tip * 0.32, tip * 1.08, t * t) * shade;
+  col = col + vec3f(0.08, 0.12, 0.02) * smoothstep(0.5, 1.0, t) * (0.5 + 0.5 * gust);
+  let flower = hash(seed + 29u);
+  if (flower < 0.035 && lv.x >= 2.0) {
+    let fc = select(select(vec3f(0.95, 0.92, 0.85), vec3f(0.95, 0.55, 0.75), flower < 0.02), vec3f(0.98, 0.82, 0.25),
+                    flower < 0.01);
+    col = mix(col, fc, smoothstep(2.0, 3.0, lv.x));
+  }
+  out.color = col;
   return out;
 }
 

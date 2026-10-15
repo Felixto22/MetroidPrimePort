@@ -155,7 +155,10 @@ fn vs_particle(@builtin(vertex_index) vi: u32, @location(0) p0t0: vec4f, @locati
   let seed = extra.y;
   var pos: vec3f;
   var vel: vec3f;
-  if ((cf.y & 256u) != 0u) {
+  if ((cf.y & 1024u) != 0u) {
+    pos = p0t0.xyz;
+    vel = v0life.xyz;
+  } else if ((cf.y & 256u) != 0u) {
     // Spiralling in on the anchor.
     let axis = normalize(v0life.xyz + vec3f(1e-5, 0.0, 0.0));
     let off = rotate_axis(p0t0.xyz * pow(1.0 - f, 1.5), axis, seed * 6.2831853 + age * (5.0 + seed * 7.0));
@@ -173,8 +176,10 @@ fn vs_particle(@builtin(vertex_index) vi: u32, @location(0) p0t0: vec4f, @locati
     }
   }
   var size = phys.x;
-  if (shape == 2u) {
+  if (shape == 2u || shape == 12u) {
     size = size * (0.6 + 1.7 * f);
+  } else if (shape == 11u) {
+    size = size * (0.7 + 0.5 * f);
   } else if (shape == 5u) {
     size = size * (0.15 + 1.85 * f);
   }
@@ -331,6 +336,25 @@ fn shape_of(in: VOut) -> Shaped {
       a = (exp(-(r - 0.8) * (r - 0.8) * 60.0) * 0.8 + exp(-dot(uv - vec2f(-0.3, 0.35), uv - vec2f(-0.3, 0.35)) * 40.0) * 0.6) *
           fadeOut * step(r, 1.0);
       rgb = vec3f(0.8, 0.9, 1.0);
+    }
+    case 11u: {
+      // Fire: a tongue narrowing upwards, its edge torn by rising noise; hottest in the middle and
+      // young, cooling to orange and red at the edges and as it rises.
+      let q = vec2f(uv.x * (1.0 + max(uv.y, 0.0) * 0.9), uv.y);
+      let n = wobble(vec2f(uv.x * 2.6 + seed * 13.0, uv.y * 1.9 - u.info.x * 4.0 - seed * 7.0)) * 0.6 +
+              wobble(vec2f(uv.x * 5.3 - seed * 5.0, uv.y * 4.1 - u.info.x * 7.0)) * 0.4;
+      let d = length(vec2f(q.x * 1.5, (q.y + 0.2) * 0.75)) + (n - 0.5) * 0.55;
+      let body = smoothstep(1.0, 0.25, d);
+      a = body * fadeIn * (1.0 - smoothstep(0.45, 1.0, f));
+      let heat = clamp(body * 1.35 - f * 0.7, 0.0, 1.0);
+      let hot = mix(vec3f(1.0, 0.42, 0.05), vec3f(1.0, 0.93, 0.62), smoothstep(0.55, 0.95, heat));
+      rgb = mix(vec3f(0.85, 0.1, 0.02), hot, smoothstep(0.1, 0.6, heat)) * (1.2 + 0.8 * heat);
+    }
+    case 12u: {
+      // Energy wisps: smoke-like and glowing, in the particle's colour, brighter at heart.
+      let n = wobble(uv * 2.4 + vec2f(seed * 29.0, f * 2.3)) * 0.6 + wobble(uv * 5.1 - vec2f(f * 1.7, seed * 11.0)) * 0.4;
+      a = smoothstep(1.0, 0.1, r) * (0.3 + 0.7 * n * n) * fadeIn * (1.0 - f);
+      rgb = rgb * (0.8 + 1.2 * n);
     }
     default: {
       a = 0.0;
@@ -630,7 +654,8 @@ void draw(const Frame& frame, const Particle* particles, uint32_t count) {
   }
   for (uint32_t i = 0; i < count; ++i) {
     const uint32_t shape = particles[i].flags & 255u;
-    const bool additive = shape == Glow || shape == Spark || shape == Ring || shape == Arc || shape == Ember;
+    const bool additive = shape == Glow || shape == Spark || shape == Ring || shape == Arc || shape == Ember ||
+                          shape == Flame || shape == Wisp;
     const bool attached = (particles[i].flags & Attached) != 0;
     const uint32_t bucket = shape == Haze ? HazeBlend : additive ? (attached ? AdditiveOver : Additive) : Blended;
     if (bucket == HazeBlend && !frame.sceneDepth) {

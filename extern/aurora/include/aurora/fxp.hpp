@@ -22,11 +22,14 @@ enum Shape : uint32_t {
   Arc = 8,     // lightning: a jagged streak (additive)
   Bubble = 9,  // rising bubble outline (blended)
   Ember = 10,  // glowing mote that flickers (additive)
+  Flame = 11,  // a tongue of fire, white-hot core to red edges, licking upwards (additive)
+  Wisp = 12,   // glowing smoke: energy streaming off a shot or a charge (additive)
 };
 
 // Flags beside the shape (bits 8+).
 constexpr uint32_t Attached = 1u << 8; // its position is around the anchor (see Frame), spiralling in
 constexpr uint32_t Shrink = 1u << 9;   // gets smaller over its life (else sparks/glows keep, smoke grows)
+constexpr uint32_t Static = 1u << 10;  // stays where it starts; its velocity only orients it (a lightning bolt's segments)
 
 struct Particle {
   float pos[3];   // where it starts (world); attached: its offset from the anchor
