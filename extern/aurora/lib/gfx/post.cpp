@@ -292,6 +292,72 @@ fn fs_atmosphere(in: VertexOutput) -> @location(0) vec4f {
   return vec4f(srgb_enc(c), f.a);
 }
 
+// The sky (Clouds mode, on the sky's pixels): an analytic sky for the time of day (a gradient from
+// the horizon to the zenith, a sunset's glow toward the sun, the sun's and the moon's discs and
+// halos, stars at night) over the game's painted one, then clouds marched through a slab hundreds
+// of metres thick: big shapes from low-frequency noise cut by the coverage, rounded tops, edges
+// eroded by finer noise, each step lit by how much cloud lies between it and the sun (or the
+// moon) with a powder term and a two-lobe phase, plus the sky's light from above, fading into
+// the haze with distance; lightning lights them from inside.
+//   lights[0]: direction to the sun (world), its intensity; lights[1]: its colour, its elevation
+//   lights[2]: direction to the moon, its intensity;        lights[3]: its colour
+//   lights[4]: how much of the painted sky the analytic one replaces, stars, clouds on, flash
+fn sky_color(dir: vec3f) -> vec3f {
+  let sunDir = p.lights[0].xyz;
+  let sunI = p.lights[0].w;
+  let elev = p.lights[1].w;
+  let moonDir = p.lights[2].xyz;
+  let moonI = p.lights[2].w;
+  let up = max(dir.z, 0.0);
+  let day = smoothstep(-0.15, 0.25, elev);
+  let golden = (1.0 - smoothstep(0.0, 0.35, elev)) * smoothstep(-0.25, 0.02, elev);
+  let flatDir = normalize(vec3f(dir.xy, 0.0) + vec3f(1e-5, 0.0, 0.0));
+  let flatSun = normalize(vec3f(sunDir.xy, 0.0) + vec3f(1e-5, 0.0, 0.0));
+  let toward = pow(dot(flatDir, flatSun) * 0.5 + 0.5, 3.0);
+  let zenith = mix(vec3f(0.004, 0.006, 0.016), vec3f(0.11, 0.26, 0.6), day);
+  var horizon = mix(vec3f(0.012, 0.016, 0.035), vec3f(0.55, 0.68, 0.86), day);
+  horizon = mix(horizon, vec3f(1.0, 0.42, 0.16) * (0.35 + 0.9 * toward), golden);
+  var c = mix(horizon, zenith, pow(up, 0.45));
+  let cs = dot(dir, sunDir);
+  let sunTint = mix(vec3f(1.0, 0.55, 0.25), vec3f(1.0, 0.93, 0.82), smoothstep(0.0, 0.3, elev));
+  c += sunTint * (pow(max(cs, 0.0), 8.0) * 0.3 + pow(max(cs, 0.0), 300.0) * 1.2) * sunI;
+  c += sunTint * smoothstep(0.99955, 0.9997, cs) * 40.0 * sunI;
+  let cm = dot(dir, moonDir);
+  c += vec3f(0.8, 0.85, 0.95) * smoothstep(0.99965, 0.99975, cm) * 2.5 * step(0.0, moonI) * smoothstep(-0.02, 0.05, moonDir.z);
+  c += vec3f(0.25, 0.3, 0.45) * pow(max(cm, 0.0), 80.0) * 0.4 * moonI;
+  let stars = p.lights[4].y;
+  if (stars > 0.0 && dir.z > 0.0) {
+    let g = dir * 260.0;
+    let cell = floor(g);
+    let h = hash3(cell);
+    if (h > 0.9965) {
+      let centre = cell + vec3f(hash3(cell + 7.1), hash3(cell + 13.7), hash3(cell + 3.3));
+      let dd = length(g - centre);
+      let tw = 0.6 + 0.4 * sin(p.weather.y * (2.0 + h * 5.0) + h * 100.0);
+      c += vec3f(0.9, 0.93, 1.0) * smoothstep(0.35, 0.0, dd) * (h - 0.9965) * 400.0 * tw * stars * smoothstep(0.0, 0.2, dir.z);
+    }
+  }
+  return c;
+}
+
+fn cloud_density(q: vec3f, e: vec3f, cover: f32, detail: bool) -> f32 {
+  let hf = (q.z - e.z - p.clouds.y) / max(p.clouds.z, 1.0);
+  if (hf < 0.0 || hf > 1.0) {
+    return 0.0;
+  }
+  let w = q + vec3f(1.0, 0.35, 0.0) * p.clouds.w * p.weather.y;
+  let base = fbm(w * vec3f(0.0008, 0.0008, 0.0016), 3u);
+  // Each cloud's own height: the tops rise where the shape is strong.
+  let topAt = 0.35 + 0.6 * clamp((base - 0.35) * 2.5, 0.0, 1.0);
+  let profile = smoothstep(0.0, 0.12, hf) * (1.0 - smoothstep(topAt * 0.7, topAt, hf));
+  var d = clamp((base - (1.0 - cover) * 0.75) / max(cover * 0.75, 0.05), 0.0, 1.0) * profile;
+  if (d > 0.0 && detail) {
+    let er = fbm(w * 0.006 + vec3f(0.0, 0.0, p.weather.y * 0.02), 2u);
+    d = max(d - er * 0.45 * (1.0 - d), 0.0);
+  }
+  return d;
+}
+
 @fragment
 fn fs_clouds(in: VertexOutput) -> @location(0) vec4f {
   let size = vec2i(textureDimensions(src));
@@ -303,43 +369,65 @@ fn fs_clouds(in: VertexOutput) -> @location(0) vec4f {
     return f;
   }
   let dir = normalize(to_world_dir(view_ray(in.uv)));
-  if (dir.z < 0.015) {
-    return f;
+  // The analytic sky over the painted one (which keeps what is at and below the horizon: its hills).
+  let painted = srgb_dec(f.rgb);
+  let replace = p.lights[4].x * smoothstep(0.0, 0.12, dir.z);
+  var skyLin = mix(painted, sky_color(dir), replace);
+  if (p.lights[4].z < 0.5 || dir.z < 0.01) {
+    return vec4f(srgb_enc(skyLin), f.a);
   }
-  let t = p.weather.y;
+  let e = eye();
   let base = p.clouds.y;
   let top = base + p.clouds.z;
   let t0 = base / dir.z;
-  let t1 = top / dir.z;
-  let steps = 20u;
+  let t1 = min(top / dir.z, t0 + 5000.0);
+  if (t0 > 12000.0) {
+    return vec4f(srgb_enc(skyLin), f.a);
+  }
+  let steps = 40u;
   let stepLen = (t1 - t0) / f32(steps);
   let jitter = ign(in.pos.xy);
-  let wind = vec3f(1.0, 0.35, 0.0) * p.clouds.w * t;
-  let e = eye();
+  let cover = clamp(p.clouds.x, 0.0, 1.0);
+  // The key light: the sun by day, the moon by night.
+  let useSun = p.lights[0].w >= p.lights[2].w;
+  let keyDir = select(p.lights[2].xyz, p.lights[0].xyz, useSun);
+  let keyI = max(select(p.lights[2].w, p.lights[0].w, useSun), 0.0);
+  let keyCol = select(p.lights[3].rgb, p.lights[1].rgb, useSun);
+  let cosT = dot(dir, keyDir);
+  let phase = mix(hg(cosT, 0.65), hg(cosT, -0.15), 0.35) * 12.566371;
+  let skyTop = sky_color(normalize(vec3f(0.0, 0.0, 1.0)));
+  let skyLow = sky_color(normalize(vec3f(dir.xy, 0.05)));
+  let flash = p.lights[4].w;
   var trans = 1.0;
   var light = vec3f(0.0);
-  let cover = clamp(p.clouds.x, 0.0, 1.0);
-  let sunDir = normalize(p.sun.xyz + vec3f(0.0, 0.0, 1e-4));
-  let cosT = dot(dir, sunDir);
-  let phase = mix(hg(cosT, 0.6), hg(cosT, -0.2), 0.3) * 12.566371;
-  let skyLin = srgb_dec(f.rgb);
+  var firstDist = -1.0;
   for (var s = 0u; s < steps; s++) {
     let dist = t0 + (f32(s) + jitter) * stepLen;
     let q = e + dir * dist;
-    let hfrac = clamp((q.z - e.z - base) / max(p.clouds.z, 1.0), 0.0, 1.0);
-    let profile = smoothstep(0.0, 0.2, hfrac) * (1.0 - smoothstep(0.6, 1.0, hfrac));
-    let n = fbm((q + wind) * 0.0035, 4u);
-    let d = max(n * profile - (1.0 - cover) * 0.6, 0.0) * p.cloudColor.w;
-    if (d <= 0.0) {
+    let d = cloud_density(q, e, cover, true) * p.cloudColor.w;
+    if (d <= 0.001) {
       continue;
     }
-    // Towards the sun: how much cloud the light has gone through.
-    let toSun = q + sunDir * p.clouds.z * 0.35;
-    let ds = max(fbm((toSun + wind) * 0.0035, 3u) * profile - (1.0 - cover) * 0.6, 0.0) * p.cloudColor.w;
-    let sunT = exp(-ds * p.clouds.z * 0.35 * 0.02) ;
-    let powder = 1.0 - exp(-d * 40.0);
-    let lit = p.cloudColor.rgb * (sunT * phase * powder * max(p.sun.w, 0.25) + 0.35) + skyLin * 0.4;
-    let ext = d * stepLen * 0.02;
+    if (firstDist < 0.0) {
+      firstDist = dist;
+    }
+    // Toward the light: the cloud it passes through, in a few growing steps.
+    var od = 0.0;
+    var ls = 40.0;
+    var lq = q;
+    for (var k = 0u; k < 4u; k++) {
+      lq = lq + keyDir * ls;
+      od += cloud_density(lq, e, cover, false) * p.cloudColor.w * ls;
+      ls *= 1.8;
+    }
+    let beer = exp(-od * 0.012) * 0.8 + exp(-od * 0.003) * 0.2;
+    let powder = 1.0 - exp(-d * stepLen * 0.03);
+    let hf = clamp((q.z - e.z - base) / max(p.clouds.z, 1.0), 0.0, 1.0);
+    let ambient = mix(skyLow * 0.6, skyTop * 1.1, hf);
+    var lit = keyCol * keyI * beer * mix(1.0, powder * 2.0, 0.5) * phase + ambient * 0.9;
+    lit = lit * p.cloudColor.rgb;
+    lit += vec3f(0.75, 0.8, 1.0) * flash * (1.5 + 2.0 * d);
+    let ext = d * stepLen * 0.012;
     let st = exp(-ext);
     light += trans * lit * (1.0 - st);
     trans *= st;
@@ -347,10 +435,15 @@ fn fs_clouds(in: VertexOutput) -> @location(0) vec4f {
       break;
     }
   }
-  // Thinner toward the horizon, where the layer is far and the haze takes it.
-  let horizon = smoothstep(0.015, 0.12, dir.z);
-  let a = (1.0 - trans) * horizon;
-  let c = mix(skyLin, light / max(1.0 - trans, 1e-3), a);
+  if (firstDist < 0.0) {
+    return vec4f(srgb_enc(skyLin), f.a);
+  }
+  // Into the haze with distance, and thinner toward the horizon.
+  let haze = 1.0 - exp(-firstDist / 7000.0);
+  let a = (1.0 - trans) * smoothstep(0.01, 0.1, dir.z);
+  var cl = light / max(1.0 - trans, 1e-3);
+  cl = mix(cl, skyLow, haze);
+  let c = mix(skyLin, cl, a);
   return vec4f(srgb_enc(c), f.a);
 }
 
@@ -388,8 +481,10 @@ fn fs_finish(in: VertexOutput) -> @location(0) vec4f {
   let dsize = vec2i(textureDimensions(depthTex));
   let dat = min(vec2i(in.uv * vec2f(dsize)), dsize - vec2i(1));
   let z = raw_z(dat);
+  // The time of day's light over the world outdoors (lights[0]: rgb, on), sky excepted.
+  let grade = select(vec3f(1.0), p.lights[0].rgb, p.lights[0].w > 0.5 && !is_sky(z));
   if (is_viewmodel(z)) {
-    return vec4f(srgb_enc(slowed(srgb_dec(f.rgb), in.uv)), f.a);
+    return vec4f(srgb_enc(slowed(srgb_dec(f.rgb) * grade, in.uv)), f.a);
   }
   var zl = p.depth.y;
   if (!is_sky(z)) {
@@ -470,7 +565,7 @@ fn fs_finish(in: VertexOutput) -> @location(0) vec4f {
       c = sum / wsum;
     }
   }
-  return vec4f(srgb_enc(slowed(c, in.uv)), f.a);
+  return vec4f(srgb_enc(slowed(c * grade, in.uv)), f.a);
 }
 )";
 

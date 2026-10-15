@@ -622,7 +622,8 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   // characters, the gun, lit props), none of the paths that move vertices themselves.
   {
     const auto& sc = config.shaderConfig;
-    bool tess = g_gxState.tessLevel > 1 && !drawId && sc.lineMode == 0 && sc.pbr == 0 && !sc.foliage &&
+    // Samus' own draws only (the hero material: her arm, hand and cannon, her suit).
+    bool tess = g_gxState.tessLevel > 1 && g_gxState.hero > 0.f && !drawId && sc.lineMode == 0 && sc.pbr == 0 && !sc.foliage &&
                 !sc.fogRangeEnabled &&
                 !sc.waterfall && sc.sdf == 0 && g_gxState.colorChannelConfig[GX_COLOR0].lightingEnabled &&
                 sc.attrs[GX_VA_POS].attrType != GX_NONE && sc.attrs[GX_VA_NRM].attrType != GX_NONE &&

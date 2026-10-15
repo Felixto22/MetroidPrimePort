@@ -181,11 +181,93 @@ bool NormalView(const CStateManager& mgr) {
   return visor != CPlayerState::kPV_Thermal && visor != CPlayerState::kPV_XRay;
 }
 
+// ---- Day, night and weather (outdoors: where the world's sky is drawn) ----
+// The day lasts kDayLength seconds: 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset. The weather
+// moves between clear, cloudy, rain and storm, each held a few minutes, easing over half a minute.
+constexpr float kDayLength = 600.f;
+float sDayClock = 0.32f;
+float sSkyClock = -1.f;
+int sWeatherState = 1;
+float sWeatherHold = 150.f;
+float sCover = 0.45f, sPrecip = 0.f, sStorm = 0.f;
+uint32_t sWeatherRng = 0x51ed27u;
+
+bool Outdoors() { return sSkyDrawn; }
+bool DayNightOn() { return PortDebug::DayNight() && Outdoors(); }
+bool WeatherOn() { return PortDebug::DynamicWeather() && Outdoors(); }
+
+float WeatherUnit() {
+  sWeatherRng ^= sWeatherRng << 13;
+  sWeatherRng ^= sWeatherRng >> 17;
+  sWeatherRng ^= sWeatherRng << 5;
+  return float(sWeatherRng & 0xffffff) / float(0x1000000);
+}
+
+// Direction to the sun and the moon (world, z up), and the sun's elevation (sin).
+void SkyBodies(float sun[3], float moon[3], float& elev) {
+  const float a = (sDayClock - 0.25f) * 6.2831853f;
+  const float s[3] = {std::cos(a), -0.38f, std::sin(a)};
+  const float l = std::sqrt(s[0] * s[0] + s[1] * s[1] + s[2] * s[2]);
+  for (int i = 0; i < 3; ++i) {
+    sun[i] = s[i] / l;
+  }
+  // The moon on the same arc, half a day behind.
+  const float m[3] = {-s[0], s[1], -s[2]};
+  for (int i = 0; i < 3; ++i) {
+    moon[i] = m[i] / l;
+  }
+  elev = sun[2];
+}
+
+// The key light outdoors: sun by day, moon by night (its intensity, colour).
+void KeyLight(float dir[3], float& intensity, float color[3]) {
+  float sun[3], moon[3], elev;
+  SkyBodies(sun, moon, elev);
+  const float sunI = std::clamp((elev + 0.05f) / 0.2f, 0.f, 1.f) * (1.f - 0.6f * sStorm) * (1.f - 0.35f * sCover);
+  const float moonI = std::clamp(moon[2] / 0.15f, 0.f, 1.f) * 0.28f * (1.f - 0.7f * sCover);
+  const float warm = 1.f - std::clamp(elev / 0.35f, 0.f, 1.f);
+  if (sunI >= moonI) {
+    for (int i = 0; i < 3; ++i) {
+      dir[i] = sun[i];
+    }
+    intensity = sunI;
+    color[0] = 1.f, color[1] = 0.95f - 0.45f * warm, color[2] = 0.88f - 0.68f * warm;
+  } else {
+    for (int i = 0; i < 3; ++i) {
+      dir[i] = moon[i];
+    }
+    intensity = moonI;
+    color[0] = 0.55f, color[1] = 0.65f, color[2] = 0.9f;
+  }
+}
+
+// The world's light outdoors for the time of day and the weather (a multiplier).
+void DayGrade(float out[3]) {
+  float sun[3], moon[3], elev;
+  SkyBodies(sun, moon, elev);
+  const float day = std::clamp((elev + 0.12f) / 0.32f, 0.f, 1.f);
+  const float golden = (1.f - std::clamp((elev - 0.05f) / 0.3f, 0.f, 1.f)) * day;
+  const float night[3] = {0.22f, 0.27f, 0.4f};
+  const float warm[3] = {1.08f, 0.86f, 0.68f};
+  const float dull = 1.f - 0.2f * sCover - 0.2f * sStorm;
+  for (int i = 0; i < 3; ++i) {
+    const float lit = 1.f + (warm[i] - 1.f) * golden;
+    out[i] = (night[i] + (lit - night[i]) * day) * dull;
+  }
+}
+
 EEnvFxType EnvFx(const CStateManager& mgr) {
-  return mgr.GetWorld() != nullptr ? mgr.GetWorld()->GetNeededEnvFx() : kEFX_None;
+  const EEnvFxType retail = mgr.GetWorld() != nullptr ? mgr.GetWorld()->GetNeededEnvFx() : kEFX_None;
+  if (WeatherOn()) {
+    return retail == kEFX_Snow ? kEFX_Snow : kEFX_Rain;
+  }
+  return retail;
 }
 
 float EnvMagnitude(const CStateManager& mgr) {
+  if (WeatherOn()) {
+    return sPrecip;
+  }
   return mgr.GetEnvFxManager() != nullptr ? std::clamp(mgr.GetEnvFxManager()->GetRainMagnitude(), 0.f, 1.f) : 0.f;
 }
 
@@ -275,8 +357,7 @@ ShotKind KindOf(const CGameProjectile& proj, bool player) {
   }
 }
 
-// The beams as energy: a white-hot heart in a coloured halo, wisps of glowing smoke streaming off
-// behind, and arcs of lightning crackling around it (more and larger when charged).
+// Arcs of lightning crackling around the beams (more and larger when charged).
 void EnergyTrail(const Shot& s, const CVector3f& from, const CVector3f& to) {
   if (s.kind == kMissile || s.kind == kEnemy) {
     return;
@@ -285,17 +366,6 @@ void EnergyTrail(const Shot& s, const CVector3f& from, const CVector3f& to) {
   const float k = s.charged ? 1.8f : 1.f;
   const CVector3f d = to - from;
   const float len = Len(d);
-  const CVector3f dir = Norm(d);
-  const uint32_t wisp = (c.core & 0x00ffffff) | 0x70000000;
-  // The halo and the white heart at the shot's head.
-  Emit(to, dir * 2.f, 0.06f, 0.55f * k, (c.core & 0x00ffffff) | 0x90000000, fxp::Glow | fxp::Shrink, 8.f);
-  Emit(to, dir * 2.f, 0.05f, 0.22f * k, 0xfff8f4ff, fxp::Glow | fxp::Shrink, 8.f);
-  const int wisps = std::clamp(Count(len * 7.f * k), 1, 30);
-  for (int i = 0; i < wisps; ++i) {
-    const CVector3f at = from + d * sRng.Unit();
-    Emit(at, sRng.Dir() * sRng.Range(0.3f, 0.9f) - dir * 0.6f, sRng.Range(0.35f, 0.7f), sRng.Range(0.18f, 0.32f) * k,
-         wisp, fxp::Wisp, 2.5f, -0.2f);
-  }
   const int arcs = std::clamp(Count(len * (s.charged ? 3.f : 1.4f)), 0, 12);
   for (int i = 0; i < arcs; ++i) {
     const CVector3f at = to - d * (0.3f * sRng.Unit());
@@ -507,23 +577,12 @@ void UpdateCharge(const CStateManager& mgr, const CTransform4f& view) {
     Emit(off, fwd, sRng.Range(0.3f, 0.55f), sRng.Range(0.025f, 0.05f) * (1.f + charge), sRng.Unit() < 0.5f ? c.core : c.spark,
          fxp::Glow | fxp::Attached);
   }
-  // A ball of energy forming at the muzzle: a white heart, a halo in the beam's colour, glowing
-  // wisps swirling into it and arcs of lightning leaping off it, all growing with the charge.
-  {
+  // Arcs of lightning leaping off the muzzle, growing with the charge.
+  for (int i = 0, n = Count((6.f + 40.f * charge) * sDt); i < n; ++i) {
     const float ball = 0.06f + 0.22f * charge;
-    // At the anchor (an attached particle with no offset), drawn over the gun as the charge is.
-    Emit(CVector3f::Zero(), fwd, 0.05f, ball * 2.6f, (c.core & 0x00ffffff) | 0x80000000, fxp::Glow | fxp::Attached);
-    Emit(CVector3f::Zero(), fwd, 0.05f, ball * 1.1f, 0xfffaf6ff, fxp::Glow | fxp::Attached);
-    const uint32_t wisp = (c.core & 0x00ffffff) | 0x60000000;
-    for (int i = 0, n = Count((20.f + 60.f * charge) * sDt); i < n; ++i) {
-      const CVector3f off = sRng.Dir() * sRng.Range(0.12f, 0.2f + 0.3f * charge);
-      Emit(off, fwd, sRng.Range(0.3f, 0.5f), sRng.Range(0.08f, 0.16f) * (1.f + charge), wisp, fxp::Wisp | fxp::Attached);
-    }
-    for (int i = 0, n = Count((6.f + 40.f * charge) * sDt); i < n; ++i) {
-      const CVector3f v = sRng.Dir() * sRng.Range(2.f, 3.f + 4.f * charge);
-      Emit(sAnchor + v * (ball * 0.12f), v, sRng.Range(0.05f, 0.09f), 0.025f + 0.02f * charge,
-           kind == kWave ? c.spark : 0xffd8f0ff, fxp::Arc | fxp::Static, 0.f, 0.f, kNoFloor, ball * 0.12f);
-    }
+    const CVector3f v = sRng.Dir() * sRng.Range(2.f, 3.f + 4.f * charge);
+    Emit(sAnchor + v * (ball * 0.12f), v, sRng.Range(0.05f, 0.09f), 0.025f + 0.02f * charge,
+         kind == kWave ? c.spark : 0xffd8f0ff, fxp::Arc | fxp::Static, 0.f, 0.f, kNoFloor, ball * 0.12f);
   }
   // Crackling once it is well charged.
   if (charge > 0.35f) {
@@ -562,7 +621,8 @@ void Bolt(CVector3f a, const CVector3f& b, int segments, float width, float life
 // off, a jagged chain of glowing segments with branches, and a flash that lights the clouds and air.
 void UpdateLightning(const CStateManager& mgr, const CTransform4f& view) {
   sFlash = std::max(0.f, sFlash - sDt * 5.f);
-  if (!PortDebug::ModernRain() || EnvFx(mgr) != kEFX_Rain || EnvMagnitude(mgr) < 0.25f || !sSkyDrawn) {
+  if (!PortDebug::ModernRain() || EnvFx(mgr) != kEFX_Rain || EnvMagnitude(mgr) < 0.25f || !sSkyDrawn ||
+      (WeatherOn() && sStorm < 0.3f)) {
     return;
   }
   sNextStrike -= sDt;
@@ -1024,6 +1084,53 @@ void RageAura(const CVector3f& at) {
 
 void NoteSky(bool drawn) { sSkyDrawn = drawn; }
 
+void SkyTick() {
+  const float clock = CGraphics::GetSecondsMod900();
+  float dt = sSkyClock < 0.f ? 0.f : clock - sSkyClock;
+  if (dt < 0.f) {
+    dt += 900.f;
+  }
+  dt = std::clamp(dt, 0.f, 0.1f);
+  sSkyClock = clock;
+  if (PortDebug::DayNight()) {
+    sDayClock = std::fmod(sDayClock + dt / kDayLength, 1.f);
+  }
+  // The weather: hold, then move to a neighbouring state; ease toward its targets.
+  sWeatherHold -= dt;
+  if (sWeatherHold <= 0.f) {
+    const float u = WeatherUnit();
+    if (sWeatherState == 0) {
+      sWeatherState = 1;
+    } else if (sWeatherState == 3) {
+      sWeatherState = 2;
+    } else {
+      sWeatherState += u < 0.5f ? 1 : -1;
+    }
+    sWeatherHold = 120.f + 180.f * WeatherUnit();
+  }
+  static const float kCover[4] = {0.3f, 0.6f, 0.82f, 0.95f};
+  static const float kPrecip[4] = {0.f, 0.f, 0.6f, 1.f};
+  static const float kStorm[4] = {0.f, 0.f, 0.f, 1.f};
+  const float ease = 1.f - std::exp(-dt / 25.f);
+  sCover += (kCover[sWeatherState] - sCover) * ease;
+  sPrecip += (kPrecip[sWeatherState] - sPrecip) * ease;
+  sStorm += (kStorm[sWeatherState] - sStorm) * ease;
+}
+
+bool SkyLight(float travel[3], float& intensity, float color[3]) {
+  if (!DayNightOn()) {
+    return false;
+  }
+  float dir[3];
+  KeyLight(dir, intensity, color);
+  for (int i = 0; i < 3; ++i) {
+    travel[i] = -dir[i];
+  }
+  return true;
+}
+
+float DayHour() { return sDayClock * 24.f; }
+
 void Fire(const CVector3f& at, float strength, float dt) {
   if (!PortDebug::ModernParticles() || strength <= 0.f) {
     return;
@@ -1074,36 +1181,50 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
   const CVector3f fogLinear(SrgbToLinear(fogColor.GetX()), SrgbToLinear(fogColor.GetY()), SrgbToLinear(fogColor.GetZ()));
 
   GXPortPostParams p;
-  // The clouds, over the sky.
-  if (PortDebug::VolumetricClouds() && sSkyDrawn) {
+  // The sky and its clouds (port_fx.h; post.cpp's Clouds mode): the time of day's sky over the
+  // painted one, and volumetric clouds lit by the sun or the moon.
+  const bool dayNight = DayNightOn();
+  if ((PortDebug::VolumetricClouds() || dayNight) && sSkyDrawn) {
     FillCommon(p, view);
     p.misc[0] = 1;
-    if (sunLen > 0.f) {
-      for (int i = 0; i < 3; ++i) {
-        p.sun[i] = -sunTravel[i] / sunLen;
-      }
-      p.sun[3] = 1.f;
-    } else {
-      p.sun[2] = 1.f;
-      p.sun[3] = 0.3f;
-    }
     const bool rain = env == kEFX_Rain;
-    // A storm: low, heavy, nearly overcast, broken where the light comes through.
-    p.clouds[0] = rain ? 0.72f + 0.22f * mag : 0.5f;
-    p.clouds[1] = rain ? 150.f : 220.f;
-    p.clouds[2] = rain ? 420.f : 260.f;
-    p.clouds[3] = rain ? 9.f : 6.f;
-    const float tint = 0.3f;
-    p.cloudColor[0] = 0.95f * (1.f - tint) + fogLinear.GetX() * tint * 2.f;
-    p.cloudColor[1] = 0.95f * (1.f - tint) + fogLinear.GetY() * tint * 2.f;
-    p.cloudColor[2] = 0.97f * (1.f - tint) + fogLinear.GetZ() * tint * 2.f;
-    if (rain) {
-      p.cloudColor[0] *= 0.42f, p.cloudColor[1] *= 0.45f, p.cloudColor[2] *= 0.52f;
+    float sun[3] = {0.f, 0.f, 1.f}, moon[3] = {0.f, 0.f, -1.f}, elev = 0.6f;
+    float sunI = 0.3f, moonI = 0.f;
+    if (dayNight) {
+      SkyBodies(sun, moon, elev);
+      sunI = std::clamp((elev + 0.05f) / 0.2f, 0.f, 1.f);
+      moonI = std::clamp(moon[2] / 0.15f, 0.f, 1.f);
+    } else if (sunLen > 0.f) {
+      for (int i = 0; i < 3; ++i) {
+        sun[i] = -sunTravel[i] / sunLen;
+      }
+      sunI = 1.f;
+      elev = sun[2];
     }
-    // Lightning lights the clouds from inside.
-    const float flash = sFlash * (rain ? 1.f : 0.f);
-    p.cloudColor[0] += flash * 2.2f, p.cloudColor[1] += flash * 2.3f, p.cloudColor[2] += flash * 2.8f;
-    p.cloudColor[3] = rain ? 0.85f : 0.6f;
+    const float warm = 1.f - std::clamp(elev / 0.35f, 0.f, 1.f);
+    float* l0 = p.lights[0];
+    l0[0] = sun[0], l0[1] = sun[1], l0[2] = sun[2], l0[3] = sunI * (1.f - 0.5f * sStorm);
+    l0[4] = 1.f, l0[5] = 0.95f - 0.45f * warm, l0[6] = 0.88f - 0.68f * warm, l0[7] = elev;
+    float* l1 = p.lights[1];
+    l1[0] = moon[0], l1[1] = moon[1], l1[2] = moon[2], l1[3] = moonI * 0.3f;
+    l1[4] = 0.55f, l1[5] = 0.65f, l1[6] = 0.9f, l1[7] = 0.f;
+    float* l2 = p.lights[2];
+    l2[0] = dayNight ? 1.f : 0.f;
+    l2[1] = dayNight ? std::clamp(-elev / 0.15f, 0.f, 1.f) * (1.f - sCover) : 0.f;
+    l2[2] = PortDebug::VolumetricClouds() ? 1.f : 0.f;
+    l2[3] = rain ? sFlash : 0.f;
+    // Big clouds: their base some 350 m over the eye, up to 900 m thick, drifting.
+    p.clouds[0] = WeatherOn() ? sCover : rain ? 0.72f + 0.22f * mag : 0.5f;
+    p.clouds[1] = 350.f;
+    p.clouds[2] = 900.f;
+    p.clouds[3] = 8.f;
+    const float tint = 0.15f;
+    p.cloudColor[0] = (1.f - tint) + fogLinear.GetX() * tint;
+    p.cloudColor[1] = (1.f - tint) + fogLinear.GetY() * tint;
+    p.cloudColor[2] = (1.f - tint) + fogLinear.GetZ() * tint;
+    const float storm = WeatherOn() ? sStorm : rain ? mag : 0.f;
+    p.cloudColor[0] *= 1.f - 0.45f * storm, p.cloudColor[1] *= 1.f - 0.43f * storm, p.cloudColor[2] *= 1.f - 0.4f * storm;
+    p.cloudColor[3] = 0.9f + 0.6f * storm;
     GXPortPost(&p);
   }
 
@@ -1139,6 +1260,11 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
       }
       p.sun[3] = 1.f;
       p.sunColor[0] = 0.55f, p.sunColor[1] = 0.5f, p.sunColor[2] = 0.42f;
+      if (DayNightOn()) {
+        float d[3], inten, col[3];
+        KeyLight(d, inten, col);
+        p.sunColor[0] = 0.6f * col[0] * inten, p.sunColor[1] = 0.6f * col[1] * inten, p.sunColor[2] = 0.6f * col[2] * inten;
+      }
     }
     p.sunColor[3] = std::min(CGraphics::GetProjectionState().GetFar(), 140.f);
     // The nearest lights (shots, lamps, glows) scatter in it.
@@ -1288,12 +1414,17 @@ void DrawFinish(const CStateManager& mgr, const CTransform4f& view) {
   GXPortPostParams p;
   FillCommon(p, view);
   p.misc[0] = 2;
+  // The time of day's light over the world outdoors.
+  if (DayNightOn()) {
+    DayGrade(p.lights[0]);
+    p.lights[0][3] = 1.f;
+  }
   if (sHavePrev) {
     std::memcpy(p.prevView, sPrevView, sizeof(sPrevView));
   }
   std::memcpy(sPrevView, rows, sizeof(rows));
   sHavePrev = true;
-  bool any = false;
+  bool any = DayNightOn();
   // A perfect dodge's slowing tints the screen (port_enemy_ai.h).
   const float slow = PortEnemyAi::SlowMotion();
   if (slow > 0.f) {

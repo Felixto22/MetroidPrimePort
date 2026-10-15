@@ -43,6 +43,14 @@ void FsrSolid();
 void Fire(const CVector3f& at, float strength, float dt);
 // The lightning's flash (0..1), for what else it lights.
 float LightningFlash();
+// Day and night, and the weather (port_debug.h DayNight, DynamicWeather), outdoors (where the
+// world's sky was drawn last frame). Once a frame: the clock and the weather move on.
+void SkyTick();
+// Outdoors with the day and night on: the way the key light travels (the sun by day, the moon by
+// night), its intensity (0..1) and colour. False: the room's own sun stands.
+bool SkyLight(float travel[3], float& intensity, float color[3]);
+// The time of day in hours (0..24).
+float DayHour();
 // A health pack thrown from one point to another, landing in `seconds` (port_enemy_ai.h).
 void ThrowPack(const CVector3f& from, const CVector3f& to, float seconds);
 // A burst where the arm cannon struck (beam: CPlayerState::EBeamId).

@@ -247,6 +247,8 @@ enum EPortOption {
   kPO_SamusHD,
   kPO_ModernMaterials,
   kPO_SmoothSilhouettes,
+  kPO_DayNight,
+  kPO_DynamicWeather,
 };
 #define PORT_OPTION(opt) static_cast< EGameOption >(opt)
 
@@ -292,6 +294,8 @@ static const SGameOption skPortDisplayOptions[] = {
     {PORT_OPTION(kPO_SamusHD), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_ModernMaterials), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_SmoothSilhouettes), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_DayNight), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_DynamicWeather), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_EnhancedWater), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_ParticleDensity), -1, static_cast< float >(PortDebug::kParticleDensityMin),
      static_cast< float >(PortDebug::kParticleDensityMax), 25.f, kOT_Float},
@@ -344,7 +348,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {33, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {35, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -461,6 +465,10 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     return L"Modern Materials";
   case kPO_SmoothSilhouettes:
     return L"Smooth Silhouettes";
+  case kPO_DayNight:
+    return L"Day and Night";
+  case kPO_DynamicWeather:
+    return L"Dynamic Weather";
   case kPO_Upscaling:
     switch (PortDebug::Upscaling()) {
     case 1:
@@ -603,6 +611,10 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::ModernMaterials() ? 1 : 0;
   case kPO_SmoothSilhouettes:
     return PortDebug::SmoothSilhouettes() ? 1 : 0;
+  case kPO_DayNight:
+    return PortDebug::DayNight() ? 1 : 0;
+  case kPO_DynamicWeather:
+    return PortDebug::DynamicWeather() ? 1 : 0;
   case kPO_GlobalIllumination:
     return PortDebug::GlobalIllumination();
   case kPO_AntiAliasing:
@@ -688,6 +700,8 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_SamusHD:
   case kPO_ModernMaterials:
   case kPO_SmoothSilhouettes:
+  case kPO_DayNight:
+  case kPO_DynamicWeather:
   case kPO_AntiAliasing:
   case kPO_HudScale:
   case kPO_HideHelmet:
@@ -851,6 +865,12 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_SmoothSilhouettes:
     PortDebug::SetSmoothSilhouettes(value > 0);
+    break;
+  case kPO_DayNight:
+    PortDebug::SetDayNight(value > 0);
+    break;
+  case kPO_DynamicWeather:
+    PortDebug::SetDynamicWeather(value > 0);
     break;
   case kPO_GlobalIllumination:
     PortDebug::SetGlobalIllumination(value);

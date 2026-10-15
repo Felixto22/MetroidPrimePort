@@ -147,6 +147,8 @@
 {"Video", "Display", "HUD and view", "Sun shadows", "sun shadows dynamic real time lighting shade"},
 {"Video", "Display", "HUD and view", "Graphics quality", "graphics quality preset very low medium high ultra rt ray tracing custom"},
 {"Video", "Display", "HUD and view", "Samus HD materials", "samus suit arm cannon hd materials pbr metal reflections relief modern unreal"},
+{"Video", "Display", "HUD and view", "Day and night", "day night cycle time sun moon stars sunset sunrise"},
+{"Video", "Display", "HUD and view", "Dynamic weather", "dynamic weather rain storm lightning clouds snow"},
 {"Video", "Display", "HUD and view", "Smooth silhouettes", "smooth silhouettes tessellation polygons triangles round outlines facets models"},
 {"Video", "Display", "HUD and view", "Modern materials", "modern materials pbr world enemies bosses relief reflections highlights unreal realistic"},
 {"Video", "Display", "HUD and view", "Upscaling (FSR)", "upscaling fsr fsr4 amd fidelityfx super resolution temporal anti-aliasing taa performance"},

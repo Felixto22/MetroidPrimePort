@@ -508,6 +508,13 @@ bool SamusHD();
 // Modern materials: the same kind of material on the whole world, enemies and bosses (the world's
 // baked light reshaded by the relief, the sun's and the lights' highlights, reflections).
 bool ModernMaterials();
+// Day and night outdoors (a 10-minute day: the sun and the moon cross the sky, light the world
+// and cast its shadows, ray traced included; the sky and the clouds follow), and dynamic weather
+// (clear, cloudy, rain or snow, storms with lightning).
+bool DayNight();
+void SetDayNight(bool enabled);
+bool DynamicWeather();
+void SetDynamicWeather(bool enabled);
 // Smooth silhouettes: the lit models (Samus, the arm cannon, enemies, bosses, lit props) drawn with
 // each triangle subdivided and rounded by Phong tessellation, their hard edges kept.
 bool SmoothSilhouettes();

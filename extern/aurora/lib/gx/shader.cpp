@@ -3180,8 +3180,9 @@ std::string rt_shadow_lookup(std::string_view pos) {
 }
 
 bool relief_pick(const ShaderConfig& config, const ShaderInfo& info, u32& texCoord, u32& texMap) noexcept {
+  // Lit surfaces always; the unlit (lightmapped) world under the modern materials (ShaderConfig::hero).
   if (config.pbr != 0 || config.lineMode != 0 || config.waterfall || config.foliage || config.glass ||
-      config.specular || !info.lightingEnabled) {
+      config.specular || (!info.lightingEnabled && !config.hero)) {
     return false;
   }
   int best = -1;
@@ -3439,12 +3440,16 @@ fn t_index(e: u32) -> u32 {
             "\n    let t_lin = t_b.x * t_p0 + t_b.y * t_p1 + t_b.z * t_p2;"
             "\n    let t_q = t_b.x * (t_lin - dot(t_lin - t_p0, t_n0) * t_n0) + t_b.y * (t_lin - dot(t_lin - t_p1, t_n1) * t_n1) +"
             "\n              t_b.z * (t_lin - dot(t_lin - t_p2, t_n2) * t_n2);"
-            "\n    let t_s01 = smoothstep(0.6, 0.92, dot(t_n0, t_n1));"
-            "\n    let t_s12 = smoothstep(0.6, 0.92, dot(t_n1, t_n2));"
-            "\n    let t_s20 = smoothstep(0.6, 0.92, dot(t_n2, t_n0));"
+            "\n    let t_s01 = smoothstep(0.8, 0.97, dot(t_n0, t_n1));"
+            "\n    let t_s12 = smoothstep(0.8, 0.97, dot(t_n1, t_n2));"
+            "\n    let t_s20 = smoothstep(0.8, 0.97, dot(t_n2, t_n0));"
             "\n    let t_w = t_b.x * t_b.y + t_b.y * t_b.z + t_b.z * t_b.x;"
             "\n    let t_soft = select(1.0, (t_b.x * t_b.y * t_s01 + t_b.y * t_b.z * t_s12 + t_b.z * t_b.x * t_s20) / t_w, t_w > 1e-6);"
-            "\n    let {6} = mix(t_lin, t_q, 0.6 * t_soft);",
+            // Rounded, never swollen: the bulge held under 4% of the triangle's longest edge.
+            "\n    let t_edge = max(max(length(t_p1 - t_p0), length(t_p2 - t_p1)), length(t_p0 - t_p2));"
+            "\n    var t_off = (t_q - t_lin) * (0.5 * t_soft);"
+            "\n    t_off = t_off * min(1.0, 0.04 * t_edge / max(length(t_off), 1e-6));"
+            "\n    let {6} = t_lin + t_off;",
             attr_load(config, GX_VA_POS, "t_v0"sv), attr_load(config, GX_VA_POS, "t_v1"sv),
             attr_load(config, GX_VA_POS, "t_v2"sv), attr_load(config, GX_VA_NRM, "t_v0"sv),
             attr_load(config, GX_VA_NRM, "t_v1"sv), attr_load(config, GX_VA_NRM, "t_v2"sv), name);
@@ -4068,13 +4073,29 @@ fn t_index(e: u32) -> u32 {
         let rf_g1 = dpdx(tex{0}_uv);
         let rf_g2 = dpdy(tex{0}_uv);
         if (rf_fade > 0.001) {{
-            var rf_uv = tex{0}_uv;
-            for (var rf_k = 0; rf_k < 4; rf_k++) {{
-                let rf_c = textureSampleGrad(tex{1}, tex{1}_samp, rf_uv, rf_g1, rf_g2).rgb;
-                let rf_h = dot(rf_c, vec3f(0.299, 0.587, 0.114)) - 0.5;
-                rf_uv = tex{0}_uv + rf_vt / rf_vz * (rf_h * 0.035 * rf_fade);
+            // Parallax occlusion: down through the height field in layers (more at grazing
+            // angles) to where the ray first goes under it, then between the last two.
+            let rf_P = rf_vt / rf_vz * (0.045 * rf_fade);
+            let rf_n = mix(24.0, 10.0, rf_vz);
+            let rf_step = 1.0 / rf_n;
+            var rf_layer = 1.0;
+            var rf_uv = tex{0}_uv + rf_P * 0.5;
+            var rf_h = dot(textureSampleGrad(tex{1}, tex{1}_samp, rf_uv, rf_g1, rf_g2).rgb, vec3f(0.299, 0.587, 0.114));
+            var rf_prevLayer = rf_layer;
+            var rf_prevH = rf_h;
+            for (var rf_k = 0; rf_k < 24; rf_k++) {{
+                if (f32(rf_k) >= rf_n || rf_h >= rf_layer) {{ break; }}
+                rf_prevLayer = rf_layer;
+                rf_prevH = rf_h;
+                rf_layer = rf_layer - rf_step;
+                rf_uv = tex{0}_uv + rf_P * (rf_layer - 0.5);
+                rf_h = dot(textureSampleGrad(tex{1}, tex{1}_samp, rf_uv, rf_g1, rf_g2).rgb, vec3f(0.299, 0.587, 0.114));
             }}
-            tex{0}_uv = rf_uv;
+            let rf_a = rf_h - rf_layer;
+            let rf_b = rf_prevH - rf_prevLayer;
+            let rf_w = clamp(rf_a / min(rf_a - rf_b, -1e-4), 0.0, 1.0);
+            let rf_hit = mix(rf_layer, rf_prevLayer, rf_w);
+            tex{0}_uv = tex{0}_uv + rf_P * (rf_hit - 0.5);
         }}
     }})""", rCoord, rMap);
     }

@@ -2917,6 +2917,9 @@ static bool PortRoomSun(const CGameArea& area, CScriptLayerManager* layers, bool
 
 // The way the frame's sun light travels (world space; zero without a sun), for the ray-traced shadows.
 static float sPortSunTravel[3] = {0.f, 0.f, 0.f};
+// The key light's intensity outdoors with the day and night (1 otherwise): the shadows and the
+// materials' sun follow it.
+static float sPortSkyIntensity = 1.f;
 
 static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CScriptLayerManager* layers,
                             bool cinematic, bool enabled, bool roomLights) {
@@ -2925,6 +2928,7 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
   float dir[3] = {0.f, 0.f, 0.f};
   float color[3] = {0.f, 0.f, 0.f};
   float distance = 0.f;
+  sPortSkyIntensity = 1.f;
   if (sOn && enabled) {
     static const char* sDirEnv = getenv("MP_SHADOW_DIR");
     static const char* sColorEnv = getenv("MP_SHADOW_COLOR");
@@ -2953,6 +2957,15 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
         color[0] = c[0], color[1] = c[1], color[2] = c[2];
       }
     }
+    // Day and night outdoors: the sun by day, the moon by night, in place of the room's (port_fx.h).
+    float skyTravel[3], skyIntensity = 1.f, skyColor[3];
+    if (PortFx::SkyLight(skyTravel, skyIntensity, skyColor)) {
+      for (int i = 0; i < 3; ++i) {
+        dir[i] = skyTravel[i];
+        color[i] = skyColor[i] * skyIntensity;
+      }
+    }
+    sPortSkyIntensity = PortFx::SkyLight(skyTravel, skyIntensity, skyColor) ? skyIntensity : 1.f;
     if (dir[0] != 0.f || dir[1] != 0.f || dir[2] != 0.f) {
       distance = sDistance;
     }
@@ -2980,7 +2993,7 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
   const float frustum[6] = {proj.GetLeft(), proj.GetRight(), proj.GetTop(),
                             proj.GetBottom(), proj.GetNear(), proj.GetFar()};
   GXPortSetShadowMapSize(static_cast< u32 >(PortDebug::ShadowQuality()));
-  GXPortSetShadowStrength(static_cast< float >(PortDebug::SunShadows()) / 100.f);
+  GXPortSetShadowStrength(static_cast< float >(PortDebug::SunShadows()) / 100.f * sPortSkyIntensity);
   GXPortSetPerPixelLighting(PortDebug::EnhancedLighting());
   {
     static int sBump = -1;
@@ -3476,6 +3489,9 @@ void CStateManager::DrawWorld() const {
   // FSR's sub-pixel jitter on the world's (and the gun's) projections.
   if (!portZoomed)
     PortFx::FsrBegin();
+  // The day's clock and the weather move on (port_fx.h).
+  if (!portZoomed)
+    PortFx::SkyTick();
 #endif
 #ifdef TARGET_PC
   // Port: material UV animations read the presented time between ticks (smooth frames).
@@ -3571,7 +3587,7 @@ void CStateManager::DrawWorld() const {
     const CVector3f r = backupViewMatrix.GetRight(), u = backupViewMatrix.GetUp(), f = backupViewMatrix.GetForward();
     const f32 sunView[3] = {CVector3f::Dot(sun, r), CVector3f::Dot(sun, u), -CVector3f::Dot(sun, f)};
     const f32 upView[3] = {r.GetZ(), u.GetZ(), -f.GetZ()};
-    GXPortSetModernMaterial(on ? 1.f : 0.f, sunView, sunLen > 1e-3f ? 1.f : 0.f, upView);
+    GXPortSetModernMaterial(on ? 1.f : 0.f, sunView, sunLen > 1e-3f ? sPortSkyIntensity : 0.f, upView);
   };
   if (portModern)
     portSetModern(true);

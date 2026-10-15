@@ -299,6 +299,8 @@ int sUpscaling = 0;
 bool sSamusHD = true;
 bool sModernMaterials = true;
 bool sSmoothSilhouettes = true;
+bool sDayNight = true;
+bool sDynamicWeather = true;
 // What each preset sets, Very Low to Ultra + RT. Water, weather and particles are not here.
 struct SGraphicsPreset {
   int ao, sunShadows, shadowRes, glass, bump;
@@ -796,6 +798,10 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sCannonMelee = ParseBool(value);
   } else if (key == "graphics_quality") {
     sGraphicsQuality = std::clamp(std::atoi(value.c_str()), 0, PortDebug::kGQ_Count - 1);
+  } else if (key == "day_night") {
+    sDayNight = ParseBool(value);
+  } else if (key == "dynamic_weather") {
+    sDynamicWeather = ParseBool(value);
   } else if (key == "smooth_silhouettes") {
     sSmoothSilhouettes = ParseBool(value);
   } else if (key == "modern_materials") {
@@ -1038,6 +1044,8 @@ std::string SettingsText() {
   file << "samus_hd=" << (sSamusHD ? 1 : 0) << '\n';
   file << "modern_materials=" << (sModernMaterials ? 1 : 0) << '\n';
   file << "smooth_silhouettes=" << (sSmoothSilhouettes ? 1 : 0) << '\n';
+  file << "day_night=" << (sDayNight ? 1 : 0) << '\n';
+  file << "dynamic_weather=" << (sDynamicWeather ? 1 : 0) << '\n';
   file << "hard_plus=" << (sHardPlus ? 1 : 0) << '\n';
   file << "enhanced_samus=" << (sEnhancedSamus ? 1 : 0) << '\n';
   file << "modern_gameplay=" << (sModernGameplay ? 1 : 0) << '\n';
@@ -2569,6 +2577,28 @@ void SetGraphicsQuality(int quality) {
 const char* GraphicsQualityName(int quality) {
   static const char* const kNames[] = {"Very Low", "Low", "Medium", "High", "Ultra", "Ultra + RT", "Custom"};
   return quality >= 0 && quality < kGQ_Count ? kNames[quality] : "";
+}
+
+bool DayNight() {
+  EnsureInitialized();
+  return sDayNight && !sOriginalExperience;
+}
+
+void SetDayNight(bool enabled) {
+  EnsureInitialized();
+  sDayNight = enabled;
+  MarkDirty();
+}
+
+bool DynamicWeather() {
+  EnsureInitialized();
+  return sDynamicWeather && !sOriginalExperience;
+}
+
+void SetDynamicWeather(bool enabled) {
+  EnsureInitialized();
+  sDynamicWeather = enabled;
+  MarkDirty();
 }
 
 bool SmoothSilhouettes() {
@@ -7295,8 +7325,20 @@ void DrawVideoDisplay() {
     if (ImGui::Checkbox("Smooth silhouettes", &smoothSilhouettes)) {
       SetSmoothSilhouettes(smoothSilhouettes);
     }
-    ImGui::SetItemTooltip("Samus, the arm cannon, enemies and bosses drawn with nine times the triangles, rounded\n"
-                          "(Phong tessellation): smooth outlines instead of facets, hard edges kept.");
+    ImGui::SetItemTooltip("Samus' arm, hand and cannon drawn with nine times the triangles, gently rounded\n"
+                          "(Phong tessellation, the bulge held to a few percent): smoother outlines, same shapes.");
+    bool dayNight = sDayNight;
+    if (ImGui::Checkbox("Day and night", &dayNight)) {
+      SetDayNight(dayNight);
+    }
+    ImGui::SetItemTooltip("Outdoors, a 10-minute day: the sun and the moon cross the sky and light the world (its\n"
+                          "shadows, ray traced too, follow them); the sky, the stars and the clouds change with the hour.");
+    bool dynamicWeather = sDynamicWeather;
+    if (ImGui::Checkbox("Dynamic weather", &dynamicWeather)) {
+      SetDynamicWeather(dynamicWeather);
+    }
+    ImGui::SetItemTooltip("Outdoors the weather changes every few minutes: clear, cloudy, rain (snow where it snows)\n"
+                          "and storms with lightning.");
     bool modernMaterials = sModernMaterials;
     if (ImGui::Checkbox("Modern materials", &modernMaterials)) {
       SetModernMaterials(modernMaterials);
