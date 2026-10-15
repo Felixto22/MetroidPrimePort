@@ -486,6 +486,31 @@ void SetGunOffset(const float offset[3]);
 // (1-16, retail-style mipmapped textures ask for the max). Applied next frame.
 int Msaa();
 void SetMsaa(int samples);
+// Graphics quality: one preset over every graphics setting except water (EnhancedWater,
+// UnderwaterEffects), weather (ModernRain, VolumetricClouds, RainDetails, SnowFootprints) and
+// particles (ModernParticles, ParticleDensity, AmbientParticles), which stay the player's own.
+// Custom reads each setting as set. The arm cannon's heat glow is never part of it.
+enum EGraphicsQuality {
+  kGQ_VeryLow = 0,
+  kGQ_Low,
+  kGQ_Medium,
+  kGQ_High,
+  kGQ_Ultra,
+  kGQ_UltraRT,
+  kGQ_Custom,
+  kGQ_Count,
+};
+int GraphicsQuality();
+void SetGraphicsQuality(int quality);
+const char* GraphicsQualityName(int quality);
+// Upscaling: AMD FSR (FSR 4 on an RX 7000 or 9000, FSR 3.1 elsewhere; Windows on D3D12). The world
+// draws at the render scale divided by the mode's ratio and FSR brings it up to the full size;
+// MSAA is off while it runs. 0 = off, 1 = native AA, 2 = quality, 3 = balanced, 4 = performance.
+const int kUpscalingModes = 5;
+int Upscaling();          // as set
+int UpscalingActive();    // what is in effect (0 when FSR can't run here)
+void SetUpscaling(int mode);
+const char* UpscalingName(int mode);
 int Anisotropy();
 void SetAnisotropy(int level);
 // Setting `opengles`: start on Dawn's OpenGL ES backend instead of Vulkan, for

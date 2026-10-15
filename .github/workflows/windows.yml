@@ -131,6 +131,13 @@ jobs:
           # nod is now linked in: ship its licence (dual MIT / Apache-2.0).
           Invoke-WebRequest https://raw.githubusercontent.com/encounter/nod/v2.0.0-alpha.12/LICENSE-MIT -OutFile dist/licenses/nod-MIT.txt
           Invoke-WebRequest https://raw.githubusercontent.com/encounter/nod/v2.0.0-alpha.12/LICENSE-APACHE -OutFile dist/licenses/nod-Apache-2.0.txt
+          # AMD FSR (aurora::gfx::fsr): the FidelityFX SDK's signed loader and upscaler DLLs,
+          # loaded at run time from beside the executable, and their licence.
+          $ffx = 'https://raw.githubusercontent.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/60f4ea81909200d8542eca14dccb2628b763a9a3'
+          Invoke-WebRequest "$ffx/Kits/FidelityFX/signedbin/amd_fidelityfx_loader_dx12.dll" -OutFile dist/amd_fidelityfx_loader_dx12.dll
+          Invoke-WebRequest "$ffx/Kits/FidelityFX/signedbin/amd_fidelityfx_upscaler_dx12.dll" -OutFile dist/amd_fidelityfx_upscaler_dx12.dll
+          if ((Get-Item dist/amd_fidelityfx_upscaler_dx12.dll).Length -lt 1000000) { throw 'FidelityFX upscaler DLL looks wrong (an LFS pointer?)' }
+          Copy-Item extern/aurora/lib/gfx/ffx/LICENSE.md dist/licenses/fidelityfx.txt
           $license = @("$root/license.txt", "$root/LICENSE.txt") | Where-Object { Test-Path $_ } | Select-Object -First 1
           if ($license) { Copy-Item $license dist/licenses/openssl.txt }
           else { Invoke-WebRequest https://raw.githubusercontent.com/openssl/openssl/openssl-3.5/LICENSE.txt -OutFile dist/licenses/openssl.txt }

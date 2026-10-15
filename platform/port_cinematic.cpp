@@ -162,7 +162,8 @@ void TickGun(const CStateManager& mgr, rstl::vector< CLight >& lights) {
   }
   dt = std::clamp(dt, 0.f, 0.1f);
   sGunClock = clock;
-  if (!PortDebug::CinematicLook()) {
+  // The red-hot cannon is part of every graphics preset (only the original experience leaves it out).
+  if (PortDebug::OriginalExperience()) {
     sHeat = 0.f;
     return;
   }
@@ -252,7 +253,7 @@ void TickGun(const CStateManager& mgr, rstl::vector< CLight >& lights) {
 }
 
 void SetGunHeatAt(const CVector3f& muzzleWorld) {
-  if (!PortDebug::CinematicLook() || sHeat <= 0.02f) {
+  if (PortDebug::OriginalExperience() || sHeat <= 0.02f) {
     return;
   }
   const CTransform4f& view = CGraphics::GetViewMatrix();
@@ -266,16 +267,18 @@ void SetGunHeatAt(const CVector3f& muzzleWorld) {
 }
 
 void RenderGunSmoke(const CVector3f& muzzleLocal) {
-  if (sSmoke == nullptr || !PortDebug::CinematicLook()) {
+  if (sSmoke == nullptr || PortDebug::OriginalExperience()) {
     return;
   }
   sSmoke->SetGlobalTranslation(muzzleLocal);
   sSmoke->Render();
 }
 
-GunShine::GunShine() : on(PortDebug::CinematicLook()) {
+// The cannon's draws take the specular path even without the cinematic look (a shine too faint
+// to see): the heat glow lives there, and it stays whatever the graphics preset.
+GunShine::GunShine() : on(!PortDebug::OriginalExperience()) {
   if (on) {
-    GXPortSetSpecular(0.85f);
+    GXPortSetSpecular(PortDebug::CinematicLook() ? 0.85f : 0.0001f);
   }
 }
 

@@ -32,6 +32,10 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
 void DrawParticles(const CStateManager& mgr, const CTransform4f& view, bool sceneCaptured);
 // After the particles, before the HUD: motion blur and depth of field.
 void DrawFinish(const CStateManager& mgr, const CTransform4f& view);
+// FSR (port_debug.h Upscaling): the jitter on at the start of the world's draw (a normal, not
+// zoomed, pass), and off with the capture of the finished world at its end (before the HUD).
+void FsrBegin();
+void FsrEnd(const CTransform4f& view);
 // A health pack thrown from one point to another, landing in `seconds` (port_enemy_ai.h).
 void ThrowPack(const CVector3f& from, const CVector3f& to, float seconds);
 // A burst where the arm cannon struck (beam: CPlayerState::EBeamId).

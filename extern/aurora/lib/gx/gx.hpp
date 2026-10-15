@@ -359,6 +359,12 @@ struct GXState {
   u32 currentPnMtx;
   Mat4x4<float> proj;
   GXProjectionType projType; // for GXGetProjectionv
+  // Port extension: the projection as loaded, before the FSR jitter (GXPortSetJitter) moves a
+  // perspective one by a sub-pixel offset (NDC).
+  Mat4x4<float> projRaw;
+  bool projRawLoaded = false;
+  bool projJitterOn = false;
+  float projJitter[2] = {0.f, 0.f};
   FogState fog;
   GXCullMode cullMode = GX_CULL_BACK;
   u8 lineWidth = 0;
@@ -559,6 +565,8 @@ struct ShaderInfo;
 
 void initialize() noexcept;
 void shutdown() noexcept;
+// g_gxState.proj from projRaw and the jitter (GXPortSetJitter).
+void apply_projection_jitter() noexcept;
 void update() noexcept;
 void set_viewport_policy(AuroraViewportPolicy policy) noexcept;
 void clear_static_texture_cache() noexcept;

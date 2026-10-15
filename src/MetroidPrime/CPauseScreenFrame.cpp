@@ -242,6 +242,8 @@ enum EPortOption {
   kPO_CannonMelee,
   kPO_HardPlus,
   kPO_EnhancedSamus,
+  kPO_GraphicsQuality,
+  kPO_Upscaling,
 };
 #define PORT_OPTION(opt) static_cast< EGameOption >(opt)
 
@@ -282,38 +284,15 @@ static const SGameOption skPortDisplayOptions[] = {
     {PORT_OPTION(kPO_Fov), -1, PortDebug::kFovMin, PortDebug::kFovMax, 1.f, kOT_Float},
     {PORT_OPTION(kPO_CameraBob), -1, static_cast< float >(PortDebug::kCameraBobMin),
      static_cast< float >(PortDebug::kCameraBobMax), 10.f, kOT_Float},
-    {PORT_OPTION(kPO_AmbientOcclusion), -1, static_cast< float >(PortDebug::kAmbientOcclusionMin),
-     static_cast< float >(PortDebug::kAmbientOcclusionMax), 10.f, kOT_Float},
-    {PORT_OPTION(kPO_SunShadows), -1, static_cast< float >(PortDebug::kSunShadowsMin),
-     static_cast< float >(PortDebug::kSunShadowsMax), 10.f, kOT_Float},
+    {PORT_OPTION(kPO_GraphicsQuality), -1, 0.f, static_cast< float >(PortDebug::kGQ_Count - 1), 1.f, kOT_Float},
+    {PORT_OPTION(kPO_Upscaling), -1, 0.f, static_cast< float >(PortDebug::kUpscalingModes - 1), 1.f, kOT_Float},
     {PORT_OPTION(kPO_EnhancedWater), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_GlassReflections), -1, static_cast< float >(PortDebug::kGlassReflectionsMin),
-     static_cast< float >(PortDebug::kGlassReflectionsMax), 10.f, kOT_Float},
-    {PORT_OPTION(kPO_BumpMapping), -1, static_cast< float >(PortDebug::kBumpMappingMin),
-     static_cast< float >(PortDebug::kBumpMappingMax), 10.f, kOT_Float},
     {PORT_OPTION(kPO_ParticleDensity), -1, static_cast< float >(PortDebug::kParticleDensityMin),
      static_cast< float >(PortDebug::kParticleDensityMax), 25.f, kOT_Float},
-    {PORT_OPTION(kPO_SoftParticles), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_InteractiveFoliage), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_RainDetails), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_BurnableFoliage), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_ClusteredLighting), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_RayTracedShadows), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_RayTracedReflections), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_GpuGrass), -1, static_cast< float >(PortDebug::kGpuGrassMin),
-     static_cast< float >(PortDebug::kGpuGrassMax), 25.f, kOT_Float},
-    {PORT_OPTION(kPO_Relief), -1, static_cast< float >(PortDebug::kReliefMin),
-     static_cast< float >(PortDebug::kReliefMax), 10.f, kOT_Float},
-    {PORT_OPTION(kPO_Debris), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_ModernParticles), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_ModernRain), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_VolumetricFogAmount), -1, static_cast< float >(PortDebug::kVolumetricFogAmountMin),
-     static_cast< float >(PortDebug::kVolumetricFogAmountMax), 10.f, kOT_Float},
     {PORT_OPTION(kPO_VolumetricClouds), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_MotionBlur), -1, static_cast< float >(PortDebug::kMotionBlurMin),
-     static_cast< float >(PortDebug::kMotionBlurMax), 10.f, kOT_Float},
-    {PORT_OPTION(kPO_DepthOfField), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_HeatDistortion), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_UnderwaterEffects), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_SnowFootprints), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_AmbientParticles), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
@@ -324,13 +303,10 @@ static const SGameOption skPortDisplayOptions[] = {
     {PORT_OPTION(kPO_CannonMelee), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_HardPlus), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_EnhancedSamus), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_CinematicLook), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
-    {PORT_OPTION(kPO_GlobalIllumination), -1, static_cast< float >(PortDebug::kGlobalIlluminationMin),
-     static_cast< float >(PortDebug::kGlobalIlluminationMax), 10.f, kOT_Float},
-    {PORT_OPTION(kPO_AntiAliasing), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_SpeedrunTimer), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_PhotoMode), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {kGO_RestoreDefaults, 35, 0.f, 1.f, 1.f, kOT_RestoreDefaults},
+
 };
 static const SGameOption skPortControllerOptions[] = {
     {kGO_ReverseYAxis, 32, 0.f, 1.f, 1.f, kOT_DoubleEnum},
@@ -362,7 +338,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {47, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {30, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -456,6 +432,36 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     return L"Samus Enhanced";
   case kPO_CinematicLook:
     return L"Cinematic Look";
+  case kPO_GraphicsQuality:
+    switch (PortDebug::GraphicsQuality()) {
+    case PortDebug::kGQ_VeryLow:
+      return L"Graphics: Very Low";
+    case PortDebug::kGQ_Low:
+      return L"Graphics: Low";
+    case PortDebug::kGQ_Medium:
+      return L"Graphics: Medium";
+    case PortDebug::kGQ_High:
+      return L"Graphics: High";
+    case PortDebug::kGQ_Ultra:
+      return L"Graphics: Ultra";
+    case PortDebug::kGQ_UltraRT:
+      return L"Graphics: Ultra + RT";
+    default:
+      return L"Graphics: Custom";
+    }
+  case kPO_Upscaling:
+    switch (PortDebug::Upscaling()) {
+    case 1:
+      return L"FSR: Native AA";
+    case 2:
+      return L"FSR: Quality";
+    case 3:
+      return L"FSR: Balanced";
+    case 4:
+      return L"FSR: Performance";
+    default:
+      return L"FSR: Off";
+    }
   case kPO_GlobalIllumination:
     return L"Global Illumination";
   case kPO_AntiAliasing:
@@ -575,6 +581,10 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::EnhancedSamus() ? 1 : 0;
   case kPO_CinematicLook:
     return PortDebug::CinematicLook() ? 1 : 0;
+  case kPO_GraphicsQuality:
+    return PortDebug::GraphicsQuality();
+  case kPO_Upscaling:
+    return PortDebug::Upscaling();
   case kPO_GlobalIllumination:
     return PortDebug::GlobalIllumination();
   case kPO_AntiAliasing:
@@ -655,6 +665,8 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_EnhancedSamus:
   case kPO_CinematicLook:
   case kPO_GlobalIllumination:
+  case kPO_GraphicsQuality:
+  case kPO_Upscaling:
   case kPO_AntiAliasing:
   case kPO_HudScale:
   case kPO_HideHelmet:
@@ -803,6 +815,12 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_CinematicLook:
     PortDebug::SetCinematicLook(value > 0);
+    break;
+  case kPO_GraphicsQuality:
+    PortDebug::SetGraphicsQuality(value);
+    break;
+  case kPO_Upscaling:
+    PortDebug::SetUpscaling(value);
     break;
   case kPO_GlobalIllumination:
     PortDebug::SetGlobalIllumination(value);
@@ -1020,6 +1038,7 @@ void CGameOptions::TryRestoreDefaults(const CFinalInput& input, int category, in
         PortDebug::SetHudWide(false);
         PortDebug::SetFirstPersonFov(PortDebug::kFovRetail);
         PortDebug::SetMsaa(1);
+        PortDebug::SetUpscaling(0);
         PortDebug::SetHudScale(PortDebug::kHudScaleMax);
         PortDebug::SetSpeedrunTimer(false);
         PortDebug::SetOriginalExperience(false);
@@ -1343,6 +1362,12 @@ void COptionsScreen::OnSliderChanged(CGuiSliderGroup* caller, float value) {
         GetOptionCategory(x70_tablegroup_leftlog->GetUserSelection(), false);
     const EGameOption option = category.options[x1c_rightSel].option;
     CGameOptions::SetOption(option, caller->GetCurVal());
+#ifdef TARGET_PC
+    // The preset and FSR rows name their value in the title.
+    if (option == PORT_OPTION(kPO_GraphicsQuality) || option == PORT_OPTION(kPO_Upscaling)) {
+      UpdateRightTitles();
+    }
+#endif
   }
 }
 

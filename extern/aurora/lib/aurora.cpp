@@ -3,6 +3,7 @@
 #include <aurora/time.hpp>
 
 #ifdef AURORA_ENABLE_GX
+#include "gfx/fsr.hpp"
 #include "gfx/resources.hpp"
 #include "gfx/frame.hpp"
 #include "gfx/pipeline_cache.hpp"
@@ -497,12 +498,14 @@ void end_frame() noexcept {
     }
 
     const bool canPresent = currentTexture && currentView;
+    // FSR (gfx/fsr.hpp): the frame so far is submitted and upscaled; the present shows its output.
+    const webgpu::TextureWithSampler* upscaled = canPresent ? gfx::fsr::upscale(encoder) : nullptr;
     if (canPresent) {
       wgpu::BindGroup presentBindGroup;
       if (rmlBindGroup && !rmlOverlay) {
         presentBindGroup = rmlBindGroup;
       } else {
-        const auto& resampledSource = webgpu::resample_present_source(encoder, viewport);
+        const auto& resampledSource = webgpu::resample_present_source(encoder, viewport, upscaled);
         presentBindGroup = webgpu::create_copy_bind_group(resampledSource);
       }
       {

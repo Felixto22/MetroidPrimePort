@@ -1199,7 +1199,72 @@ void DrawFinish(const CStateManager& mgr, const CTransform4f& view) {
   }
 }
 
+namespace {
+u32 sFsrMode = 0;
+float sFsrJitter[2] = {};
+float sFsrPrevView[12] = {};
+bool sFsrHavePrev = false;
+float sFsrClock = -1.f;
+} // namespace
+
+void FsrBegin() {
+  sFsrMode = static_cast< u32 >(PortDebug::UpscalingActive());
+  if (sFsrMode == 0) {
+    sFsrHavePrev = false;
+    return;
+  }
+  GXPortFsrJitter(static_cast< u64 >(CGraphics::GetFrameCounter()), sFsrMode, &sFsrJitter[0], &sFsrJitter[1]);
+  GXPortSetJitter(GX_TRUE, sFsrJitter[0], sFsrJitter[1]);
+}
+
+void FsrEnd(const CTransform4f& view) {
+  if (sFsrMode == 0) {
+    return;
+  }
+  GXPortSetJitter(GX_FALSE, 0.f, 0.f);
+  GXPortFsrParams p;
+  std::memset(&p, 0, sizeof(p));
+  const CGraphics::CProjectionState& proj = CGraphics::GetProjectionState();
+  const float zNear = proj.GetNear();
+  p.frustum[0] = proj.GetLeft() / zNear;
+  p.frustum[1] = proj.GetRight() / zNear;
+  p.frustum[2] = proj.GetBottom() / zNear;
+  p.frustum[3] = proj.GetTop() / zNear;
+  p.depth[0] = zNear;
+  p.depth[1] = proj.GetFar();
+  p.depth[2] = 0.125f;
+  p.depth[3] = 1.f;
+  ViewRows(view, p.view);
+  // A cut (the first frame, a jump of the eye or a sudden turn) starts FSR's history over.
+  bool reset = !sFsrHavePrev;
+  if (!reset) {
+    const float* a = p.view;
+    const float* b = sFsrPrevView;
+    const float dx = a[3] - b[3], dy = a[7] - b[7], dz = a[11] - b[11];
+    const float rightDot = a[0] * b[0] + a[4] * b[4] + a[8] * b[8];
+    const float upDot = a[1] * b[1] + a[5] * b[5] + a[9] * b[9];
+    reset = dx * dx + dy * dy + dz * dz > 16.f || rightDot < 0.8f || upDot < 0.8f;
+  }
+  std::memcpy(p.prevView, reset ? p.view : sFsrPrevView, sizeof(p.prevView));
+  std::memcpy(sFsrPrevView, p.view, sizeof(p.view));
+  sFsrHavePrev = true;
+  p.jitter[0] = sFsrJitter[0];
+  p.jitter[1] = sFsrJitter[1];
+  const float clock = CGraphics::GetSecondsMod900();
+  float dt = sFsrClock < 0.f ? 1.f / 60.f : clock - sFsrClock;
+  if (dt < 0.f) {
+    dt += 900.f;
+  }
+  sFsrClock = clock;
+  p.frameMs = std::clamp(dt, 0.001f, 0.1f) * 1000.f;
+  p.vfov = 2.f * std::atan((proj.GetTop() - proj.GetBottom()) * 0.5f / zNear);
+  p.mode = sFsrMode;
+  p.reset = reset ? 1 : 0;
+  GXPortFsrCapture(&p);
+}
+
 void Reset() {
+  sFsrHavePrev = false;
   sParticles.clear();
   sShots.clear();
   sFluids.clear();

@@ -145,6 +145,8 @@
 {"Video", "Display", "HUD and view", "Shadow resolution", "shadow quality map size 4096 2048 sharp"},
 {"Video", "Display", "HUD and view", "Enhanced water", "water poison waves reflections foam liquid"},
 {"Video", "Display", "HUD and view", "Sun shadows", "sun shadows dynamic real time lighting shade"},
+{"Video", "Display", "HUD and view", "Graphics quality", "graphics quality preset very low medium high ultra rt ray tracing custom"},
+{"Video", "Display", "HUD and view", "Upscaling (FSR)", "upscaling fsr fsr4 amd fidelityfx super resolution temporal anti-aliasing taa performance"},
 {"Video", "Display", "HUD and view", "Ambient occlusion", "ambient occlusion ssao ao shadows corners contact shading"},
 {"Video", "Display", "HUD and view", "Camera bob", "camera bob sway head bobbing motion sickness dizzy nausea comfort"},
 {"Video", "Display", "HUD and view", "Arm cannon right", "arm cannon gun offset right position"},

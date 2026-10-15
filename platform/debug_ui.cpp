@@ -293,6 +293,38 @@ int sGlobalIllumination = PortDebug::kGlobalIlluminationDefault;
 float sGunOffset[3] = {};
 int sMsaa = 1;
 int sAnisotropy = 16;
+// Setting `graphics_quality` (PortDebug::EGraphicsQuality) and `upscaling` (FSR's mode).
+int sGraphicsQuality = PortDebug::kGQ_UltraRT;
+int sUpscaling = 0;
+// What each preset sets, Very Low to Ultra + RT. Water, weather and particles are not here.
+struct SGraphicsPreset {
+  int ao, sunShadows, shadowRes, glass, bump;
+  bool softParticles, foliage, burnable, clustered, lighting, rayTracing;
+  int grass, relief;
+  bool debris;
+  int fog, motionBlur;
+  bool depthOfField, heatDistortion, cinematic;
+  int gi, msaa, aniso;
+};
+constexpr SGraphicsPreset kGraphicsPresets[PortDebug::kGQ_Custom] = {
+    // Very Low: the original look, sharper.
+    {0, 0, 1024, 0, 0, false, false, false, false, false, false, 0, 0, false, 0, 0, false, false, false, 0, 1, 2},
+    // Low
+    {0, 30, 1024, 40, 30, false, true, false, false, true, false, 50, 0, false, 50, 0, false, false, false, 0, 1, 4},
+    // Medium
+    {40, 40, 2048, 60, 50, true, true, true, true, true, false, 75, 50, true, 75, 30, false, true, true, 50, 1, 8},
+    // High
+    {60, 50, 2048, 80, 60, true, true, true, true, true, false, 100, 100, true, 100, 50, true, true, true, 100, 1, 16},
+    // Ultra
+    {70, 60, 4096, 90, 70, true, true, true, true, true, false, 150, 100, true, 100, 50, true, true, true, 100, 4, 16},
+    // Ultra + RT
+    {70, 60, 4096, 90, 70, true, true, true, true, true, true, 150, 100, true, 100, 50, true, true, true, 100, 4, 16},
+};
+// The preset in effect, or nullptr for Custom.
+const SGraphicsPreset* Preset() {
+  return sGraphicsQuality >= 0 && sGraphicsQuality < PortDebug::kGQ_Custom ? &kGraphicsPresets[sGraphicsQuality]
+                                                                           : nullptr;
+}
 // Setting `opengles`; sOpenGlesAtStart is what this run was started with.
 bool sOpenGles = false;
 bool sOpenGlesAtStart = false;
@@ -759,6 +791,10 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sEnemySpeed = std::clamp(std::atoi(value.c_str()), PortDebug::kEnemySpeedMin, PortDebug::kEnemySpeedMax);
   } else if (key == "cannon_melee") {
     sCannonMelee = ParseBool(value);
+  } else if (key == "graphics_quality") {
+    sGraphicsQuality = std::clamp(std::atoi(value.c_str()), 0, PortDebug::kGQ_Count - 1);
+  } else if (key == "upscaling") {
+    sUpscaling = std::clamp(std::atoi(value.c_str()), 0, PortDebug::kUpscalingModes - 1);
   } else if (key == "hard_plus") {
     sHardPlus = ParseBool(value);
   } else if (key == "enhanced_samus") {
@@ -988,6 +1024,8 @@ std::string SettingsText() {
   file << "smarter_enemies=" << (sSmarterEnemies ? 1 : 0) << '\n';
   file << "enemy_speed=" << sEnemySpeed << '\n';
   file << "cannon_melee=" << (sCannonMelee ? 1 : 0) << '\n';
+  file << "graphics_quality=" << sGraphicsQuality << '\n';
+  file << "upscaling=" << sUpscaling << '\n';
   file << "hard_plus=" << (sHardPlus ? 1 : 0) << '\n';
   file << "enhanced_samus=" << (sEnhancedSamus ? 1 : 0) << '\n';
   file << "modern_gameplay=" << (sModernGameplay ? 1 : 0) << '\n';
@@ -1464,15 +1502,42 @@ constexpr float kMenuScaleCap = 2.f;
 static bool sMenuCap = false;
 static bool sWorldDrawnThisFrame = false;
 static int sFramesWithoutWorld = 0;
+// FSR's mode in effect: the setting, once the GPU says FSR can run (asked until the device exists).
+static int sFsrAvailable = -1; // -1 not known yet
+static int EffectiveUpscaling() {
+  if (sOriginalExperience || sUpscaling <= 0 || sCaptureScale > 0.f) {
+    return 0;
+  }
+  if (sFsrAvailable < 0 && GXPortFsrAvailable()) {
+    sFsrAvailable = 1;
+  }
+  return sFsrAvailable > 0 ? sUpscaling : 0;
+}
+static float AutoRenderScale();
 static float EffectiveRenderScale() {
   if (sCaptureScale > 0.f) {
     return sCaptureScale;
   }
-  const float scale = sOriginalExperience ? 1.f : sRenderScale;
-  return sMenuCap ? std::min(scale, kMenuScaleCap) : scale;
+  float scale = sOriginalExperience ? 1.f : sRenderScale;
+  if (sMenuCap) {
+    // No world this frame, so nothing for FSR: the full size, capped.
+    return std::min(scale, kMenuScaleCap);
+  }
+  if (const int fsr = EffectiveUpscaling(); fsr > 0) {
+    if (scale <= 0.f) {
+      scale = AutoRenderScale();
+    }
+    scale = std::max(0.25f, scale / GXPortFsrRatio(static_cast< u32 >(fsr)));
+  }
+  return scale;
 }
-static int EffectiveMsaa() { return sOriginalExperience ? 1 : sMsaa; }
-static int EffectiveAnisotropy() { return sOriginalExperience ? 1 : sAnisotropy; }
+static int EffectiveMsaa() {
+  if (sOriginalExperience || EffectiveUpscaling() > 0) {
+    return 1;
+  }
+  return Preset() ? Preset()->msaa : sMsaa;
+}
+static int EffectiveAnisotropy() { return sOriginalExperience ? 1 : Preset() ? Preset()->aniso : sAnisotropy; }
 
 static void ApplyGraphicsQuality() {
   aurora_set_graphics_quality(static_cast< uint32_t >(EffectiveMsaa()),
@@ -1521,7 +1586,7 @@ static void UpdateDynamicRes(double fps, unsigned frames) {
   }
   const float top = EffectiveRenderScale();
   const float bottom = std::min(sDynamicResMin, top);
-  if (!sDynamicRes || sOriginalExperience || top <= bottom || sTurbo) {
+  if (!sDynamicRes || sOriginalExperience || top <= bottom || sTurbo || EffectiveUpscaling() > 0) {
     ResetDynamicRes();
     return;
   }
@@ -1589,10 +1654,19 @@ static void UpdateMenuScaleCap(bool presented) {
   if (!presented) {
     return;
   }
+  // FSR coming on (the device now up) or going off changes the render size and MSAA.
+  static int sAppliedFsr = 0;
+  if (const int fsr = EffectiveUpscaling(); fsr != sAppliedFsr) {
+    sAppliedFsr = fsr;
+    sDynScale = 0.f;
+    VISetFrameBufferScale(EffectiveRenderScale());
+    ApplyGraphicsQuality();
+    PortLog::Write("port: FSR %s, render scale %.2fx\n", PortDebug::UpscalingName(fsr), double(EffectiveRenderScale()));
+  }
   sFramesWithoutWorld = sWorldDrawnThisFrame ? 0 : sFramesWithoutWorld + 1;
   sWorldDrawnThisFrame = false;
   const bool cap = sFramesWithoutWorld > 8 && sCaptureScale <= 0.f && !sOriginalExperience &&
-                   sRenderScale > kMenuScaleCap;
+                   (sRenderScale > kMenuScaleCap || EffectiveUpscaling() > 0);
   if (cap == sMenuCap) {
     return;
   }
@@ -1703,7 +1777,19 @@ void SetRenderScale(float scale) {
 }
 
 SDL_Window* MainWindow();
+} // namespace PortDebug
 
+// Auto: the window's pixel size, as a multiple of the 480-line base.
+static float AutoRenderScale() {
+  int width = 0, height = 0;
+  SDL_Window* window = PortDebug::MainWindow();
+  if (window != nullptr && SDL_GetWindowSizeInPixels(window, &width, &height) && height > 0) {
+    return static_cast< float >(height) / 480.f;
+  }
+  return 1.f;
+}
+
+namespace PortDebug {
 float BaseRenderScale() {
   EnsureInitialized();
   if (sOriginalExperience) {
@@ -1977,7 +2063,7 @@ void SetFirstPersonFov(float degrees) {
 
 int BumpMapping() {
   EnsureInitialized();
-  return sOriginalExperience ? 0 : sBumpMapping;
+  return sOriginalExperience ? 0 : Preset() ? Preset()->bump : sBumpMapping;
 }
 
 void SetBumpMapping(int percent) {
@@ -1999,7 +2085,7 @@ void SetParticleDensity(int percent) {
 
 bool SoftParticles() {
   EnsureInitialized();
-  return sSoftParticles && !sOriginalExperience;
+  return (Preset() ? Preset()->softParticles : sSoftParticles) && !sOriginalExperience;
 }
 
 void SetSoftParticles(bool enabled) {
@@ -2010,7 +2096,7 @@ void SetSoftParticles(bool enabled) {
 
 bool InteractiveFoliage() {
   EnsureInitialized();
-  return sInteractiveFoliage && !sOriginalExperience;
+  return (Preset() ? Preset()->foliage : sInteractiveFoliage) && !sOriginalExperience;
 }
 
 void SetInteractiveFoliage(bool enabled) {
@@ -2032,7 +2118,7 @@ void SetRainDetails(bool enabled) {
 
 bool BurnableFoliage() {
   EnsureInitialized();
-  return sBurnableFoliage && !sOriginalExperience;
+  return (Preset() ? Preset()->burnable : sBurnableFoliage) && !sOriginalExperience;
 }
 
 void SetBurnableFoliage(bool enabled) {
@@ -2043,7 +2129,7 @@ void SetBurnableFoliage(bool enabled) {
 
 bool ClusteredLighting() {
   EnsureInitialized();
-  return sClusteredLighting && !sOriginalExperience;
+  return (Preset() ? Preset()->clustered : sClusteredLighting) && !sOriginalExperience;
 }
 
 void SetClusteredLighting(bool enabled) {
@@ -2054,7 +2140,7 @@ void SetClusteredLighting(bool enabled) {
 
 bool RayTracedShadows() {
   EnsureInitialized();
-  return sRayTracedShadows && !sOriginalExperience;
+  return (Preset() ? Preset()->rayTracing : sRayTracedShadows) && !sOriginalExperience;
 }
 
 void SetRayTracedShadows(bool enabled) {
@@ -2065,7 +2151,7 @@ void SetRayTracedShadows(bool enabled) {
 
 bool RayTracedReflections() {
   EnsureInitialized();
-  return sRayTracedReflections && !sOriginalExperience;
+  return (Preset() ? Preset()->rayTracing : sRayTracedReflections) && !sOriginalExperience;
 }
 
 void SetRayTracedReflections(bool enabled) {
@@ -2076,7 +2162,7 @@ void SetRayTracedReflections(bool enabled) {
 
 int GpuGrass() {
   EnsureInitialized();
-  return sOriginalExperience ? 0 : sGpuGrass;
+  return sOriginalExperience ? 0 : Preset() ? Preset()->grass : sGpuGrass;
 }
 
 void SetGpuGrass(int percent) {
@@ -2087,7 +2173,7 @@ void SetGpuGrass(int percent) {
 
 int Relief() {
   EnsureInitialized();
-  return sOriginalExperience ? 0 : sRelief;
+  return sOriginalExperience ? 0 : Preset() ? Preset()->relief : sRelief;
 }
 
 void SetRelief(int percent) {
@@ -2098,7 +2184,7 @@ void SetRelief(int percent) {
 
 bool Debris() {
   EnsureInitialized();
-  return sDebris && !sOriginalExperience;
+  return (Preset() ? Preset()->debris : sDebris) && !sOriginalExperience;
 }
 
 void SetDebris(bool enabled) {
@@ -2131,7 +2217,7 @@ void SetModernRain(bool enabled) {
 
 int VolumetricFogAmount() {
   EnsureInitialized();
-  return sOriginalExperience ? 0 : sVolumetricFogAmount;
+  return sOriginalExperience ? 0 : Preset() ? Preset()->fog : sVolumetricFogAmount;
 }
 
 void SetVolumetricFogAmount(int percent) {
@@ -2153,7 +2239,7 @@ void SetVolumetricClouds(bool enabled) {
 
 int MotionBlur() {
   EnsureInitialized();
-  return sOriginalExperience ? 0 : sMotionBlur;
+  return sOriginalExperience ? 0 : Preset() ? Preset()->motionBlur : sMotionBlur;
 }
 
 void SetMotionBlur(int percent) {
@@ -2164,7 +2250,7 @@ void SetMotionBlur(int percent) {
 
 bool DepthOfField() {
   EnsureInitialized();
-  return sDepthOfField && !sOriginalExperience;
+  return (Preset() ? Preset()->depthOfField : sDepthOfField) && !sOriginalExperience;
 }
 
 void SetDepthOfField(bool enabled) {
@@ -2175,7 +2261,7 @@ void SetDepthOfField(bool enabled) {
 
 bool HeatDistortion() {
   EnsureInitialized();
-  return sHeatDistortion && !sOriginalExperience;
+  return (Preset() ? Preset()->heatDistortion : sHeatDistortion) && !sOriginalExperience;
 }
 
 void SetHeatDistortion(bool enabled) {
@@ -2285,7 +2371,7 @@ void SetHardPlus(bool enabled) {
 
 bool CinematicLook() {
   EnsureInitialized();
-  return sCinematicLook && !sOriginalExperience;
+  return (Preset() ? Preset()->cinematic : sCinematicLook) && !sOriginalExperience;
 }
 
 void SetCinematicLook(bool enabled) {
@@ -2296,7 +2382,7 @@ void SetCinematicLook(bool enabled) {
 
 int GlobalIllumination() {
   EnsureInitialized();
-  return sOriginalExperience ? 0 : sGlobalIllumination;
+  return sOriginalExperience ? 0 : Preset() ? Preset()->gi : sGlobalIllumination;
 }
 
 void SetGlobalIllumination(int percent) {
@@ -2307,7 +2393,7 @@ void SetGlobalIllumination(int percent) {
 
 int GlassReflections() {
   EnsureInitialized();
-  return sOriginalExperience ? 0 : sGlassReflections;
+  return sOriginalExperience ? 0 : Preset() ? Preset()->glass : sGlassReflections;
 }
 
 void SetGlassReflections(int percent) {
@@ -2329,7 +2415,7 @@ void SetFastDoors(bool enabled) {
 
 bool EnhancedLighting() {
   EnsureInitialized();
-  return sEnhancedLighting && !sOriginalExperience;
+  return (Preset() ? Preset()->lighting : sEnhancedLighting) && !sOriginalExperience;
 }
 
 void SetEnhancedLighting(bool enabled) {
@@ -2340,7 +2426,7 @@ void SetEnhancedLighting(bool enabled) {
 
 int ShadowQuality() {
   EnsureInitialized();
-  return sShadowQuality;
+  return Preset() ? Preset()->shadowRes : sShadowQuality;
 }
 
 void SetShadowQuality(int size) {
@@ -2362,7 +2448,7 @@ void SetEnhancedWater(bool enabled) {
 
 int SunShadows() {
   EnsureInitialized();
-  return sOriginalExperience ? 0 : sSunShadows;
+  return sOriginalExperience ? 0 : Preset() ? Preset()->sunShadows : sSunShadows;
 }
 
 void SetSunShadows(int percent) {
@@ -2373,7 +2459,7 @@ void SetSunShadows(int percent) {
 
 int AmbientOcclusion() {
   EnsureInitialized();
-  return sOriginalExperience ? 0 : sAmbientOcclusion;
+  return sOriginalExperience ? 0 : Preset() ? Preset()->ao : sAmbientOcclusion;
 }
 
 void SetAmbientOcclusion(int percent) {
@@ -2423,6 +2509,82 @@ void SetMsaa(int samples) {
     ApplyGraphicsQuality();
     MarkDirty();
   }
+}
+
+int GraphicsQuality() {
+  EnsureInitialized();
+  return sGraphicsQuality;
+}
+
+void SetGraphicsQuality(int quality) {
+  EnsureInitialized();
+  quality = std::clamp(quality, 0, kGQ_Count - 1);
+  if (sGraphicsQuality == quality) {
+    return;
+  }
+  // Custom starts from the preset that was in effect.
+  if (quality == kGQ_Custom) {
+    if (const SGraphicsPreset* p = Preset()) {
+      sAmbientOcclusion = p->ao;
+      sSunShadows = p->sunShadows;
+      sShadowQuality = p->shadowRes;
+      sGlassReflections = p->glass;
+      sBumpMapping = p->bump;
+      sSoftParticles = p->softParticles;
+      sInteractiveFoliage = p->foliage;
+      sBurnableFoliage = p->burnable;
+      sClusteredLighting = p->clustered;
+      sEnhancedLighting = p->lighting;
+      sRayTracedShadows = p->rayTracing;
+      sRayTracedReflections = p->rayTracing;
+      sGpuGrass = p->grass;
+      sRelief = p->relief;
+      sDebris = p->debris;
+      sVolumetricFogAmount = p->fog;
+      sMotionBlur = p->motionBlur;
+      sDepthOfField = p->depthOfField;
+      sHeatDistortion = p->heatDistortion;
+      sCinematicLook = p->cinematic;
+      sGlobalIllumination = p->gi;
+      sMsaa = p->msaa;
+      sAnisotropy = p->aniso;
+    }
+  }
+  sGraphicsQuality = quality;
+  ApplyGraphicsQuality();
+  MarkDirty();
+  PortLog::Write("port: graphics quality %s\n", GraphicsQualityName(quality));
+}
+
+const char* GraphicsQualityName(int quality) {
+  static const char* const kNames[] = {"Very Low", "Low", "Medium", "High", "Ultra", "Ultra + RT", "Custom"};
+  return quality >= 0 && quality < kGQ_Count ? kNames[quality] : "";
+}
+
+int Upscaling() {
+  EnsureInitialized();
+  return sUpscaling;
+}
+
+int UpscalingActive() {
+  EnsureInitialized();
+  return sMenuCap ? 0 : EffectiveUpscaling();
+}
+
+void SetUpscaling(int mode) {
+  EnsureInitialized();
+  mode = std::clamp(mode, 0, kUpscalingModes - 1);
+  if (sUpscaling == mode) {
+    return;
+  }
+  sUpscaling = mode;
+  MarkDirty();
+  // RecordFrame applies the new render size and MSAA.
+}
+
+const char* UpscalingName(int mode) {
+  static const char* const kNames[] = {"Off", "Native AA", "Quality", "Balanced", "Performance"};
+  return mode >= 0 && mode < kUpscalingModes ? kNames[mode] : "";
 }
 
 bool OpenGles() {
@@ -7062,6 +7224,25 @@ void DrawVideoDisplay() {
   if (ImGui::Button("Retail##camera_bob")) {
     SetCameraBob(kCameraBobRetail);
   }
+  {
+    int quality = sGraphicsQuality;
+    if (ImGui::Combo("Graphics quality", &quality, "Very low\0" "Low\0" "Medium\0" "High\0" "Ultra\0" "Ultra + RT\0" "Custom\0")) {
+      SetGraphicsQuality(quality);
+    }
+    ImGui::SetItemTooltip("One preset for every graphics effect but water, weather and particles, which stay as you set\n"
+                          "them. Ultra + RT adds the ray-traced shadows and reflections. Custom: each setting below.");
+    int upscaling = sUpscaling;
+    if (ImGui::Combo("Upscaling (FSR)", &upscaling, "Off\0" "Native AA\0" "Quality\0" "Balanced\0" "Performance\0")) {
+      SetUpscaling(upscaling);
+    }
+    ImGui::SetItemTooltip("AMD FSR (FSR 4 on an RX 7000 or 9000, FSR 3.1 on other GPUs; D3D12): the world is drawn at a\n"
+                          "lower resolution and upscaled with temporal anti-aliasing. MSAA is off while it runs.");
+    if (sUpscaling > 0 && EffectiveUpscaling() == 0 && !sOriginalExperience) {
+      ImGui::TextDisabled("FSR can't run here (needs D3D12 and the AMD FidelityFX DLLs).");
+    }
+  }
+  const bool presetLocked = Preset() != nullptr;
+  ImGui::BeginDisabled(presetLocked);
   int ambientOcclusion = sAmbientOcclusion;
   if (ImGui::SliderInt("Ambient occlusion", &ambientOcclusion, kAmbientOcclusionMin, kAmbientOcclusionMax,
                        ambientOcclusion == 0 ? "Off" : "%d%%")) {
@@ -7069,23 +7250,28 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Screen-space ambient occlusion: soft shade in corners, creases and where\n"
                         "things meet the ground. 0 turns it off.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   int sunShadows = sSunShadows;
   if (ImGui::SliderInt("Sun shadows", &sunShadows, kSunShadowsMin, kSunShadowsMax, sunShadows == 0 ? "Off" : "%d%%")) {
     SetSunShadows(sunShadows);
   }
   ImGui::SetItemTooltip("Real-time shadows from the room's sun on the original world, Samus and\n"
                         "enemies: how dark they are. 0 turns them off.");
+  ImGui::EndDisabled();
   bool enhancedWater = sEnhancedWater;
   if (ImGui::Checkbox("Enhanced water", &enhancedWater)) {
     SetEnhancedWater(enhancedWater);
   }
   ImGui::SetItemTooltip("Water and poison with waves, ripples, reflections, depth colour and foam.");
+  ImGui::BeginDisabled(presetLocked);
   bool enhancedLighting = sEnhancedLighting;
   if (ImGui::Checkbox("Enhanced lighting", &enhancedLighting)) {
     SetEnhancedLighting(enhancedLighting);
   }
   ImGui::SetItemTooltip("Per-pixel lighting and up to four dynamic lights per object: shots and\n"
                         "explosions light the world smoothly instead of per vertex.");
+  ImGui::EndDisabled();
   bool fastDoors = sFastDoors;
   if (ImGui::Checkbox("Fast doors", &fastDoors)) {
     SetFastDoors(fastDoors);
@@ -7093,25 +7279,31 @@ void DrawVideoDisplay() {
   ImGui::SetItemTooltip("Load every neighbouring room at once in a larger game heap, so doors open\n"
                         "without waiting for the next room. The heap size applies after a restart.");
   {
+    ImGui::BeginDisabled(presetLocked);
     static const char* const kShadowSizes[] = {"1024", "2048", "4096"};
     int q = sShadowQuality >= 4096 ? 2 : sShadowQuality >= 2048 ? 1 : 0;
     if (ImGui::Combo("Shadow resolution", &q, kShadowSizes, 3)) {
       SetShadowQuality(1024 << q);
     }
     ImGui::SetItemTooltip("The sun shadow map's size per cascade. Applies after a restart.");
+    ImGui::EndDisabled();
   }
+  ImGui::BeginDisabled(presetLocked);
   int glassReflections = sGlassReflections;
   if (ImGui::SliderInt("Glass reflections", &glassReflections, kGlassReflectionsMin, kGlassReflectionsMax,
                        glassReflections == 0 ? "Off" : "%d%%")) {
     SetGlassReflections(glassReflections);
   }
   ImGui::SetItemTooltip("Glass reflects the room around it, more at grazing angles. 0 turns it off.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   int bumpMapping = sBumpMapping;
   if (ImGui::SliderInt("Bump mapping", &bumpMapping, kBumpMappingMin, kBumpMappingMax,
                        bumpMapping == 0 ? "Off" : "%d%%")) {
     SetBumpMapping(bumpMapping);
   }
   ImGui::SetItemTooltip("Relief from the normal maps of an HD texture pack (its normals folder). 0 turns it off.");
+  ImGui::EndDisabled();
   int particleDensity = sParticleDensity;
   if (ImGui::SliderInt("Particle density", &particleDensity, kParticleDensityMin, kParticleDensityMax,
                        particleDensity == 100 ? "Retail" : "%d%%")) {
@@ -7119,64 +7311,82 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("More sparks, smoke and debris from effects, and thicker snow and rain.\n"
                         "Effects already playing keep their count until they restart.");
+  ImGui::BeginDisabled(presetLocked);
   bool softParticles = sSoftParticles;
   if (ImGui::Checkbox("Soft particles", &softParticles)) {
     SetSoftParticles(softParticles);
   }
   ImGui::SetItemTooltip("Smoke, steam and glows fade where they touch walls and floors\n"
                         "instead of cutting a hard edge into them.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   bool interactiveFoliage = sInteractiveFoliage;
   if (ImGui::Checkbox("Interactive vegetation", &interactiveFoliage)) {
     SetInteractiveFoliage(interactiveFoliage);
   }
   ImGui::SetItemTooltip("Leaves, ferns, grass and hanging vines bend away from Samus and from\n"
                         "shots passing through them, and sway back after.");
+  ImGui::EndDisabled();
   bool rainDetails = sRainDetails;
   if (ImGui::Checkbox("Rain details", &rainDetails)) {
     SetRainDetails(rainDetails);
   }
   ImGui::SetItemTooltip("Rain splashes on leaves and wets them, its drops run down the visor,\n"
                         "and burning plants go out in it, smoking.");
+  ImGui::BeginDisabled(presetLocked);
   bool burnableFoliage = sBurnableFoliage;
   if (ImGui::Checkbox("Burnable vegetation", &burnableFoliage)) {
     SetBurnableFoliage(burnableFoliage);
   }
   ImGui::SetItemTooltip("A beam shot into a bush or fern sets it on fire; it burns to char and smoke.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   bool clusteredLighting = sClusteredLighting;
   if (ImGui::Checkbox("Clustered lighting", &clusteredLighting)) {
     SetClusteredLighting(clusteredLighting);
   }
   ImGui::SetItemTooltip("Every dynamic light (shots, explosions, glowing creatures, fires) lights the\n"
                         "world per pixel, as many as reach a surface, not only the few the game picks.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   bool rayTracedShadows = sRayTracedShadows;
   if (ImGui::Checkbox("Ray-traced shadows", &rayTracedShadows)) {
     SetRayTracedShadows(rayTracedShadows);
   }
   ImGui::SetItemTooltip("The sun's shadow of the world traced with DirectX Raytracing (D3D12, a GPU\n"
                         "with DXR 1.1): exact to the smallest railing, at any distance, with soft edges.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   bool rayTracedReflections = sRayTracedReflections;
   if (ImGui::Checkbox("Ray-traced reflections", &rayTracedReflections)) {
     SetRayTracedReflections(rayTracedReflections);
   }
   ImGui::SetItemTooltip("Water mirrors the world traced with DirectX Raytracing (D3D12, a GPU with\n"
                         "DXR 1.1): what's off screen or hidden shows in it too.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   int gpuGrass = sGpuGrass;
   if (ImGui::SliderInt("GPU grass", &gpuGrass, kGpuGrassMin, kGpuGrassMax, gpuGrass == 0 ? "Off" : "%d%%")) {
     SetGpuGrass(gpuGrass);
   }
   ImGui::SetItemTooltip("Dense grass the GPU builds over grassy ground: it sways in the wind and parts\n"
                         "around Samus and shots. 0 turns it off.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   int relief = sRelief;
   if (ImGui::SliderInt("Relief", &relief, kReliefMin, kReliefMax, relief == 0 ? "Off" : "%d%%")) {
     SetRelief(relief);
   }
   ImGui::SetItemTooltip("Parallax relief on the Remastered surfaces with normal maps: rock and ground\n"
                         "look displaced as the view moves. 0 turns it off.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   bool debris = sDebris;
   if (ImGui::Checkbox("Debris", &debris)) {
     SetDebris(debris);
   }
   ImGui::SetItemTooltip("Shots that hit the world knock loose chunks of rock that bounce and settle.");
+  ImGui::EndDisabled();
   bool modernParticles = sModernParticles;
   if (ImGui::Checkbox("Modern particles", &modernParticles)) {
     SetModernParticles(modernParticles);
@@ -7189,32 +7399,40 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Rain and snow drawn by the GPU in place of the game's: thousands of streaks in the wind,\n"
                         "kept out from under roofs, splashing where they land; snowflakes that drift.");
+  ImGui::BeginDisabled(presetLocked);
   int volumetricFogAmount = sVolumetricFogAmount;
   if (ImGui::SliderInt("Volumetric fog", &volumetricFogAmount, kVolumetricFogAmountMin, kVolumetricFogAmountMax, volumetricFogAmount == 0 ? "Off" : "%d%%")) {
     SetVolumetricFogAmount(volumetricFogAmount);
   }
   ImGui::SetItemTooltip("Fog marched through in 3D: thicker low down, drifting, lit by the sun and every light in it\n"
                         "(light shafts, glows around lamps and shots). 0 turns it off.");
+  ImGui::EndDisabled();
   bool volumetricClouds = sVolumetricClouds;
   if (ImGui::Checkbox("Volumetric clouds", &volumetricClouds)) {
     SetVolumetricClouds(volumetricClouds);
   }
   ImGui::SetItemTooltip("A layer of 3D clouds over the sky outdoors, drifting with the wind and lit by the sun.");
+  ImGui::BeginDisabled(presetLocked);
   int motionBlur = sMotionBlur;
   if (ImGui::SliderInt("Motion blur", &motionBlur, kMotionBlurMin, kMotionBlurMax, motionBlur == 0 ? "Off" : "%d%%")) {
     SetMotionBlur(motionBlur);
   }
   ImGui::SetItemTooltip("Blur along the camera's motion when turning or moving fast. 0 turns it off.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   bool depthOfField = sDepthOfField;
   if (ImGui::Checkbox("Depth of field", &depthOfField)) {
     SetDepthOfField(depthOfField);
   }
   ImGui::SetItemTooltip("In cutscenes and while scanning, what is far from the focus blurs like a camera lens.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   bool heatDistortion = sHeatDistortion;
   if (ImGui::Checkbox("Heat distortion", &heatDistortion)) {
     SetHeatDistortion(heatDistortion);
   }
   ImGui::SetItemTooltip("The air shimmers over lava and around hot shots and explosions.");
+  ImGui::EndDisabled();
   bool underwaterEffects = sUnderwaterEffects;
   if (ImGui::Checkbox("Underwater effects", &underwaterEffects)) {
     SetUnderwaterEffects(underwaterEffects);
@@ -7264,12 +7482,15 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("The charge fills almost twice as fast and shots follow each other sooner; a double tap of\n"
                         "the stick to a side dodges, and a dodge just before a hit slows time for the enemies.");
+  ImGui::BeginDisabled(presetLocked);
   bool cinematicLook = sCinematicLook;
   if (ImGui::Checkbox("Cinematic look", &cinematicLook)) {
     SetCinematicLook(cinematicLook);
   }
   ImGui::SetItemTooltip("Bloom on the brightest light (shots, the sky, glows) and a filmic colour\n"
                         "grade: more contrast and colour, cool shadows, warm highlights.");
+  ImGui::EndDisabled();
+  ImGui::BeginDisabled(presetLocked);
   int globalIllumination = sGlobalIllumination;
   if (ImGui::SliderInt("Global illumination", &globalIllumination, kGlobalIlluminationMin,
                        kGlobalIlluminationMax, globalIllumination == 0 ? "Off" : "%d%%")) {
@@ -7277,6 +7498,7 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Light bouncing between surfaces (screen-space, traced by a compute shader):\n"
                         "lit walls tint the floor beside them, glows colour their surroundings. 0 turns it off.");
+  ImGui::EndDisabled();
   {
     // Issue #72: PrimeHack-style arm cannon placement.
     float offset[3] = {sGunOffset[0], sGunOffset[1], sGunOffset[2]};
@@ -7426,11 +7648,13 @@ void DrawGpuDriver() {
 void DrawVideoQuality() {
   ImGui::SeparatorText("Quality");
   bool locked = BeginOriginalLocked();
+  ImGui::BeginDisabled(Preset() != nullptr || EffectiveUpscaling() > 0);
   int msaa = sMsaa >= 4 ? 1 : 0;
   if (ImGui::Combo("Anti-aliasing", &msaa, "Off\0" "4x MSAA\0")) {
     SetMsaa(msaa == 1 ? 4 : 1);
   }
   ImGui::SetItemTooltip("Smooths polygon edges, at about 4x the framebuffer memory.");
+  ImGui::EndDisabled();
   EndOriginalLocked(locked);
   if (ImGui::Checkbox("Show shader compilation", &sShowShaderCompilation)) {
     MarkDirty();
@@ -7448,9 +7672,11 @@ void DrawVideoQuality() {
     while ((2 << aniso) <= sAnisotropy && aniso < 4) {
       ++aniso;
     }
+    ImGui::BeginDisabled(Preset() != nullptr);
     if (ImGui::Combo("Anisotropic filtering", &aniso, "1x\0" "2x\0" "4x\0" "8x\0" "16x\0")) {
       SetAnisotropy(1 << aniso);
     }
+    ImGui::EndDisabled();
     ImGui::SetItemTooltip("Keeps textures sharp at grazing angles. Recommended: 16x.");
   }
 

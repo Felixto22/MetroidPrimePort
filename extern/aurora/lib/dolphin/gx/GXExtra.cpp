@@ -9,6 +9,7 @@
 #include "../../gfx/ssao.hpp"
 #include "../../gfx/ssgi.hpp"
 #include "../../gfx/post.hpp"
+#include "../../gfx/fsr.hpp"
 #include "../../gfx/rt.hpp"
 #include "../../gfx/scenecap.hpp"
 #include "../../gfx/thermal.hpp"
@@ -249,6 +250,45 @@ GXBool GXPortPost(const GXPortPostParams* post) {
     GX_WRITE_U32(word);
   }
   return true;
+}
+
+GXBool GXPortFsrAvailable(void) { return aurora::gfx::fsr::available() ? GX_TRUE : GX_FALSE; }
+
+void GXPortFsrJitter(u64 index, u32 mode, f32* x, f32* y) {
+  float jx = 0.f, jy = 0.f;
+  aurora::gfx::fsr::jitter(index, mode, jx, jy);
+  if (x != nullptr) {
+    *x = jx;
+  }
+  if (y != nullptr) {
+    *y = jy;
+  }
+}
+
+f32 GXPortFsrRatio(u32 mode) { return aurora::gfx::fsr::ratio(mode); }
+
+void GXPortSetJitter(GXBool on, f32 x, f32 y) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_JITTER);
+  GX_WRITE_U8(on ? 1 : 0);
+  GX_WRITE_F32(x);
+  GX_WRITE_F32(y);
+}
+
+GXBool GXPortFsrCapture(const GXPortFsrParams* fsr) {
+  if (fsr == nullptr || sDrawIdMode || fsr->mode == 0) {
+    return GX_FALSE;
+  }
+  if (!aurora::gfx::fsr::ensure_task()) {
+    return GX_FALSE;
+  }
+  static_assert(sizeof(GXPortFsrParams) == sizeof(aurora::gfx::fsr::Params));
+  u32 words[sizeof(GXPortFsrParams) / sizeof(u32)];
+  std::memcpy(words, fsr, sizeof(words));
+  GX_WRITE_AURORA(GX_AURORA_PORT_FSR);
+  for (const u32 word : words) {
+    GX_WRITE_U32(word);
+  }
+  return GX_TRUE;
 }
 
 GXBool GXPortRtAvailable() { return aurora::gfx::rt::available() ? GX_TRUE : GX_FALSE; }

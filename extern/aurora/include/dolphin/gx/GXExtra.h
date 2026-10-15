@@ -328,6 +328,27 @@ typedef struct {
   u32 misc[4];        // mode, light count, frame counter, time slowed (0..1000; finish)
 } GXPortPostParams;
 GXBool GXPortPost(const GXPortPostParams* params);
+// Port extension: AMD FSR upscaling (aurora::gfx::fsr; Windows, D3D12). Whether it can run, the
+// jitter of frame `index` for `mode` (pixels; 1 native AA, 2 quality, 3 balanced, 4 performance),
+// its display-to-render ratio, the jitter on (or off) for the perspective projections loaded
+// after, and the capture at the end of the world's draw.
+GXBool GXPortFsrAvailable(void);
+void GXPortFsrJitter(u64 index, u32 mode, f32* x, f32* y);
+f32 GXPortFsrRatio(u32 mode);
+void GXPortSetJitter(GXBool on, f32 x, f32 y);
+typedef struct {
+  f32 view[12];     // view to world, rows (right, up, towards the camera; w the eye)
+  f32 prevView[12]; // the same for the last frame
+  f32 frustum[4];   // left, right, bottom, top at a view depth of 1
+  f32 depth[4];     // near, far, and the GX z range the world draws in (min, max)
+  f32 jitter[2];    // the frame's jitter (pixels)
+  f32 frameMs;      // since the last frame
+  f32 vfov;         // vertical field of view (radians)
+  u32 mode;
+  u32 reset;        // a camera cut
+  u32 pad[2];
+} GXPortFsrParams;
+GXBool GXPortFsrCapture(const GXPortFsrParams* params);
 // Port extension: ray-traced sun shadows (aurora::gfx::rt), with DirectX Raytracing on Dawn's
 // D3D12 device (Windows, a DXR 1.1 GPU). Whether this device can: the first call sets it up.
 GXBool GXPortRtAvailable(void);

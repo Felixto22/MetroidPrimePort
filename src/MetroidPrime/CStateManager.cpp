@@ -3473,6 +3473,9 @@ void CStateManager::DrawWorld() const {
   const bool portZoomed = sPortViewZoom != 1.f;
   if (!portZoomed)
     PortCaptureProbeFace();
+  // FSR's sub-pixel jitter on the world's (and the gun's) projections.
+  if (!portZoomed)
+    PortFx::FsrBegin();
 #endif
 #ifdef TARGET_PC
   // Port: material UV animations read the presented time between ticks (smooth frames).
@@ -3958,6 +3961,7 @@ void CStateManager::DrawWorld() const {
   // Motion blur and depth of field over the world, the gun left sharp (port_fx.h).
   if (!portZoomed) {
     PortFx::DrawFinish(*this, backupViewMatrix);
+    PortFx::FsrEnd(backupViewMatrix);
   }
   // The HUD, visor and the next pass's draws before its capture don't fade against this frame.
   GXPortSetSoftParticles(GX_FALSE);

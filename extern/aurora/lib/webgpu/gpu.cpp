@@ -658,12 +658,13 @@ wgpu::BindGroup create_copy_bind_group(const TextureWithSampler& source) {
   return g_device.CreateBindGroup(&bindGroupDescriptor);
 }
 
-const TextureWithSampler& resample_present_source(const wgpu::CommandEncoder& encoder, const Viewport& viewport) {
-  const auto& source = present_source();
+const TextureWithSampler& resample_present_source(const wgpu::CommandEncoder& encoder, const Viewport& viewport,
+                                                  const TextureWithSampler* override) {
+  const auto& source = override != nullptr ? *override : present_source();
   const uint32_t width = viewport_extent(viewport.width);
   const uint32_t height = viewport_extent(viewport.height);
   if (!g_resampledFrameBuffer.view || g_resampledFrameBuffer.size.width != width ||
-      g_resampledFrameBuffer.size.height != height || g_resampledFrameBuffer.format != source.format) {
+      g_resampledFrameBuffer.size.height != height || g_resampledFrameBuffer.format != present_source().format) {
     g_resampledFrameBuffer = create_render_texture(width, height, false);
   }
 

@@ -9,6 +9,7 @@
 #include "ssgi.hpp"
 #include "rt.hpp"
 #include "post.hpp"
+#include "fsr.hpp"
 #include <aurora/fxp.hpp>
 #include <aurora/geo.hpp>
 #include "scenecap.hpp"
@@ -616,6 +617,7 @@ void shutdown() {
   geo::shutdown();
   fxp::shutdown();
   post::shutdown();
+  fsr::shutdown();
   scenecap::shutdown();
   xray::shutdown();
   thermal::shutdown();

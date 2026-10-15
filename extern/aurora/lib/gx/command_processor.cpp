@@ -6,6 +6,7 @@
 #include "../gfx/ssao.hpp"
 #include "../gfx/ssgi.hpp"
 #include "../gfx/post.hpp"
+#include "../gfx/fsr.hpp"
 #include "../gfx/rt.hpp"
 #include "../gfx/scenecap.hpp"
 #include "../gfx/thermal.hpp"
@@ -867,6 +868,9 @@ void handle_aurora(ByteReader& reader) noexcept {
         proj[r][c] = reader.read<f32>();
       }
     }
+    g_gxState.projRaw = proj;
+    g_gxState.projRawLoaded = true;
+    apply_projection_jitter();
     // Invalidate projection XF regs
     for (u32 reg = 0x20; reg <= 0x26; ++reg) {
       g_gxState.xfRegValid.reset(reg);
@@ -1354,6 +1358,25 @@ void handle_aurora(ByteReader& reader) noexcept {
     }
     std::memcpy(&params, words, sizeof(params));
     gfx::ssgi::record(params);
+  } else if (subCmd == GX_AURORA_PORT_JITTER) {
+    const bool on = reader.read<u8>() != 0;
+    const f32 x = reader.read<f32>();
+    const f32 y = reader.read<f32>();
+    // Pixels of the frame buffer to NDC (y up).
+    const auto& size = webgpu::present_source().size;
+    g_gxState.projJitterOn = on && size.width > 0 && size.height > 0;
+    g_gxState.projJitter[0] = g_gxState.projJitterOn ? 2.f * x / float(size.width) : 0.f;
+    g_gxState.projJitter[1] = g_gxState.projJitterOn ? -2.f * y / float(size.height) : 0.f;
+    apply_projection_jitter();
+    g_gxState.dirty |= DirtyUniform;
+  } else if (subCmd == GX_AURORA_PORT_FSR) {
+    gfx::fsr::Params params;
+    u32 words[sizeof(params) / sizeof(u32)];
+    for (u32& word : words) {
+      word = reader.read<u32>();
+    }
+    std::memcpy(&params, words, sizeof(params));
+    gfx::fsr::record(params);
   } else if (subCmd == GX_AURORA_PORT_POST) {
     gfx::post::Params params;
     u32 words[sizeof(params) / sizeof(u32)];
