@@ -588,6 +588,10 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
     }
   }
   immediates.fogRangeBase = cache.fogRange.offset / sizeof(u32);
+  // A tessellated draw (never range-fogged) takes its first index there: all ones, no indices.
+  if (cache.config.shaderConfig.tess != 0) {
+    immediates.fogRangeBase = numIndices != 0 ? idxRange.offset / 2 : 0xFFFFFFFFu;
+  }
 
   state.dirty &= ~DirtyImmediates;
 
@@ -659,7 +663,8 @@ static void draw_prim(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, ByteReader& 
   const bool cleanState = g_gxState.dirty == 0 && fmt == sDrawCache.lastDrawFmt && sDrawCache.lineMode == 0 &&
                           prim != GX_LINES && prim != GX_LINESTRIP && prim != GX_POINTS;
   auto* lastDraw = cleanState ? gfx::get_last_draw_command<DrawData>() : nullptr;
-  const bool canMerge = lastDraw != nullptr && lastDraw->instanceCount == 1;
+  // A tessellated draw's first index is in its immediates: it is never merged into.
+  const bool canMerge = lastDraw != nullptr && lastDraw->instanceCount == 1 && lastDraw->tess == 0;
 
   // Push raw vertex data to buffer. Merged draws must remain contiguous with the previous range.
   const auto vertexData = reader.take(totalVtxBytes);

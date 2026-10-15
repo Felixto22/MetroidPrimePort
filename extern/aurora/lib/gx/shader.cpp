@@ -1124,7 +1124,8 @@ auto modern_material_func(const ShaderConfig& config, const ShaderInfo& info, bo
   return fmt::format(R"""(
     if (ubuf.modern.x > 0.0 || ubuf.modern.y > 0.0) {{
         let mhero = ubuf.modern.y > 0.0;
-        let mk = select(ubuf.modern.x, ubuf.modern.y, mhero);
+        // Fades out far away: sky domes and distant backdrops keep their own look.
+        let mk = select(ubuf.modern.x * (1.0 - smoothstep(120.0, 300.0, length({4}))), ubuf.modern.y, mhero);
         let muv = tex{1}_uv;
         let mdx = dpdx(muv);
         let mdy = dpdy(muv);
@@ -1191,7 +1192,9 @@ auto modern_material_func(const ShaderConfig& config, const ShaderInfo& info, bo
         let mao = clamp(1.0 + (m11 - mavg) * 3.0, 0.6, 1.15);
         let msharp = clamp(1.0 + (m11 - mavg) * 1.5 / max(m11, 0.05), 0.75, 1.3);
         let msunOn = ubuf.modern_sun.w > 0.0;
-        let mkey = select(select(normalize(vec3f(0.3, 0.85, 0.45)), normalize(vec3f(0.45, 0.75, 0.5)), mhero),
+        // Without a sun the key light hangs over the world (its up), so turning the camera doesn't move it.
+        let mworldKey = normalize(normalize(ubuf.modern_up.xyz) * 0.9 + vec3f(0.0, 0.0, 0.3));
+        let mkey = select(select(mworldKey, normalize(vec3f(0.45, 0.75, 0.5)), mhero),
                           -normalize(ubuf.modern_sun.xyz), msunOn && !mhero);
         var mdiffN = vec3f(0.0);
         var mdiffG = vec3f(0.0);
@@ -3368,7 +3371,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   // edge stays straight, the same on both sides, so no cracks).
   const u32 tessK = config.lineMode == 0 ? config.tess : 0u;
   if (tessK > 1) {
-    vtxInAttrs += ",\n    @builtin(instance_index) t_base: u32";
+    vtxXfrAttrsPre += "\n    let t_base = imm.fog_range_base;";
     uniformPre += R"""(
 @group(0) @binding(2)
 var<storage, read> ibuf: array<u32>;
@@ -3432,12 +3435,12 @@ fn t_index(e: u32) -> u32 {
             "\n    let t_lin = t_b.x * t_p0 + t_b.y * t_p1 + t_b.z * t_p2;"
             "\n    let t_q = t_b.x * (t_lin - dot(t_lin - t_p0, t_n0) * t_n0) + t_b.y * (t_lin - dot(t_lin - t_p1, t_n1) * t_n1) +"
             "\n              t_b.z * (t_lin - dot(t_lin - t_p2, t_n2) * t_n2);"
-            "\n    let t_s01 = smoothstep(0.35, 0.8, dot(t_n0, t_n1));"
-            "\n    let t_s12 = smoothstep(0.35, 0.8, dot(t_n1, t_n2));"
-            "\n    let t_s20 = smoothstep(0.35, 0.8, dot(t_n2, t_n0));"
+            "\n    let t_s01 = smoothstep(0.6, 0.92, dot(t_n0, t_n1));"
+            "\n    let t_s12 = smoothstep(0.6, 0.92, dot(t_n1, t_n2));"
+            "\n    let t_s20 = smoothstep(0.6, 0.92, dot(t_n2, t_n0));"
             "\n    let t_w = t_b.x * t_b.y + t_b.y * t_b.z + t_b.z * t_b.x;"
             "\n    let t_soft = select(1.0, (t_b.x * t_b.y * t_s01 + t_b.y * t_b.z * t_s12 + t_b.z * t_b.x * t_s20) / t_w, t_w > 1e-6);"
-            "\n    let {6} = mix(t_lin, t_q, 0.75 * t_soft);",
+            "\n    let {6} = mix(t_lin, t_q, 0.6 * t_soft);",
             attr_load(config, GX_VA_POS, "t_v0"sv), attr_load(config, GX_VA_POS, "t_v1"sv),
             attr_load(config, GX_VA_POS, "t_v2"sv), attr_load(config, GX_VA_NRM, "t_v0"sv),
             attr_load(config, GX_VA_NRM, "t_v1"sv), attr_load(config, GX_VA_NRM, "t_v2"sv), name);
