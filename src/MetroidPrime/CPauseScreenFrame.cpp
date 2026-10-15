@@ -240,6 +240,7 @@ enum EPortOption {
   kPO_EnemySpeed,
   kPO_CannonMelee,
   kPO_HardPlus,
+  kPO_EnhancedSamus,
 };
 #define PORT_OPTION(opt) static_cast< EGameOption >(opt)
 
@@ -320,6 +321,7 @@ static const SGameOption skPortDisplayOptions[] = {
      static_cast< float >(PortDebug::kEnemySpeedMax), 10.f, kOT_Float},
     {PORT_OPTION(kPO_CannonMelee), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_HardPlus), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
+    {PORT_OPTION(kPO_EnhancedSamus), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_CinematicLook), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_GlobalIllumination), -1, static_cast< float >(PortDebug::kGlobalIlluminationMin),
      static_cast< float >(PortDebug::kGlobalIlluminationMax), 10.f, kOT_Float},
@@ -358,7 +360,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {45, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {46, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -446,6 +448,8 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     return L"Cannon Melee";
   case kPO_HardPlus:
     return L"Hard+ Mode";
+  case kPO_EnhancedSamus:
+    return L"Samus Enhanced";
   case kPO_CinematicLook:
     return L"Cinematic Look";
   case kPO_GlobalIllumination:
@@ -561,6 +565,8 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::CannonMelee() ? 1 : 0;
   case kPO_HardPlus:
     return PortDebug::HardPlus() ? 1 : 0;
+  case kPO_EnhancedSamus:
+    return PortDebug::EnhancedSamus() ? 1 : 0;
   case kPO_CinematicLook:
     return PortDebug::CinematicLook() ? 1 : 0;
   case kPO_GlobalIllumination:
@@ -639,6 +645,7 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_EnemySpeed:
   case kPO_CannonMelee:
   case kPO_HardPlus:
+  case kPO_EnhancedSamus:
   case kPO_CinematicLook:
   case kPO_GlobalIllumination:
   case kPO_AntiAliasing:
@@ -780,6 +787,9 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_HardPlus:
     PortDebug::SetHardPlus(value > 0);
+    break;
+  case kPO_EnhancedSamus:
+    PortDebug::SetEnhancedSamus(value > 0);
     break;
   case kPO_CinematicLook:
     PortDebug::SetCinematicLook(value > 0);

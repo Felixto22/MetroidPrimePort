@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "port_enemy_ai.h"
+#endif
 #include "MetroidPrime/Weapons/CEnergyProjectile.hpp"
 
 #include "Kyoto/Audio/CSfxManager.hpp"
@@ -261,6 +264,12 @@ void CEnergyProjectile::Render(const CStateManager& mgr) const {
 }
 
 void CEnergyProjectile::Think(float dt, CStateManager& mgr) {
+#ifdef TARGET_PC
+  // A perfect dodge slows the enemies' shots with them (port_enemy_ai.h).
+  if (mgr.GetPlayer() != nullptr && GetOwnerId() != mgr.GetPlayer()->GetUniqueId()) {
+    dt *= PortEnemyAi::WorldTimeScale();
+  }
+#endif
   CWeapon::Think(dt, mgr);
   if (GetCurrentAreaId() != mgr.GetWorld()->GetCurrentAreaId() && HasAttrib(kPA_ArmCannon)) {
     mgr.SetActorAreaId(*this, mgr.GetWorld()->GetCurrentAreaId());

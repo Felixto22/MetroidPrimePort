@@ -40,7 +40,7 @@ struct Params {
   float clouds[4];      // coverage (0..1), base height above the eye (m), thickness (m), wind speed (m/s)
   float cloudColor[4];  // lit colour (linear rgb), density
   float finish[4];      // motion blur (0..1), depth of field (0..1), focus distance (m; negative: the screen centre's), focus range (m)
-  uint32_t misc[4];     // mode, light count, frame counter, 0
+  uint32_t misc[4];     // mode, light count, frame counter, time slowed (0..1000; finish)
 };
 static_assert(sizeof(Params) == 140 * 4);
 

@@ -23,6 +23,7 @@
 #include "MetroidPrime/Enemies/CSeedling.hpp"
 #include "MetroidPrime/Enemies/CWallWalker.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/Player/CPlayerGun.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Player/CStaticInterference.hpp"
 #include "MetroidPrime/TCastTo.hpp"
@@ -711,6 +712,92 @@ void CheckPartner(CPatterned& self, Ai& a, CStateManager& mgr) {
   PortLog::Write("port: enemy ai: a space pirate lost its partner and is enraged\n");
 }
 
+// ---- Samus' dodge ----
+float sDodgeT = 0.f;       // the throw's time left
+float sDodgeCd = 0.f;
+float sInvulnT = 0.f;
+float sSlowT = 0.f;        // the slowing's time left (real seconds)
+constexpr float kSlowTime = 1.6f;
+CVector3f sDodgeDir = CVector3f::Zero();
+float sTapTime = 10.f;     // since the last tap
+int sTapDir = 0;
+bool sStickOut = false;
+
+// Whether a shot or a pirate's blow would have reached Samus in the next moment.
+bool AboutToBeHit(CPlayer& player, CStateManager& mgr) {
+  const CVector3f center = player.GetTranslation() + CVector3f(0.f, 0.f, 1.f);
+  const CObjectList& actors = mgr.GetObjectListById(kOL_Actor);
+  for (int idx = actors.GetFirstObjectIndex(); idx != -1; idx = actors.GetNextObjectIndex(idx)) {
+    const CGameProjectile* proj = TCastToConstPtr< CGameProjectile >(actors.GetObjectByIndex(idx));
+    if (proj == nullptr || !proj->GetActive() || proj->GetOwnerId() == player.GetUniqueId()) {
+      continue;
+    }
+    const CVector3f step = proj->GetVelocity();
+    const float perFrame = Len(step);
+    if (perFrame < 1e-4f) {
+      continue;
+    }
+    const CVector3f dir = step * (1.f / perFrame);
+    const CVector3f rel = center - proj->GetTranslation();
+    const float along = CVector3f::Dot(rel, dir);
+    const float speed = perFrame * 60.f;
+    if (along < 0.f || along / speed > 0.4f) {
+      continue;
+    }
+    if (Len(rel - dir * along) < 1.8f) {
+      return true;
+    }
+  }
+  for (const auto& [id, a] : sAi) {
+    if (a.struck && a.strikeT > 0.f && a.strikeT < 0.4f) {
+      return true;
+    }
+  }
+  for (const Grenade& gr : sGrenades) {
+    if (!gr.returned && gr.fuse < 0.4f && Len(gr.pos - center) < 4.5f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void StartDodge(CPlayer& player, CStateManager& mgr, int dir) {
+  const CFirstPersonCamera* cam = mgr.GetCameraManager()->GetFirstPersonCamera();
+  const CVector3f right = cam != nullptr ? cam->GetTransform().GetRight() : player.GetTransform().GetRight();
+  sDodgeDir = Norm(Flat(right)) * float(dir);
+  sDodgeT = 0.22f;
+  sDodgeCd = 0.65f;
+  sInvulnT = 0.5f;
+  if (AboutToBeHit(player, mgr)) {
+    sSlowT = kSlowTime;
+    PortLog::Write("port: samus: perfect dodge\n");
+  }
+}
+
+// The left stick (or the keys that drive it) tapped twice to one side.
+void DodgeInput(CPlayer& player, const CFinalInput& input, CStateManager& mgr, float dt) {
+  sTapTime += dt;
+  const float x = input.ALeftX();
+  const bool out = std::fabs(x) > 0.8f;
+  const int dir = x > 0.f ? 1 : -1;
+  if (out && !sStickOut) {
+    if (sTapTime < 0.3f && dir == sTapDir && sDodgeCd <= 0.f &&
+        player.GetMorphballTransitionState() == CPlayer::kMS_Unmorphed &&
+        !mgr.GetCameraManager()->IsInCinematicCamera() && !player.IsAttached()) {
+      StartDodge(player, mgr, dir);
+      sTapTime = 10.f;
+    } else {
+      sTapTime = 0.f;
+      sTapDir = dir;
+    }
+  }
+  if (std::fabs(x) < 0.3f) {
+    sStickOut = false;
+  } else if (out) {
+    sStickOut = true;
+  }
+}
+
 // ---- The cannon strike ----
 float sMeleeT = -1.f;
 float sMeleeCool = 0.f;
@@ -840,8 +927,11 @@ void Pose(float t, CVector3f& offset, float& roll, float& pitch) {
 } // namespace
 
 float SpeedScale(const CPatterned& self) {
-  if (!self.IsAlive() || IsBoss(self.GetCharacterType())) {
+  if (!self.IsAlive()) {
     return 1.f;
+  }
+  if (IsBoss(self.GetCharacterType())) {
+    return WorldTimeScale();
   }
   float scale = float(PortDebug::EnemySpeed()) / 100.f;
   if (Hard()) {
@@ -853,7 +943,7 @@ float SpeedScale(const CPatterned& self) {
       scale *= 1.35f;
     }
   }
-  return scale;
+  return scale * WorldTimeScale();
 }
 
 float PlayerDamageScale() { return Hard() ? 2.f : 1.f; }
@@ -866,7 +956,7 @@ void Update(CStateManager& mgr, float dt) {
     sGrenades.clear();
     return;
   }
-  UpdateGrenades(mgr, dt);
+  UpdateGrenades(mgr, dt * WorldTimeScale());
 }
 
 void Think(CPatterned& self, float dt, CStateManager& mgr) {
@@ -1054,6 +1144,20 @@ float SeedlingCoolOffScale() { return Smart() ? 0.45f : 1.f; }
 
 void PlayerInput(CPlayer& player, const CFinalInput& input, CStateManager& mgr) {
   const float dt = input.Time();
+  if (sDodgeCd > 0.f) {
+    sDodgeCd -= dt;
+  }
+  if (sInvulnT > 0.f) {
+    sInvulnT -= dt;
+  }
+  if (sSlowT > 0.f) {
+    sSlowT -= dt;
+  }
+  if (PortDebug::EnhancedSamus()) {
+    DodgeInput(player, input, mgr, dt);
+  } else {
+    sDodgeT = sInvulnT = sSlowT = 0.f;
+  }
   if (sMeleeCool > 0.f) {
     sMeleeCool -= dt;
   }
@@ -1062,6 +1166,10 @@ void PlayerInput(CPlayer& player, const CFinalInput& input, CStateManager& mgr) 
     if (!sMeleeHit && sMeleeT >= 0.13f) {
       sMeleeHit = true;
       MeleeStrike(player, mgr);
+      // The blow carries a charged shot of the beam, at once.
+      if (CPlayerGun* gun = player.PlayerGun()) {
+        gun->PortFireChargedShot(mgr);
+      }
     }
     if (sMeleeT > 0.46f) {
       sMeleeT = -1.f;
@@ -1089,6 +1197,36 @@ void PlayerInput(CPlayer& player, const CFinalInput& input, CStateManager& mgr) 
   sMeleeHit = false;
 }
 
+float ChargeSpeedScale() { return PortDebug::EnhancedSamus() ? 1.8f : 1.f; }
+float CooldownScale() { return PortDebug::EnhancedSamus() ? 0.65f : 1.f; }
+
+void PlayerDodgeMove(CPlayer& player, CStateManager& mgr, float dt) {
+  if (sDodgeT <= 0.f) {
+    return;
+  }
+  sDodgeT -= dt;
+  const CVector3f v = player.GetVelocityWR();
+  // Not into a wall.
+  const CVector3f waist = player.GetTranslation() + CVector3f(0.f, 0.f, 1.f);
+  if (Blocked(mgr, waist, waist + sDodgeDir * 1.f)) {
+    sDodgeT = 0.f;
+    return;
+  }
+  player.SetVelocityWR(sDodgeDir * 14.f + CVector3f(0.f, 0.f, v.GetZ()));
+}
+
+bool PlayerInvulnerable() { return sInvulnT > 0.f; }
+
+float SlowMotion() {
+  if (sSlowT <= 0.f) {
+    return 0.f;
+  }
+  // In fast, out over the last half second.
+  return std::clamp(sSlowT / 0.5f, 0.f, 1.f) * std::clamp((kSlowTime - sSlowT) / 0.08f, 0.f, 1.f);
+}
+
+float WorldTimeScale() { return 1.f - 0.7f * SlowMotion(); }
+
 CVector3f MeleeGunOffset() {
   CVector3f offset;
   float roll, pitch;
@@ -1108,6 +1246,7 @@ CTransform4f MeleeGunTurn() {
 
 void Reset() {
   sAi.clear();
+  sDodgeT = sInvulnT = sSlowT = 0.f;
   sGrenades.clear();
   sMeleeT = -1.f;
 }

@@ -2124,6 +2124,10 @@ void CPlayer::ProcessInput(const CFinalInput& input, CStateManager& mgr) {
       const CFinalInput scaledInput =
           input.ScaleAnalogueSticks(IsUnderBetaMetroidAttack(mgr) ? 3.f : 1.f, 1.f);
       ComputeMovement(scaledInput, mgr, dt);
+#ifdef TARGET_PC
+      // The dodge's throw (port_enemy_ai.h).
+      PortEnemyAi::PlayerDodgeMove(*this, mgr, dt);
+#endif
     }
 
     if (ShouldSampleFailsafe(mgr)) {

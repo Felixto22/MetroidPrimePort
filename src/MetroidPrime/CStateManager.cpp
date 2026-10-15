@@ -1851,6 +1851,11 @@ void CStateManager::ApplyDamage(const TUniqueId damagerId, const TUniqueId damag
                                 const TUniqueId radiusSender, const CDamageInfo& info,
                                 const CMaterialFilter& filter, const CVector3f& knockbackVec) {
 #ifdef TARGET_PC
+  // The dodge's half second of invulnerability (port_enemy_ai.h).
+  if (x84c_player != nullptr && damageeId == x84c_player->GetUniqueId() && damagerId != damageeId &&
+      PortEnemyAi::PlayerInvulnerable()) {
+    return;
+  }
   // Hard+ (port_enemy_ai.h): an enemy's blow or shot hurts Samus twice as much.
   {
     static bool sScaling = false;

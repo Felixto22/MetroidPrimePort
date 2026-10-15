@@ -366,6 +366,19 @@ fn project_prev(world: vec3f) -> vec2f {
   return vec2f(s.x, 1.0 - s.y);
 }
 
+// Time slowed (misc.w: 0..1000): colour drained toward a cold blue, the edges darkened.
+fn slowed(c: vec3f, uv: vec2f) -> vec3f {
+  let s = f32(p.misc.w) / 1000.0;
+  if (s <= 0.0) {
+    return c;
+  }
+  let lum = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+  let cold = vec3f(lum) * vec3f(0.8, 0.95, 1.2);
+  let d = length(uv - 0.5) * 1.4;
+  let vig = 1.0 - s * 0.55 * smoothstep(0.35, 1.0, d);
+  return mix(c, cold, s * 0.65) * vig;
+}
+
 @fragment
 fn fs_finish(in: VertexOutput) -> @location(0) vec4f {
   let size = vec2i(textureDimensions(src));
@@ -376,7 +389,7 @@ fn fs_finish(in: VertexOutput) -> @location(0) vec4f {
   let dat = min(vec2i(in.uv * vec2f(dsize)), dsize - vec2i(1));
   let z = raw_z(dat);
   if (is_viewmodel(z)) {
-    return f;
+    return vec4f(srgb_enc(slowed(srgb_dec(f.rgb), in.uv)), f.a);
   }
   var zl = p.depth.y;
   if (!is_sky(z)) {
@@ -457,7 +470,7 @@ fn fs_finish(in: VertexOutput) -> @location(0) vec4f {
       c = sum / wsum;
     }
   }
-  return vec4f(srgb_enc(c), f.a);
+  return vec4f(srgb_enc(slowed(c, in.uv)), f.a);
 }
 )";
 

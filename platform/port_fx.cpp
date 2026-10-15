@@ -1,6 +1,8 @@
 // Modern effects (port_fx.h).
 #include "port_fx.h"
 
+#include "port_enemy_ai.h"
+
 #include "port_debug.h"
 #include "port_log.h"
 
@@ -1165,6 +1167,12 @@ void DrawFinish(const CStateManager& mgr, const CTransform4f& view) {
   std::memcpy(sPrevView, rows, sizeof(rows));
   sHavePrev = true;
   bool any = false;
+  // A perfect dodge's slowing tints the screen (port_enemy_ai.h).
+  const float slow = PortEnemyAi::SlowMotion();
+  if (slow > 0.f) {
+    p.misc[3] = u32(slow * 1000.f);
+    any = true;
+  }
   if (PortDebug::MotionBlur() > 0) {
     p.finish[0] = float(PortDebug::MotionBlur()) / 100.f;
     any = true;

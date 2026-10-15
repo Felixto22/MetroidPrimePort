@@ -238,6 +238,9 @@ public:
 #ifdef TARGET_PC
   // Port: the beam's muzzle in the world (where shots leave), for its heat and smoke.
   CVector3f PortMuzzleWorld() const { return x4a8_gunWorldXf * x418_beamLocalXf.GetTranslation(); }
+  // Port: a fully charged shot of the current beam at once (the cannon strike, port_enemy_ai.h).
+  // False when the gun can't (charging, a missile out, a combo, holstered).
+  bool PortFireChargedShot(CStateManager& mgr);
 #endif
   CGrappleArm& GrappleArm() { return *x740_grappleArm.get(); }
   CGrappleArm& GetGrappleArm() const { return *x740_grappleArm.get(); }

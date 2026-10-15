@@ -286,6 +286,7 @@ bool sSmarterEnemies = true;
 int sEnemySpeed = PortDebug::kEnemySpeedDefault;
 bool sCannonMelee = true;
 bool sHardPlus = false;
+bool sEnhancedSamus = true;
 bool sCinematicLook = true;
 int sGlobalIllumination = PortDebug::kGlobalIlluminationDefault;
 float sGunOffset[3] = {};
@@ -759,6 +760,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sCannonMelee = ParseBool(value);
   } else if (key == "hard_plus") {
     sHardPlus = ParseBool(value);
+  } else if (key == "enhanced_samus") {
+    sEnhancedSamus = ParseBool(value);
   } else if (key == "cinematic_look") {
     sCinematicLook = ParseBool(value);
   } else if (key == "global_illumination") {
@@ -983,6 +986,7 @@ std::string SettingsText() {
   file << "enemy_speed=" << sEnemySpeed << '\n';
   file << "cannon_melee=" << (sCannonMelee ? 1 : 0) << '\n';
   file << "hard_plus=" << (sHardPlus ? 1 : 0) << '\n';
+  file << "enhanced_samus=" << (sEnhancedSamus ? 1 : 0) << '\n';
   file << "cinematic_look=" << (sCinematicLook ? 1 : 0) << '\n';
   file << "global_illumination=" << sGlobalIllumination << '\n';
   file << "gun_offset=" << sGunOffset[0] << ',' << sGunOffset[1] << ',' << sGunOffset[2] << '\n';
@@ -2239,6 +2243,17 @@ bool CannonMelee() {
 void SetCannonMelee(bool enabled) {
   EnsureInitialized();
   sCannonMelee = enabled;
+  MarkDirty();
+}
+
+bool EnhancedSamus() {
+  EnsureInitialized();
+  return sEnhancedSamus && !sOriginalExperience;
+}
+
+void SetEnhancedSamus(bool enabled) {
+  EnsureInitialized();
+  sEnhancedSamus = enabled;
   MarkDirty();
 }
 
@@ -7222,6 +7237,12 @@ void DrawVideoDisplay() {
   }
   ImGui::SetItemTooltip("Every smarter-enemy behaviour on, enemies at least 175% as fast with half as much health again,\n"
                         "and their shots and blows hurt Samus twice as much.");
+  bool enhancedSamus = sEnhancedSamus;
+  if (ImGui::Checkbox("Samus enhanced", &enhancedSamus)) {
+    SetEnhancedSamus(enhancedSamus);
+  }
+  ImGui::SetItemTooltip("The charge fills almost twice as fast and shots follow each other sooner; a double tap of\n"
+                        "the stick to a side dodges, and a dodge just before a hit slows time for the enemies.");
   bool cinematicLook = sCinematicLook;
   if (ImGui::Checkbox("Cinematic look", &cinematicLook)) {
     SetCinematicLook(cinematicLook);

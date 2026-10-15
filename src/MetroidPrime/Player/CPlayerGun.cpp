@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "port_enemy_ai.h"
+#endif
 #include "MetroidPrime/Player/CPlayerGun.hpp"
 #include "port_cinematic.h"
 #include "port_debug.h"
@@ -1352,6 +1355,24 @@ void CPlayerGun::UpdateNormalShotCycle(float dt, CStateManager& mgr) {
   mgr.InformListeners(GetGunMotionTransform().GetTranslation(), kLNT_PlayerFire);
 }
 
+#ifdef TARGET_PC
+bool CPlayerGun::PortFireChargedShot(CStateManager& mgr) {
+  if (x32c_chargePhase != kCP_NotCharging || x832_26_comboFiring || !IsWeaponStateSet(0x1) ||
+      IsWeaponStateSet(0x8) || IsWeaponStateSet(0x10) || x835_25_inPhazonBeam ||
+      mgr.GetPlayer()->GetMorphballTransitionState() != CPlayer::kMS_Unmorphed) {
+    return false;
+  }
+  const EChargeState state = static_cast< EChargeState >(x330_chargeState);
+  const float factor = x340_chargeBeamFactor;
+  x330_chargeState = kCS_Charged;
+  x340_chargeBeamFactor = 1.f;
+  UpdateNormalShotCycle(1.f / 60.f, mgr);
+  x330_chargeState = state;
+  x340_chargeBeamFactor = factor;
+  return true;
+}
+#endif
+
 void CPlayerGun::FireSecondary(float dt, CStateManager& mgr) {
   if (mgr.GetCameraManager()->IsInCinematicCamera()) {
     return;
@@ -1579,6 +1600,10 @@ void CPlayerGun::UpdateChargeState(float dt, CStateManager& mgr) {
       x340_chargeBeamFactor > fxStart) {
     x830_chargeRumbleHandle = mgr.GetRumbleManager()->Rumble(mgr, kRFX_PlayerGunCharge, 1.f, kRP_Three);
   }
+#endif
+#ifdef TARGET_PC
+  // Samus enhanced (port_enemy_ai.h): the charge fills faster.
+  chargeSpeed *= PortEnemyAi::ChargeSpeedScale();
 #endif
   switch (x32c_chargePhase) {
   case kCP_ChargeRequested:
@@ -2118,6 +2143,10 @@ void CPlayerGun::UpdateWeaponFire(float dt, CPlayerState& playerState, CStateMan
 
   if (!x832_24_coolingCharge && !x834_30_inBigStrike) {
     float coolDown = x72c_currentBeam->GetWeaponInfo().x0_coolDown;
+#ifdef TARGET_PC
+    // Samus enhanced (port_enemy_ai.h): shots follow each other sooner.
+    coolDown *= PortEnemyAi::CooldownScale();
+#endif
     if ((pressedStates & 0x1) == 0) {
       if (x390_cooldown >= coolDown) {
         x390_cooldown = coolDown;

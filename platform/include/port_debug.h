@@ -461,6 +461,10 @@ bool HardPlus();
 // CStateManager::DrawWorld drew the world this frame (screens without it draw at a capped scale).
 void NoteWorldDrawn();
 void SetHardPlus(bool enabled);
+// Samus enhanced: a faster charge and fire rate, a dodge (a double tap of the stick to a side) with
+// half a second of invulnerability, and time slowed after a perfect one (port_enemy_ai.h).
+bool EnhancedSamus();
+void SetEnhancedSamus(bool enabled);
 // Global illumination: screen-space bounce light traced by a compute shader (aurora::gfx::ssgi),
 // as a percentage (0: off, up to 200). Off in the original experience.
 const int kGlobalIlluminationDefault = 100;

@@ -12,6 +12,7 @@
 //    knocks grenades back;
 //  - pirates take cover and step out to shoot, enemies flank Samus from the sides, pirates throw
 //    grenades, and a pirate whose partner dies is enraged (faster, always closing in to strike);
+//  - Samus enhanced: a faster charge and fire rate, the dodge and the slowing of a perfect one;
 //  - Hard+ (port_debug.h HardPlus): all of it, enemies at least 175% as fast, with half as much
 //    health again, and their damage to Samus doubled.
 #include "Kyoto/Math/CTransform4f.hpp"
@@ -47,6 +48,19 @@ void PlayerInput(CPlayer& player, const CFinalInput& input, CStateManager& mgr);
 CVector3f MeleeGunOffset();
 CTransform4f MeleeGunTurn();
 
+// Samus enhanced (port_debug.h EnhancedSamus): how much faster the charge fills, how much of a
+// shot's cool-down is waited.
+float ChargeSpeedScale();
+float CooldownScale();
+// The dodge: a double tap of the left stick (or of the keys driving it) to a side throws Samus
+// that way with half a second of invulnerability; dodged just before a shot or a blow lands, time
+// slows for the enemies and their shots. After CPlayer::ComputeMovement: the throw itself.
+void PlayerDodgeMove(CPlayer& player, CStateManager& mgr, float dt);
+bool PlayerInvulnerable();
+// The enemies' and their shots' time factor (under 1 while slowed), and how far into the slowing
+// the frame is (0..1, for the screen's tint).
+float WorldTimeScale();
+float SlowMotion();
 // Forgets everything tracked (a world change).
 void Reset();
 } // namespace PortEnemyAi

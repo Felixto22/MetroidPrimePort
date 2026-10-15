@@ -325,7 +325,7 @@ typedef struct {
   f32 clouds[4];      // coverage, base height above the eye (m), thickness (m), wind speed
   f32 cloudColor[4];  // lit colour (linear rgb), density
   f32 finish[4];      // motion blur (0..1), depth of field (0..1), focus distance (m; negative: the screen centre's), focus range (m)
-  u32 misc[4];        // mode, light count, frame counter, 0
+  u32 misc[4];        // mode, light count, frame counter, time slowed (0..1000; finish)
 } GXPortPostParams;
 GXBool GXPortPost(const GXPortPostParams* params);
 // Port extension: ray-traced sun shadows (aurora::gfx::rt), with DirectX Raytracing on Dawn's
