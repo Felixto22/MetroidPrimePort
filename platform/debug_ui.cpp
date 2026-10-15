@@ -1777,19 +1777,17 @@ void SetRenderScale(float scale) {
 }
 
 SDL_Window* MainWindow();
-} // namespace PortDebug
 
 // Auto: the window's pixel size, as a multiple of the 480-line base.
 static float AutoRenderScale() {
   int width = 0, height = 0;
-  SDL_Window* window = PortDebug::MainWindow();
+  SDL_Window* window = MainWindow();
   if (window != nullptr && SDL_GetWindowSizeInPixels(window, &width, &height) && height > 0) {
     return static_cast< float >(height) / 480.f;
   }
   return 1.f;
 }
 
-namespace PortDebug {
 float BaseRenderScale() {
   EnsureInitialized();
   if (sOriginalExperience) {
