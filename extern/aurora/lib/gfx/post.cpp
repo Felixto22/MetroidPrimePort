@@ -371,7 +371,8 @@ fn fs_clouds(in: VertexOutput) -> @location(0) vec4f {
   let dir = normalize(to_world_dir(view_ray(in.uv)));
   // The analytic sky over the painted one (which keeps what is at and below the horizon: its hills).
   let painted = srgb_dec(f.rgb);
-  let replace = p.lights[4].x * smoothstep(0.0, 0.12, dir.z);
+  // 2: the painted sky's dome was taken out (nothing behind): all of it.
+  let replace = select(p.lights[4].x * smoothstep(0.0, 0.12, dir.z), 1.0, p.lights[4].x > 1.5);
   var skyLin = mix(painted, sky_color(dir), replace);
   if (p.lights[4].z < 0.5 || dir.z < 0.01) {
     return vec4f(srgb_enc(skyLin), f.a);
@@ -426,7 +427,7 @@ fn fs_clouds(in: VertexOutput) -> @location(0) vec4f {
     let ambient = mix(skyLow * 0.6, skyTop * 1.1, hf);
     var lit = keyCol * keyI * beer * mix(1.0, powder * 2.0, 0.5) * phase + ambient * 0.9;
     lit = lit * p.cloudColor.rgb;
-    lit += vec3f(0.75, 0.8, 1.0) * flash * (1.5 + 2.0 * d);
+    lit += vec3f(0.75, 0.8, 1.0) * flash * (0.25 + 0.5 * d);
     let ext = d * stepLen * 0.012;
     let st = exp(-ext);
     light += trans * lit * (1.0 - st);

@@ -19,6 +19,7 @@
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/CWorld.hpp"
 #include "MetroidPrime/Cameras/CCameraManager.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/Player/CMorphBall.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerGun.hpp"
@@ -196,9 +197,11 @@ uint32_t sWeatherRng = 0x51ed27u;
 // The planet's worlds (Tallon Overworld, Chozo Ruins, Phendrana Drifts): not the frigate or the
 // crater in space, not Magmoor's caverns or the mines underground.
 bool sPlanetWorld = false;
-// A retail sky dome replaced this frame and the last (Tallon's rooms draw their sky that way).
-bool sDomeNow = false, sDomeLast = false;
-bool Outdoors() { return sPlanetWorld && (sSkyDrawn || sDomeLast); }
+// Retail's sky domes around the camera this frame (Tallon's rooms draw their sky that way): big
+// scripted actors whose bounds hold the eye, so a big cliff or backdrop is never one.
+TUniqueId sDomes[8];
+int sDomeCount = 0;
+bool Outdoors() { return sPlanetWorld && (sSkyDrawn || sDomeCount > 0); }
 bool DayNightOn() { return PortDebug::DayNight() && Outdoors(); }
 bool WeatherOn() { return PortDebug::DynamicWeather() && Outdoors(); }
 
@@ -612,7 +615,6 @@ void Bolt(CVector3f a, const CVector3f& b, int segments, float width, float life
     const CVector3f d = next - a;
     // A static streak centred between the two: its length is speed x stretch (10 x 0.1).
     Emit((a + next) * 0.5f, d * 10.f, life, width, 0xffe8f0ff, fxp::Arc | fxp::Static, 0.f, 0.f, kNoFloor, 0.1f);
-    Emit((a + next) * 0.5f, d * 10.f, life, width * 6.f, 0x806080ff, fxp::Spark | fxp::Static, 0.f, 0.f, kNoFloor, 0.1f);
     if (branches && i > 1 && i < segments - 2 && sRng.Unit() < 0.3f) {
       const float rest = float(segments - i) / float(segments);
       const CVector3f end =
@@ -644,10 +646,9 @@ void UpdateLightning(const CStateManager& mgr, const CTransform4f& view) {
   const CVector3f ground(eye.GetX() + std::cos(yaw) * dist, eye.GetY() + std::sin(yaw) * dist, eye.GetZ() - 5.f);
   const CVector3f top = ground + CVector3f(sRng.Range(-15.f, 15.f), sRng.Range(-15.f, 15.f), sRng.Range(90.f, 130.f));
   const float life = 0.35f;
-  Bolt(top, ground, 14, 0.5f, life, true);
-  Emit(top, CVector3f(0.f, 0.f, 0.f), 0.4f, 40.f, 0x90b0c8ff, fxp::Glow | fxp::Static, 0.f);
-  Emit(ground, CVector3f(0.f, 0.f, 0.f), 0.3f, 12.f, 0xa0d0e0ff, fxp::Glow | fxp::Static, 0.f);
-  sFlash = 1.f;
+  Bolt(top, ground, 14, 0.35f, life, true);
+  Emit(ground, CVector3f(0.f, 0.f, 0.f), 0.25f, 8.f, 0x60d0e0ff, fxp::Glow | fxp::Static, 0.f);
+  sFlash = 0.6f;
 }
 
 // ---- Under water, lava, snow ----
@@ -1091,12 +1092,24 @@ void RageAura(const CVector3f& at) {
 void NoteSky(bool drawn) { sSkyDrawn = drawn; }
 
 void SkyTick(const CStateManager& mgr) {
-  sDomeLast = sDomeNow;
-  sDomeNow = false;
   sPlanetWorld = false;
   if (const CWorld* world = mgr.GetWorld()) {
     const uint32_t id = uint32_t(world->IGetWorldAssetId());
     sPlanetWorld = id == 0x39F2DE28u || id == 0x83F6FF6Fu || id == 0xA8BE6291u;
+  }
+  sDomeCount = 0;
+  if (sPlanetWorld && PortDebug::DayNight()) {
+    const CVector3f eye = mgr.GetCameraManager()->GetCurrentCamera(mgr).GetTranslation();
+    const CObjectList& actors = mgr.GetObjectListById(kOL_Actor);
+    for (int idx = actors.GetFirstObjectIndex(); idx != -1 && sDomeCount < 8; idx = actors.GetNextObjectIndex(idx)) {
+      const CActor* actor = TCastToConstPtr< CActor >(actors.GetObjectByIndex(idx));
+      if (actor == nullptr || !actor->GetActive() || !PortRoomGeo::IsSkyDome(*actor)) {
+        continue;
+      }
+      if (actor->GetModelData()->GetBounds(actor->GetTransform()).PointInside(eye)) {
+        sDomes[sDomeCount++] = actor->GetUniqueId();
+      }
+    }
   }
   const float clock = CGraphics::GetSecondsMod900();
   float dt = sSkyClock < 0.f ? 0.f : clock - sSkyClock;
@@ -1121,6 +1134,14 @@ void SkyTick(const CStateManager& mgr) {
     }
     sWeatherHold = 120.f + 180.f * WeatherUnit();
   }
+  static float sLogIn = 0.f;
+  sLogIn -= dt;
+  if (sLogIn <= 0.f) {
+    sLogIn = 10.f;
+    PortLog::Write("port: sky: %05.2f h, planet %d, sky %d, domes %d, weather %d (cover %.2f rain %.2f storm %.2f)\n",
+                   double(sDayClock * 24.f), int(sPlanetWorld), int(sSkyDrawn), sDomeCount, sWeatherState, double(sCover),
+                   double(sPrecip), double(sStorm));
+  }
   static const float kCover[4] = {0.3f, 0.6f, 0.82f, 0.95f};
   static const float kPrecip[4] = {0.f, 0.f, 0.6f, 1.f};
   static const float kStorm[4] = {0.f, 0.f, 0.f, 1.f};
@@ -1131,11 +1152,12 @@ void SkyTick(const CStateManager& mgr) {
 }
 
 bool ReplacesSkyDome(const CActor& actor) {
-  if (!PortDebug::DayNight() || !sPlanetWorld || !PortRoomGeo::IsSkyDome(actor)) {
-    return false;
+  for (int i = 0; i < sDomeCount; ++i) {
+    if (sDomes[i] == actor.GetUniqueId()) {
+      return true;
+    }
   }
-  sDomeNow = true;
-  return true;
+  return false;
 }
 
 bool SkyLight(float travel[3], float& intensity, float color[3]) {
@@ -1230,7 +1252,7 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
     l1[0] = moon[0], l1[1] = moon[1], l1[2] = moon[2], l1[3] = moonI * 0.3f;
     l1[4] = 0.55f, l1[5] = 0.65f, l1[6] = 0.9f, l1[7] = 0.f;
     float* l2 = p.lights[2];
-    l2[0] = dayNight ? 1.f : 0.f;
+    l2[0] = !dayNight ? 0.f : sDomeCount > 0 && !sSkyDrawn ? 2.f : 1.f;
     l2[1] = dayNight ? std::clamp(-elev / 0.15f, 0.f, 1.f) * (1.f - sCover) : 0.f;
     l2[2] = PortDebug::VolumetricClouds() ? 1.f : 0.f;
     l2[3] = rain ? sFlash : 0.f;
@@ -1273,7 +1295,7 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
     if (env == kEFX_Rain) {
       p.fog[0] *= 1.f + mag;
       // The flash lights the air too.
-      p.fogColor[0] += sFlash * 0.5f, p.fogColor[1] += sFlash * 0.55f, p.fogColor[2] += sFlash * 0.7f;
+      p.fogColor[0] += sFlash * 0.12f, p.fogColor[1] += sFlash * 0.14f, p.fogColor[2] += sFlash * 0.18f;
     }
     if (sunLen > 0.f) {
       for (int i = 0; i < 3; ++i) {
