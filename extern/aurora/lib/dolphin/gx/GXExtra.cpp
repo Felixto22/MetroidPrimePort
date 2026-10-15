@@ -274,6 +274,11 @@ void GXPortSetJitter(GXBool on, f32 x, f32 y) {
   GX_WRITE_F32(y);
 }
 
+void GXPortSetTessellation(u32 level) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_TESS);
+  GX_WRITE_U32(level);
+}
+
 void GXPortFsrCaptureSolid(void) {
   if (sDrawIdMode || !aurora::gfx::fsr::ensure_task()) {
     return;

@@ -3575,6 +3575,10 @@ void CStateManager::DrawWorld() const {
   };
   if (portModern)
     portSetModern(true);
+  // Smooth silhouettes: the lit models' triangles subdivided and rounded (port_debug.h).
+  const bool portTess = PortDebug::SmoothSilhouettes() && !portCollisionOnly;
+  if (portTess)
+    GXPortSetTessellation(3);
 #endif
   for (int i = areas.size() - 1; i >= 0; --i) {
     const CGameArea& area = *areas[i];
@@ -3986,6 +3990,8 @@ void CStateManager::DrawWorld() const {
   }
   if (portModern)
     portSetModern(false);
+  if (portTess)
+    GXPortSetTessellation(0);
   // The HUD, visor and the next pass's draws before its capture don't fade against this frame.
   GXPortSetSoftParticles(GX_FALSE);
 #endif

@@ -351,6 +351,10 @@ typedef struct {
 GXBool GXPortFsrCapture(const GXPortFsrParams* params);
 // The opaque world is drawn (before the transparent effects): FSR's reactive mask is what they add.
 void GXPortFsrCaptureSolid(void);
+// Port extension: the following lit triangle draws with normals (characters, the arm cannon, lit
+// props) are subdivided level x level per triangle and rounded by Phong tessellation, their hard
+// edges kept. Stays until changed; 0: off.
+void GXPortSetTessellation(u32 level);
 // Port extension: ray-traced sun shadows (aurora::gfx::rt), with DirectX Raytracing on Dawn's
 // D3D12 device (Windows, a DXR 1.1 GPU). Whether this device can: the first call sets it up.
 GXBool GXPortRtAvailable(void);

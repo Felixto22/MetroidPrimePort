@@ -488,7 +488,7 @@ void initialize() {
   createBuffer(g_resources.vertexBuffer,
                wgpu::BufferUsage::Storage | wgpu::BufferUsage::Vertex | wgpu::BufferUsage::CopyDst,
                g_bufferSizes.vertex + g_bufferSizes.residentVertex, "Shared Vertex Buffer");
-  createBuffer(g_resources.indexBuffer, wgpu::BufferUsage::Index | wgpu::BufferUsage::CopyDst,
+  createBuffer(g_resources.indexBuffer, wgpu::BufferUsage::Index | wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst,
                g_bufferSizes.index + g_bufferSizes.residentIndex,
                "Shared Index Buffer");
   createBuffer(g_resources.storageBuffer, wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopyDst,
@@ -525,6 +525,15 @@ void initialize() {
                     .type = wgpu::BufferBindingType::ReadOnlyStorage,
                 },
         },
+        // The index buffer, read by tessellated draws (ShaderConfig::tess)
+        wgpu::BindGroupLayoutEntry{
+            .binding = 2,
+            .visibility = wgpu::ShaderStage::Vertex,
+            .buffer =
+                wgpu::BufferBindingLayout{
+                    .type = wgpu::BufferBindingType::ReadOnlyStorage,
+                },
+        },
     };
     const wgpu::BindGroupLayoutDescriptor layoutDesc{
         .label = "Static bind group layout",
@@ -540,6 +549,10 @@ void initialize() {
         wgpu::BindGroupEntry{
             .binding = 1,
             .buffer = g_resources.storageBuffer,
+        },
+        wgpu::BindGroupEntry{
+            .binding = 2,
+            .buffer = g_resources.indexBuffer,
         },
     };
     const wgpu::BindGroupDescriptor bindGroupDescriptor{

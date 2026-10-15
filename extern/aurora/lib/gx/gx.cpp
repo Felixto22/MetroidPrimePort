@@ -618,6 +618,22 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
     const bool heroDraw = g_gxState.hero > 0.f && g_gxState.colorChannelConfig[GX_COLOR0].lightingEnabled;
     config.shaderConfig.hero = base && ((g_gxState.modern > 0.f && opaque) || heroDraw);
   }
+  // Tessellation: a lit triangle draw with normals and one position matrix (the CPU-skinned
+  // characters, the gun, lit props), none of the paths that move vertices themselves.
+  {
+    const auto& sc = config.shaderConfig;
+    bool tess = g_gxState.tessLevel > 1 && !drawId && sc.lineMode == 0 && sc.pbr == 0 && !sc.foliage &&
+                !sc.waterfall && sc.sdf == 0 && g_gxState.colorChannelConfig[GX_COLOR0].lightingEnabled &&
+                sc.attrs[GX_VA_POS].attrType != GX_NONE && sc.attrs[GX_VA_NRM].attrType != GX_NONE &&
+                sc.attrs[GX_VA_PNMTXIDX].attrType == GX_NONE && primitive != GX_LINES &&
+                primitive != GX_LINESTRIP && primitive != GX_POINTS;
+    for (const auto& tcg : sc.tcgs) {
+      if (tcg.src == GX_TG_BINRM || tcg.src == GX_TG_TANGENT || (tcg.type >= GX_TG_BUMP0 && tcg.type <= GX_TG_BUMP7)) {
+        tess = false;
+      }
+    }
+    config.shaderConfig.tess = tess ? g_gxState.tessLevel : 0;
+  }
   config.shaderConfig.perPixel = (g_gxState.perPixelLighting || config.shaderConfig.clustered ||
                                   config.shaderConfig.specular) && !drawId &&
                                  !depthOnly && config.shaderConfig.lineMode == 0;

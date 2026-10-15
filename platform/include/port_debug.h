@@ -508,6 +508,10 @@ bool SamusHD();
 // Modern materials: the same kind of material on the whole world, enemies and bosses (the world's
 // baked light reshaded by the relief, the sun's and the lights' highlights, reflections).
 bool ModernMaterials();
+// Smooth silhouettes: the lit models (Samus, the arm cannon, enemies, bosses, lit props) drawn with
+// each triangle subdivided and rounded by Phong tessellation, their hard edges kept.
+bool SmoothSilhouettes();
+void SetSmoothSilhouettes(bool enabled);
 void SetModernMaterials(bool enabled);
 void SetSamusHD(bool enabled);
 void SetGraphicsQuality(int quality);

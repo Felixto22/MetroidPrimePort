@@ -3360,10 +3360,92 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
     vtxXfrAttrsPre += "\n    let in_pnmtxidx = imm.current_pnmtx;";
   }
 
+  // Port extension: tessellation (ShaderConfig::tess). The draw has triangles x 3 K^2 vertices: each
+  // picks its triangle, its small triangle of the K x K grid over it and its corner there, fetches
+  // the triangle's three corners (from the index buffer, its first index the instance index; all
+  // ones: none) and interpolates their attributes; the position is rounded by Phong tessellation
+  // (shape 0.75) towards the corners' tangent planes, less across an edge whose normals part (a hard
+  // edge stays straight, the same on both sides, so no cracks).
+  const u32 tessK = config.lineMode == 0 ? config.tess : 0u;
+  if (tessK > 1) {
+    vtxInAttrs += ",\n    @builtin(instance_index) t_base: u32";
+    uniformPre += R"""(
+@group(0) @binding(2)
+var<storage, read> ibuf: array<u32>;
+fn t_index(e: u32) -> u32 {
+    let w = ibuf[e >> 1u];
+    return select(w & 0xffffu, w >> 16u, (e & 1u) == 1u);
+}
+)""";
+    vtxXfrAttrsPre += fmt::format(R"""(
+    let t_K = {0}u;
+    let t_tri = vidx / (3u * t_K * t_K);
+    let t_loc = vidx % (3u * t_K * t_K);
+    var t_n = t_loc / 3u;
+    let t_cn = t_loc % 3u;
+    var t_i = 0u;
+    var t_j = 0u;
+    var t_up = true;
+    for (var t_r = 0u; t_r < t_K; t_r++) {{
+        let t_cnt = 2u * (t_K - t_r) - 1u;
+        if (t_n < t_cnt) {{
+            t_i = t_r;
+            t_j = t_n / 2u;
+            t_up = (t_n % 2u) == 0u;
+            break;
+        }}
+        t_n = t_n - t_cnt;
+    }}
+    var t_gi = t_i;
+    var t_gj = t_j;
+    if (t_up) {{
+        if (t_cn == 1u) {{ t_gj = t_gj + 1u; }} else if (t_cn == 2u) {{ t_gi = t_gi + 1u; }}
+    }} else {{
+        if (t_cn == 0u) {{ t_gj = t_gj + 1u; }} else if (t_cn == 1u) {{ t_gi = t_gi + 1u; t_gj = t_gj + 1u; }} else {{ t_gi = t_gi + 1u; }}
+    }}
+    let t_b = vec3f(f32(t_K - t_gi - t_gj), f32(t_gj), f32(t_gi)) / f32(t_K);
+    var t_v0 = t_tri * 3u;
+    var t_v1 = t_v0 + 1u;
+    var t_v2 = t_v0 + 2u;
+    if (t_base != 0xFFFFFFFFu) {{
+        t_v0 = t_index(t_base + t_tri * 3u);
+        t_v1 = t_index(t_base + t_tri * 3u + 1u);
+        t_v2 = t_index(t_base + t_tri * 3u + 2u);
+    }})""", tessK);
+  }
+
   // Load vertex attributes
   for (GXAttr attr = GX_VA_PNMTXIDX; attr <= GX_VA_TEX7; attr = static_cast<GXAttr>(attr + 1)) {
     const auto attrType = config.attrs[attr].attrType;
     if (attrType == GX_NONE) {
+      continue;
+    }
+    if (tessK > 1) {
+      const auto name = vtx_attr(config, attr);
+      const bool integer = attr == GX_VA_PNMTXIDX || (attr >= GX_VA_TEX0MTXIDX && attr <= GX_VA_TEX7MTXIDX);
+      if (integer) {
+        vtxXfrAttrsPre += fmt::format("\n    let {} = {};", name, attr_load(config, attr, "t_v0"sv));
+      } else if (attr == GX_VA_POS && config.attrs[GX_VA_NRM].attrType != GX_NONE) {
+        vtxXfrAttrsPre += fmt::format(
+            "\n    let t_p0 = {0};\n    let t_p1 = {1};\n    let t_p2 = {2};"
+            "\n    let t_n0 = normalize({3});\n    let t_n1 = normalize({4});\n    let t_n2 = normalize({5});"
+            "\n    let t_lin = t_b.x * t_p0 + t_b.y * t_p1 + t_b.z * t_p2;"
+            "\n    let t_q = t_b.x * (t_lin - dot(t_lin - t_p0, t_n0) * t_n0) + t_b.y * (t_lin - dot(t_lin - t_p1, t_n1) * t_n1) +"
+            "\n              t_b.z * (t_lin - dot(t_lin - t_p2, t_n2) * t_n2);"
+            "\n    let t_s01 = smoothstep(0.35, 0.8, dot(t_n0, t_n1));"
+            "\n    let t_s12 = smoothstep(0.35, 0.8, dot(t_n1, t_n2));"
+            "\n    let t_s20 = smoothstep(0.35, 0.8, dot(t_n2, t_n0));"
+            "\n    let t_w = t_b.x * t_b.y + t_b.y * t_b.z + t_b.z * t_b.x;"
+            "\n    let t_soft = select(1.0, (t_b.x * t_b.y * t_s01 + t_b.y * t_b.z * t_s12 + t_b.z * t_b.x * t_s20) / t_w, t_w > 1e-6);"
+            "\n    let {6} = mix(t_lin, t_q, 0.75 * t_soft);",
+            attr_load(config, GX_VA_POS, "t_v0"sv), attr_load(config, GX_VA_POS, "t_v1"sv),
+            attr_load(config, GX_VA_POS, "t_v2"sv), attr_load(config, GX_VA_NRM, "t_v0"sv),
+            attr_load(config, GX_VA_NRM, "t_v1"sv), attr_load(config, GX_VA_NRM, "t_v2"sv), name);
+      } else {
+        vtxXfrAttrsPre += fmt::format("\n    let {0} = t_b.x * {1} + t_b.y * {2} + t_b.z * {3};", name,
+                                      attr_load(config, attr, "t_v0"sv), attr_load(config, attr, "t_v1"sv),
+                                      attr_load(config, attr, "t_v2"sv));
+      }
       continue;
     }
     // in_pnmtxidx and in_pos written above for line mode

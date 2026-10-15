@@ -56,7 +56,13 @@ void render(const DrawData& data, const wgpu::RenderPassEncoder& pass) {
     const wgpu::Color color{0.f, 0.f, 0.f, data.dstAlpha / 255.f};
     pass.SetBlendConstant(&color);
   }
-  if (data.indexCount == 0) {
+  if (data.tess != 0) {
+    // Tessellated: the vertex shader takes its triangle's corners from the index buffer (bound as
+    // storage), its first index passed as the first instance (all ones: no indices).
+    const uint32_t tris = (data.indexCount != 0 ? data.indexCount : data.vtxCount) / 3;
+    const uint32_t base = data.indexCount != 0 ? data.idxRange.offset / 2 : 0xFFFFFFFFu;
+    pass.Draw(tris * 3u * data.tess * data.tess, 1, 0, base);
+  } else if (data.indexCount == 0) {
     pass.Draw(data.vtxCount, data.instanceCount);
   } else {
     pass.DrawIndexed(data.indexCount, data.instanceCount);

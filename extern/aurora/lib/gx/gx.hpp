@@ -488,6 +488,8 @@ struct GXState {
   // GX_AURORA_PORT_MODERN: the modern material's strength on every opaque draw, the sun (view-space
   // direction it travels, intensity) and the world's up in view space.
   float modern = 0.f;
+  // GX_AURORA_PORT_TESS: the subdivision level for the lit models' triangles (0: off).
+  u8 tessLevel = 0;
   Vec4<float> modernSun{};
   Vec4<float> modernUp{0.f, 1.f, 0.f, 0.f};
   // GX_AURORA_PORT_GUN_HEAT: heat (x) and radius (y), and where (xyz, view space).
@@ -689,6 +691,11 @@ struct ShaderConfig {
   // GX_AURORA_PORT_MODERN or GX_AURORA_PORT_HERO on an opaque textured draw: the modern material
   // (ShaderInfo::usesModern; Samus' suit and cannon with the hero's parameters).
   u8 hero : 1 = 0;
+  // GX_AURORA_PORT_TESS on a lit triangle draw with normals and one position matrix: each triangle
+  // is drawn as tess x tess smaller ones, curved by Phong tessellation (pipeline.cpp issues
+  // triangles x 3 tess^2 vertices; the vertex shader fetches the original corners itself). 0: off.
+  u8 tess = 0;
+  u8 tessPad[3] = {};
   std::array<AttrConfig, MaxVtxAttr> attrs;
   std::array<TevSwap, MaxTevSwap> tevSwapTable;
   std::array<TevStage, MaxTevStages> tevStages;

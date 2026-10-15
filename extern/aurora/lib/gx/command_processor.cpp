@@ -612,6 +612,7 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
       .bindGroups = cache.bindGroups,
       .dstAlpha = state.dstAlpha,
       .shadowGroup = cache.shaderInfo.shadowReceive,
+      .tess = cache.config.shaderConfig.tess,
   };
   if (!state.shadowCasterOnly) {
     gfx::push_draw_command(draw);
@@ -620,6 +621,7 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
   if (cache.shadowCaster && (!state.shadowCutoutsOnly || cache.config.shaderConfig.alphaCompare)) {
     DrawData caster = draw;
     caster.pipeline = cache.shadowPipelineRef;
+    caster.tess = 0;
     // A cut-out caster reads its texture; the others need no group.
     caster.bindGroups = cache.config.shaderConfig.alphaCompare ? cache.casterBindGroups : GXBindGroups{};
     gfx::shadow::add_caster(caster);
@@ -1455,6 +1457,12 @@ void handle_aurora(ByteReader& reader) noexcept {
     const bool on = reader.read<u8>() != 0;
     if (g_gxState.waterfall != on) {
       g_gxState.waterfall = on;
+      g_gxState.dirty |= DirtyPipeline;
+    }
+  } else if (subCmd == GX_AURORA_PORT_TESS) {
+    const u32 level = std::min<u32>(reader.read<u32>(), 6u);
+    if (g_gxState.tessLevel != level) {
+      g_gxState.tessLevel = static_cast<u8>(level);
       g_gxState.dirty |= DirtyPipeline;
     }
   } else if (subCmd == GX_AURORA_PORT_MODERN) {

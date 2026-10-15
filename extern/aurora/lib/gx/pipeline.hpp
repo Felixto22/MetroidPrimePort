@@ -16,9 +16,10 @@ struct DrawData {
   GXBindGroups bindGroups;
   uint32_t dstAlpha;
   bool shadowGroup; // bindGroups.textureBindGroup has the shadow receiver layout
+  uint8_t tess = 0;  // ShaderConfig::tess: drawn as triangles x 3 tess^2 vertices, corners fetched in the shader
 };
 
-constexpr uint32_t GXPipelineConfigVersion = 15;
+constexpr uint32_t GXPipelineConfigVersion = 16;
 struct PipelineConfig {
   uint32_t version = GXPipelineConfigVersion;
   uint32_t msaaSamples = 1;
