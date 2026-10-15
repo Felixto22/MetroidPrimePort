@@ -1783,6 +1783,16 @@ bool HasSky(const CGameArea& gameArea) {
 
 uint32_t sSkyDrawnFor = 0;
 
+bool IsSkyDome(const CActor& actor) {
+  constexpr float kDomeSize = 250.f;
+  if (TCastToConstPtr< CScriptActor >(&actor) == nullptr || !actor.HasModelData()) {
+    return false;
+  }
+  const CAABox box = actor.GetModelData()->GetBounds();
+  const CVector3f size = box.GetMaxPoint() - box.GetMinPoint();
+  return std::max({std::fabs(size.GetX()), std::fabs(size.GetY()), std::fabs(size.GetZ())}) > kDomeSize;
+}
+
 bool HidesSky(const CGameArea& gameArea, const CActor& actor) {
   // Retail's sky domes are 314 to 1867 units across (scaled); the next largest actor in a room
   // with a sky of its own is 139 (Artifact Temple's bird eyes).

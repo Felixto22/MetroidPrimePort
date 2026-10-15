@@ -3491,7 +3491,7 @@ void CStateManager::DrawWorld() const {
     PortFx::FsrBegin();
   // The day's clock and the weather move on (port_fx.h).
   if (!portZoomed)
-    PortFx::SkyTick();
+    PortFx::SkyTick(*this);
 #endif
 #ifdef TARGET_PC
   // Port: material UV animations read the presented time between ticks (smooth frames).
@@ -3707,7 +3707,7 @@ void CStateManager::DrawWorld() const {
   const auto portShadowOffscreen = [&](const CActor& actor, int areaIdx) {
     if (!sShadowOffscreen || !portShadow || thermal || portCollisionOnly || &actor == x84c_player ||
         (portRoomGeo[areaIdx] && PortRoomGeo::Hides(*areas[areaIdx], actor.GetEditorId().Value())) ||
-        PortRoomGeo::HidesSky(*areas[areaIdx], actor)) {
+        PortRoomGeo::HidesSky(*areas[areaIdx], actor) || PortFx::ReplacesSkyDome(actor)) {
       return;
     }
     for (const TUniqueId* f = renderFirst.begin(); f != renderFirst.end(); ++f) {
@@ -3773,8 +3773,9 @@ void CStateManager::DrawWorld() const {
           if (portRoomGeo[i] && PortRoomGeo::Hides(area, actor->GetEditorId().Value())) {
             continue;
           }
-          // A retail sky dome, while DrawSky has drawn the room's own skies.
-          if (PortRoomGeo::HidesSky(area, *actor)) {
+          // A retail sky dome, while DrawSky has drawn the room's own skies, or the day and
+          // night's sky stands in for it.
+          if (PortRoomGeo::HidesSky(area, *actor) || PortFx::ReplacesSkyDome(*actor)) {
             continue;
           }
 #endif

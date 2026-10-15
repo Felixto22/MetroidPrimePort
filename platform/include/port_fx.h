@@ -14,6 +14,7 @@
 #include "Kyoto/Math/CVector3f.hpp"
 
 class CStateManager;
+class CActor;
 
 namespace PortFx {
 // A fluid's surface drawn this frame (CScriptWater::Render): its CFluidPlane::EFluidType, box and
@@ -45,7 +46,10 @@ void Fire(const CVector3f& at, float strength, float dt);
 float LightningFlash();
 // Day and night, and the weather (port_debug.h DayNight, DynamicWeather), outdoors (where the
 // world's sky was drawn last frame). Once a frame: the clock and the weather move on.
-void SkyTick();
+void SkyTick(const CStateManager& mgr);
+// With the day and night on the planet, retail's sky domes (Tallon's) give way to the sky drawn
+// for the hour: true for one to leave out of the frame.
+bool ReplacesSkyDome(const CActor& actor);
 // Outdoors with the day and night on: the way the key light travels (the sun by day, the moon by
 // night), its intensity (0..1) and colour. False: the room's own sun stands.
 bool SkyLight(float travel[3], float& intensity, float color[3]);

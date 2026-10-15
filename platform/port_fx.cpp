@@ -5,6 +5,7 @@
 
 #include "port_debug.h"
 #include "port_log.h"
+#include "port_room_geo.h"
 
 #include "Collision/CMaterialFilter.hpp"
 #include "Collision/CRayCastResult.hpp"
@@ -192,7 +193,12 @@ float sWeatherHold = 150.f;
 float sCover = 0.45f, sPrecip = 0.f, sStorm = 0.f;
 uint32_t sWeatherRng = 0x51ed27u;
 
-bool Outdoors() { return sSkyDrawn; }
+// The planet's worlds (Tallon Overworld, Chozo Ruins, Phendrana Drifts): not the frigate or the
+// crater in space, not Magmoor's caverns or the mines underground.
+bool sPlanetWorld = false;
+// A retail sky dome replaced this frame and the last (Tallon's rooms draw their sky that way).
+bool sDomeNow = false, sDomeLast = false;
+bool Outdoors() { return sPlanetWorld && (sSkyDrawn || sDomeLast); }
 bool DayNightOn() { return PortDebug::DayNight() && Outdoors(); }
 bool WeatherOn() { return PortDebug::DynamicWeather() && Outdoors(); }
 
@@ -1084,7 +1090,14 @@ void RageAura(const CVector3f& at) {
 
 void NoteSky(bool drawn) { sSkyDrawn = drawn; }
 
-void SkyTick() {
+void SkyTick(const CStateManager& mgr) {
+  sDomeLast = sDomeNow;
+  sDomeNow = false;
+  sPlanetWorld = false;
+  if (const CWorld* world = mgr.GetWorld()) {
+    const uint32_t id = uint32_t(world->IGetWorldAssetId());
+    sPlanetWorld = id == 0x39F2DE28u || id == 0x83F6FF6Fu || id == 0xA8BE6291u;
+  }
   const float clock = CGraphics::GetSecondsMod900();
   float dt = sSkyClock < 0.f ? 0.f : clock - sSkyClock;
   if (dt < 0.f) {
@@ -1115,6 +1128,14 @@ void SkyTick() {
   sCover += (kCover[sWeatherState] - sCover) * ease;
   sPrecip += (kPrecip[sWeatherState] - sPrecip) * ease;
   sStorm += (kStorm[sWeatherState] - sStorm) * ease;
+}
+
+bool ReplacesSkyDome(const CActor& actor) {
+  if (!PortDebug::DayNight() || !sPlanetWorld || !PortRoomGeo::IsSkyDome(actor)) {
+    return false;
+  }
+  sDomeNow = true;
+  return true;
 }
 
 bool SkyLight(float travel[3], float& intensity, float color[3]) {
@@ -1184,7 +1205,7 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
   // The sky and its clouds (port_fx.h; post.cpp's Clouds mode): the time of day's sky over the
   // painted one, and volumetric clouds lit by the sun or the moon.
   const bool dayNight = DayNightOn();
-  if ((PortDebug::VolumetricClouds() || dayNight) && sSkyDrawn) {
+  if ((PortDebug::VolumetricClouds() && sSkyDrawn) || dayNight) {
     FillCommon(p, view);
     p.misc[0] = 1;
     const bool rain = env == kEFX_Rain;
@@ -1263,7 +1284,7 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
       if (DayNightOn()) {
         float d[3], inten, col[3];
         KeyLight(d, inten, col);
-        p.sunColor[0] = 0.6f * col[0] * inten, p.sunColor[1] = 0.6f * col[1] * inten, p.sunColor[2] = 0.6f * col[2] * inten;
+        p.sunColor[0] = 0.45f * col[0] * inten, p.sunColor[1] = 0.45f * col[1] * inten, p.sunColor[2] = 0.45f * col[2] * inten;
       }
     }
     p.sunColor[3] = std::min(CGraphics::GetProjectionState().GetFar(), 140.f);
