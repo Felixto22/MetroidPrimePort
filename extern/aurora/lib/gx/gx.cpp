@@ -605,6 +605,7 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
       g_gxState.clusterActive && !drawId && !depthOnly && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0;
   config.shaderConfig.specular =
       g_gxState.specular > 0.f && !drawId && !depthOnly && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0;
+  config.shaderConfig.hero = config.shaderConfig.specular && g_gxState.hero > 0.f;
   config.shaderConfig.perPixel = (g_gxState.perPixelLighting || config.shaderConfig.clustered ||
                                   config.shaderConfig.specular) && !drawId &&
                                  !depthOnly && config.shaderConfig.lineMode == 0;

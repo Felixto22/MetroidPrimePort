@@ -5,6 +5,7 @@
 
 #include "port_console.h"
 #include "port_debug.h"
+#include "port_cinematic.h"
 #include "port_freecam.h"
 
 #include "Collision/CInternalCollisionStructure.hpp"
@@ -2489,6 +2490,10 @@ void CPlayer::Render(const CStateManager& mgr) const {
   }
 #endif
   if (!firstPerson && doRender) {
+#ifdef TARGET_PC
+    // Samus HD: the modern material on the suit and the ball.
+    const PortCinematic::SuitShine suitShine;
+#endif
     bool doTransitionRender = false;
     bool doBallRender = false;
     switch (x2f8_morphBallState) {

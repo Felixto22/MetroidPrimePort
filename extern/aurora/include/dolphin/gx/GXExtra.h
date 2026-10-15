@@ -404,6 +404,11 @@ void GXPortSetSpecular(f32 strength);
 // `pos` (view space) out to `radius`: dull red to yellow-white as `heat` goes 0 to 1. Stays
 // until changed; heat 0: none.
 void GXPortSetGunHeat(f32 heat, const f32 pos[3], f32 radius);
+// Port extension: on the specular draws (GXPortSetSpecular), a modern material over the retail
+// texture: relief and cavities derived from it, detail sharpened, micro-detail, metal or glass or
+// paint told from its colour, and GGX highlights, reflections and rim light. Stays until changed;
+// 0: off.
+void GXPortSetHeroMaterial(f32 strength);
 // Port extension: the following draws are falling water: shots' impacts among the foliage
 // pushers (GXPortSetFoliagePushers, those with params w = 1) ripple it, warp its texture and
 // whiten it with foam. Stays until changed.

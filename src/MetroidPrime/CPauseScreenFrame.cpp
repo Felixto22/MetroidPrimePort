@@ -244,6 +244,7 @@ enum EPortOption {
   kPO_EnhancedSamus,
   kPO_GraphicsQuality,
   kPO_Upscaling,
+  kPO_SamusHD,
 };
 #define PORT_OPTION(opt) static_cast< EGameOption >(opt)
 
@@ -286,6 +287,7 @@ static const SGameOption skPortDisplayOptions[] = {
      static_cast< float >(PortDebug::kCameraBobMax), 10.f, kOT_Float},
     {PORT_OPTION(kPO_GraphicsQuality), -1, 0.f, static_cast< float >(PortDebug::kGQ_Count - 1), 1.f, kOT_Float},
     {PORT_OPTION(kPO_Upscaling), -1, 0.f, static_cast< float >(PortDebug::kUpscalingModes - 1), 1.f, kOT_Float},
+    {PORT_OPTION(kPO_SamusHD), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_EnhancedWater), -1, 0.f, 1.f, 1.f, kOT_DoubleEnum},
     {PORT_OPTION(kPO_ParticleDensity), -1, static_cast< float >(PortDebug::kParticleDensityMin),
      static_cast< float >(PortDebug::kParticleDensityMax), 25.f, kOT_Float},
@@ -338,7 +340,7 @@ static const SGameOption skPortControllerOptionsNoAim[] = {
 };
 static const SOptionCategory skPortControllerCategoryNoAim = {10, skPortControllerOptionsNoAim};
 static SOptionCategory skPauseOptions[] = {
-    {11, skPortVisorOptions},     {30, skPortDisplayOptions}, {4, skSoundOptions},
+    {11, skPortVisorOptions},     {31, skPortDisplayOptions}, {4, skSoundOptions},
     {11, skPortControllerOptions}, {0, nullptr},
 };
 
@@ -449,6 +451,8 @@ static const wchar_t* PortOptionTitle(EGameOption option) {
     default:
       return L"Graphics: Custom";
     }
+  case kPO_SamusHD:
+    return L"Samus HD Materials";
   case kPO_Upscaling:
     switch (PortDebug::Upscaling()) {
     case 1:
@@ -585,6 +589,8 @@ static int GetPortOption(EGameOption option) {
     return PortDebug::GraphicsQuality();
   case kPO_Upscaling:
     return PortDebug::Upscaling();
+  case kPO_SamusHD:
+    return PortDebug::SamusHD() ? 1 : 0;
   case kPO_GlobalIllumination:
     return PortDebug::GlobalIllumination();
   case kPO_AntiAliasing:
@@ -667,6 +673,7 @@ static bool IsOriginalLocked(EGameOption option) {
   case kPO_GlobalIllumination:
   case kPO_GraphicsQuality:
   case kPO_Upscaling:
+  case kPO_SamusHD:
   case kPO_AntiAliasing:
   case kPO_HudScale:
   case kPO_HideHelmet:
@@ -821,6 +828,9 @@ static void SetPortOption(EGameOption option, int value) {
     break;
   case kPO_Upscaling:
     PortDebug::SetUpscaling(value);
+    break;
+  case kPO_SamusHD:
+    PortDebug::SetSamusHD(value > 0);
     break;
   case kPO_GlobalIllumination:
     PortDebug::SetGlobalIllumination(value);

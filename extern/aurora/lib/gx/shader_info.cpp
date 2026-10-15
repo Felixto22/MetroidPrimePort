@@ -649,7 +649,7 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     }
   }
   if (info.usesSpecular) {
-    buf.append(Vec4<float>{g_gxState.specular, 0.f, 0.f, 0.f});
+    buf.append(Vec4<float>{g_gxState.specular, g_gxState.hero, 0.f, 0.f});
     buf.append(g_gxState.gunHeat);
     buf.append(g_gxState.gunHeatPos);
   }

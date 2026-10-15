@@ -279,13 +279,29 @@ void RenderGunSmoke(const CVector3f& muzzleLocal) {
 GunShine::GunShine() : on(!PortDebug::OriginalExperience()) {
   if (on) {
     GXPortSetSpecular(PortDebug::CinematicLook() ? 0.85f : 0.0001f);
+    GXPortSetHeroMaterial(PortDebug::SamusHD() ? 1.f : 0.f);
   }
 }
 
 GunShine::~GunShine() {
   if (on) {
     GXPortSetSpecular(0.f);
+    GXPortSetHeroMaterial(0.f);
     GXPortSetGunHeat(0.f, nullptr, 0.f);
+  }
+}
+
+SuitShine::SuitShine() : on(PortDebug::SamusHD()) {
+  if (on) {
+    GXPortSetSpecular(PortDebug::CinematicLook() ? 0.5f : 0.0001f);
+    GXPortSetHeroMaterial(1.f);
+  }
+}
+
+SuitShine::~SuitShine() {
+  if (on) {
+    GXPortSetSpecular(0.f);
+    GXPortSetHeroMaterial(0.f);
   }
 }
 } // namespace PortCinematic

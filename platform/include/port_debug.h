@@ -501,6 +501,11 @@ enum EGraphicsQuality {
   kGQ_Count,
 };
 int GraphicsQuality();
+// Samus HD: a modern material on Samus' suit and arm cannon (relief, cavities and sharper detail
+// from her own textures, metal, glass and paint with real highlights and reflections), whatever
+// the graphics quality. Off in the original experience.
+bool SamusHD();
+void SetSamusHD(bool enabled);
 void SetGraphicsQuality(int quality);
 const char* GraphicsQualityName(int quality);
 // Upscaling: AMD FSR (FSR 4 on an RX 7000 or 9000, FSR 3.1 elsewhere; Windows on D3D12). The world

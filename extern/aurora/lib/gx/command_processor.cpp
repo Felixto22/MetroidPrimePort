@@ -1455,6 +1455,15 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.waterfall = on;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_HERO) {
+    const u32 word = reader.read<u32>();
+    float strength;
+    std::memcpy(&strength, &word, sizeof(strength));
+    if ((g_gxState.hero > 0.f) != (strength > 0.f)) {
+      g_gxState.dirty |= DirtyPipeline;
+    }
+    g_gxState.hero = strength;
+    g_gxState.dirty |= DirtyUniform;
   } else if (subCmd == GX_AURORA_PORT_SPECULAR) {
     const u32 word = reader.read<u32>();
     float strength;

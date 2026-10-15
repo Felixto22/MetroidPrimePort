@@ -431,6 +431,13 @@ void GXPortSetFoliageSurface(f32 rain, f32 seconds, const f32 viewToWorld[3][4],
   }
 }
 
+void GXPortSetHeroMaterial(f32 strength) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_HERO);
+  u32 word;
+  std::memcpy(&word, &strength, sizeof(word));
+  GX_WRITE_U32(word);
+}
+
 void GXPortSetSpecular(f32 strength) {
   GX_WRITE_AURORA(GX_AURORA_PORT_SPECULAR);
   u32 word;

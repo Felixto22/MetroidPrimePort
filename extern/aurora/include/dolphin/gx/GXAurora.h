@@ -373,6 +373,8 @@ extern "C" {
 #define GX_AURORA_PORT_JITTER 0x007F
 // Port extension: the world's picture is complete, for FSR (GXPortFsrCapture). Payload: 40 u32.
 #define GX_AURORA_PORT_FSR 0x0080
+// Port extension: modern material on the specular draws (GXPortSetHeroMaterial). Payload: f32 strength.
+#define GX_AURORA_PORT_HERO 0x0081
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

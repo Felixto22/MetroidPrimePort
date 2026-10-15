@@ -31,4 +31,10 @@ struct GunShine {
   ~GunShine();
   bool on;
 };
+// Samus' body (third person, cutscenes, the morph ball): the Samus HD material around its draw.
+struct SuitShine {
+  SuitShine();
+  ~SuitShine();
+  bool on;
+};
 } // namespace PortCinematic

@@ -296,6 +296,7 @@ int sAnisotropy = 16;
 // Setting `graphics_quality` (PortDebug::EGraphicsQuality) and `upscaling` (FSR's mode).
 int sGraphicsQuality = PortDebug::kGQ_UltraRT;
 int sUpscaling = 0;
+bool sSamusHD = true;
 // What each preset sets, Very Low to Ultra + RT. Water, weather and particles are not here.
 struct SGraphicsPreset {
   int ao, sunShadows, shadowRes, glass, bump;
@@ -793,6 +794,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sCannonMelee = ParseBool(value);
   } else if (key == "graphics_quality") {
     sGraphicsQuality = std::clamp(std::atoi(value.c_str()), 0, PortDebug::kGQ_Count - 1);
+  } else if (key == "samus_hd") {
+    sSamusHD = ParseBool(value);
   } else if (key == "upscaling") {
     sUpscaling = std::clamp(std::atoi(value.c_str()), 0, PortDebug::kUpscalingModes - 1);
   } else if (key == "hard_plus") {
@@ -1026,6 +1029,7 @@ std::string SettingsText() {
   file << "cannon_melee=" << (sCannonMelee ? 1 : 0) << '\n';
   file << "graphics_quality=" << sGraphicsQuality << '\n';
   file << "upscaling=" << sUpscaling << '\n';
+  file << "samus_hd=" << (sSamusHD ? 1 : 0) << '\n';
   file << "hard_plus=" << (sHardPlus ? 1 : 0) << '\n';
   file << "enhanced_samus=" << (sEnhancedSamus ? 1 : 0) << '\n';
   file << "modern_gameplay=" << (sModernGameplay ? 1 : 0) << '\n';
@@ -2557,6 +2561,17 @@ void SetGraphicsQuality(int quality) {
 const char* GraphicsQualityName(int quality) {
   static const char* const kNames[] = {"Very Low", "Low", "Medium", "High", "Ultra", "Ultra + RT", "Custom"};
   return quality >= 0 && quality < kGQ_Count ? kNames[quality] : "";
+}
+
+bool SamusHD() {
+  EnsureInitialized();
+  return sSamusHD && !sOriginalExperience;
+}
+
+void SetSamusHD(bool enabled) {
+  EnsureInitialized();
+  sSamusHD = enabled;
+  MarkDirty();
 }
 
 int Upscaling() {
@@ -7238,6 +7253,14 @@ void DrawVideoDisplay() {
     if (sUpscaling > 0 && EffectiveUpscaling() == 0 && !sOriginalExperience) {
       ImGui::TextDisabled("FSR can't run here (needs D3D12 and the AMD FidelityFX DLLs).");
     }
+  }
+  {
+    bool samusHD = sSamusHD;
+    if (ImGui::Checkbox("Samus HD materials", &samusHD)) {
+      SetSamusHD(samusHD);
+    }
+    ImGui::SetItemTooltip("A modern material on Samus' suit and arm cannon, made from her own textures: relief,\n"
+                          "cavities and sharper detail; metal, glass and paint with highlights and reflections.");
   }
   const bool presetLocked = Preset() != nullptr;
   ImGui::BeginDisabled(presetLocked);

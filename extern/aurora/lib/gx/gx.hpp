@@ -483,6 +483,8 @@ struct GXState {
   bool clusterActive = false;
   // GX_AURORA_PORT_SPECULAR: the strength of lit draws' highlights (ShaderConfig::specular), 0: none.
   float specular = 0.f;
+  // GX_AURORA_PORT_HERO: the modern material's strength on the specular draws (ShaderConfig::hero).
+  float hero = 0.f;
   // GX_AURORA_PORT_GUN_HEAT: heat (x) and radius (y), and where (xyz, view space).
   Vec4<float> gunHeat{};
   Vec4<float> gunHeatPos{};
@@ -679,7 +681,8 @@ struct ShaderConfig {
   u8 specular : 1 = 0;
   // GX_AURORA_PORT_WATERFALL: falling water rippling at the impact pushers (the foliage uniform).
   u8 waterfall : 1 = 0;
-  u8 pad2 : 1 = 0; // keeps the struct free of padding (memcmp and hash)
+  // GX_AURORA_PORT_HERO on a specular draw: the modern material (Samus' suit and cannon).
+  u8 hero : 1 = 0;
   std::array<AttrConfig, MaxVtxAttr> attrs;
   std::array<TevSwap, MaxTevSwap> tevSwapTable;
   std::array<TevStage, MaxTevStages> tevStages;
