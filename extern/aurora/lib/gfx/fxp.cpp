@@ -31,9 +31,10 @@ struct Uniform {
   float fieldC[4]; // grid origin x, y, cell, use grid
   float fieldD[4]; // kind, 0, 0, 0
   float color[4];  // the field's colour, rgba
+  float sun[4];    // the modern materials' sun (gx::GXState::modernSun): view-space travel, intensity
   float grid[GridVec4][4];
 };
-static_assert(sizeof(Uniform) == 16 * 4 + 12 * 4 + 7 * 16 + GridVec4 * 16);
+static_assert(sizeof(Uniform) == 16 * 4 + 12 * 4 + 8 * 16 + GridVec4 * 16);
 
 // AdditiveOver: light over everything (the charge at the muzzle, which the gun's nearer depth range
 // would otherwise hide).
@@ -61,6 +62,7 @@ struct U {
   fieldC: vec4f,
   fieldD: vec4f,
   color: vec4f,
+  sun: vec4f,
   grid: array<vec4f, 256>,
 };
 @group(0) @binding(0) var<uniform> u: U;
@@ -334,6 +336,21 @@ fn shape_of(in: VOut) -> Shaped {
       a = 0.0;
     }
   }
+  // Port extension (the modern materials' sun, u.sun): smoke lit as a volume (a sphere's normal
+  // across the quad, wrapped, darker away from the light, a silver lining against the sun), and
+  // drops and flakes glinting when the light comes from behind them.
+  let sunOn = u.sun.w > 0.0;
+  let sl = select(normalize(vec3f(0.2, 0.9, 0.35)), -normalize(u.sun.xyz), sunOn);
+  let sI = select(0.7, u.sun.w, sunOn);
+  if (shape == 2u) {
+    let sn = normalize(vec3f(uv.x, uv.y, sqrt(max(1.0 - r * r, 0.05))));
+    let wrap = clamp((dot(sn, sl) + 0.6) / 1.6, 0.0, 1.0);
+    let lining = pow(clamp(-sl.z, 0.0, 1.0), 6.0) * smoothstep(0.4, 1.0, r) * 1.4;
+    rgb = rgb * (0.55 + (0.6 * wrap + lining) * sI);
+  } else if (shape == 3u || shape == 4u) {
+    let glint = pow(clamp(-sl.z, 0.0, 1.0), 8.0) * sI;
+    rgb = rgb + vec3f(1.0, 0.97, 0.9) * glint * 0.8;
+  }
   return Shaped(rgb, clamp(a, 0.0, 1.0) * in.color.a);
 }
 
@@ -564,6 +581,9 @@ void fill_common(Uniform& u, float time, bool sceneDepth) {
   std::memcpy(u.mv, &gx.pnMtx[gx.currentPnMtx].pos, sizeof(u.mv));
   u.info[0] = time;
   u.info[2] = sceneDepth ? 1.f : 0.f;
+  if (gx.modern > 0.f) {
+    std::memcpy(u.sun, &gx.modernSun, sizeof(u.sun));
+  }
   // The frame's size: the scene capture may be smaller (a 3D texture's limit).
   const auto& frame = webgpu::g_frameBuffer.size;
   u.fieldD[2] = static_cast<float>(frame.width);

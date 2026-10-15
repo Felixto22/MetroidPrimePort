@@ -375,6 +375,11 @@ extern "C" {
 #define GX_AURORA_PORT_FSR 0x0080
 // Port extension: modern material on the specular draws (GXPortSetHeroMaterial). Payload: f32 strength.
 #define GX_AURORA_PORT_HERO 0x0081
+// Port extension: modern materials on every opaque world, actor and boss draw (GXPortSetModernMaterial).
+// Payload: 8 f32 (strength, the sun's direction xyz in view space, its intensity, view-space up xyz).
+#define GX_AURORA_PORT_MODERN 0x0082
+// Port extension: the opaque world is drawn, for FSR's reactive mask (GXPortFsrCaptureSolid). No payload.
+#define GX_AURORA_PORT_FSR_SOLID 0x0083
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

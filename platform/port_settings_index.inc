@@ -147,6 +147,7 @@
 {"Video", "Display", "HUD and view", "Sun shadows", "sun shadows dynamic real time lighting shade"},
 {"Video", "Display", "HUD and view", "Graphics quality", "graphics quality preset very low medium high ultra rt ray tracing custom"},
 {"Video", "Display", "HUD and view", "Samus HD materials", "samus suit arm cannon hd materials pbr metal reflections relief modern unreal"},
+{"Video", "Display", "HUD and view", "Modern materials", "modern materials pbr world enemies bosses relief reflections highlights unreal realistic"},
 {"Video", "Display", "HUD and view", "Upscaling (FSR)", "upscaling fsr fsr4 amd fidelityfx super resolution temporal anti-aliasing taa performance"},
 {"Video", "Display", "HUD and view", "Ambient occlusion", "ambient occlusion ssao ao shadows corners contact shading"},
 {"Video", "Display", "HUD and view", "Camera bob", "camera bob sway head bobbing motion sickness dizzy nausea comfort"},

@@ -274,6 +274,13 @@ void GXPortSetJitter(GXBool on, f32 x, f32 y) {
   GX_WRITE_F32(y);
 }
 
+void GXPortFsrCaptureSolid(void) {
+  if (sDrawIdMode || !aurora::gfx::fsr::ensure_task()) {
+    return;
+  }
+  GX_WRITE_AURORA(GX_AURORA_PORT_FSR_SOLID);
+}
+
 GXBool GXPortFsrCapture(const GXPortFsrParams* fsr) {
   if (fsr == nullptr || sDrawIdMode || fsr->mode == 0) {
     return GX_FALSE;
@@ -428,6 +435,23 @@ void GXPortSetFoliageSurface(f32 rain, f32 seconds, const f32 viewToWorld[3][4],
     for (int k = 0; k < 4; ++k) {
       put(i < count ? params[i][k] : 0.f);
     }
+  }
+}
+
+void GXPortSetModernMaterial(f32 strength, const f32 sunView[3], f32 sunIntensity, const f32 upView[3]) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_MODERN);
+  const f32 v[8] = {strength,
+                    sunView != nullptr ? sunView[0] : 0.f,
+                    sunView != nullptr ? sunView[1] : 0.f,
+                    sunView != nullptr ? sunView[2] : 0.f,
+                    sunIntensity,
+                    upView != nullptr ? upView[0] : 0.f,
+                    upView != nullptr ? upView[1] : 1.f,
+                    upView != nullptr ? upView[2] : 0.f};
+  for (f32 f : v) {
+    u32 word;
+    std::memcpy(&word, &f, sizeof(word));
+    GX_WRITE_U32(word);
   }
 }
 

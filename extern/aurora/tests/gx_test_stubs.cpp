@@ -332,6 +332,7 @@ bool available() { return false; }
 void jitter(uint64_t index, uint32_t mode, float& x, float& y) { x = y = 0.f; }
 bool ensure_task() { return false; }
 bool record(const Params& params) { return false; }
+bool record_solid() { return false; }
 const webgpu::TextureWithSampler* upscale(wgpu::CommandEncoder& encoder) { return nullptr; }
 void shutdown() {}
 } // namespace aurora::gfx::fsr

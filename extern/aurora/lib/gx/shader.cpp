@@ -1040,6 +1040,188 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
                      rtLocal ? " * select(1.0, rt_local, dist < 1e5)"sv : ""sv);
 }
 
+// Port extension: the modern material (ShaderConfig::hero; GXPortSetModernMaterial on every opaque
+// textured draw that writes depth, GXPortSetHeroMaterial on Samus' suit and arm cannon). From the
+// base texture (the first TEV stage reading a texture through texture coordinates):
+//  - its luminance as a height: a Sobel normal on the surface's tangent frame (from screen
+//    derivatives) for relief, its cavities shaded, its detail sharpened, and a brushed
+//    micro-detail finer than its texels close up;
+//  - its colour and local contrast tell the material: on Samus, metal (saturated or bright grey),
+//    glass (green, bright) and paint; on enemies, a little less of each; the world a rough
+//    dielectric whose roughness follows the texture's grain, bare grey metal a little shiny;
+//  - lit draws (actors) shade with their own GX lights per pixel (Lambert ratio for the relief,
+//    GGX highlights), the world reshades its baked light against the sun (or a light over the
+//    camera); everything adds the sun's GGX highlight, reflections of a sky-over-ground
+//    environment oriented by the world's up (Schlick, rougher blurs dimmer), a rim, and
+//    specular occlusion in its cavities. All of it is scaled by how lit the surface already is
+//    (the TEV colour against its texture), so a dark room stays dark.
+auto modern_material_func(const ShaderConfig& config, const ShaderInfo& info, bool ppl, std::string& vtxOutAttrs,
+                          std::string& vtxXfrAttrs, size_t& vtxOutIdx) -> std::string {
+  int map = -1;
+  int coord = -1;
+  for (u32 i = 0; i < config.tevStageCount && map < 0; ++i) {
+    const auto& st = config.tevStages[i];
+    if (st.texMapId >= MaxTextures || st.texCoordId >= MaxTexCoord || !info.sampledTextures.test(st.texMapId) ||
+        !info.sampledTexCoords.test(st.texCoordId)) {
+      continue;
+    }
+    const auto src = config.tcgs[st.texCoordId].src;
+    if (src < GX_TG_TEX0 || src > GX_TG_TEX7) {
+      continue;
+    }
+    map = st.texMapId;
+    coord = st.texCoordId;
+  }
+  if (map < 0) {
+    return {};
+  }
+  const bool havePos = ppl && info.lightingEnabled;
+  std::string pos;
+  if (havePos) {
+    pos = "in.mv_pos";
+  } else if (info.bumpSlot != 0) {
+    pos = "in.bmp_pos";
+  } else if (info.sampledTexCoords.count() <= 5) {
+    vtxOutAttrs += fmt::format("\n    @location({}) mm_pos: vec3f,", vtxOutIdx++);
+    vtxXfrAttrs += "\n    out.mm_pos = mv_pos;";
+    pos = "in.mm_pos";
+  } else {
+    return {};
+  }
+  const bool lit = info.lightingEnabled && config.colorChannels[GX_COLOR0].lightingEnabled;
+  std::string taps;
+  static constexpr int kTaps[8][3] = {{0, -1, -1}, {1, 0, -1}, {2, 1, -1}, {3, -1, 0},
+                                      {4, 1, 0},   {5, -1, 1}, {6, 0, 1},  {7, 1, 1}};
+  for (const auto& t : kTaps) {
+    taps += fmt::format(
+        "\n        let mt{0} = dot(textureSampleGrad(tex{1}, tex{1}_samp, muv + mts * vec2f({2}.0, {3}.0), mdx, mdy).rgb, mw);",
+        t[0], map, t[1], t[2]);
+  }
+  const std::string normal =
+      havePos ? "normalize(in.mv_nrm)"
+              : "select(normalize(cross(mdp1, mdp2)), -normalize(cross(mdp1, mdp2)), dot(normalize(cross(mdp1, mdp2)), -mp) < 0.0)";
+  std::string lights;
+  if (lit) {
+    lights = fmt::format(R"""(
+        for (var mi = 0u; mi < {0}u; mi++) {{
+            if ((ubuf.lightState0 & (1u << mi)) == 0u) {{ continue; }}
+            let ml = ubuf.lights[mi];
+            var mL = ml.pos - mp;
+            let mdist = max(length(mL), 1e-4);
+            mL = mL / mdist;
+            let mcos = max(0.0, dot(mL, ml.dir));
+            let mca = max(0.0, dot(ml.cos_att, vec3f(1.0, mcos, mcos * mcos)));
+            let mda = max(dot(ml.dist_att, vec3f(1.0, mdist, mdist * mdist)), 1e-3);
+            let mI = clamp(ml.color.rgb * (mca / mda), vec3f(0.0), vec3f(2.0));
+            mdiffN = mdiffN + mI * max(dot(mN, mL), 0.0);
+            mdiffG = mdiffG + mI * max(dot(mng, mL), 0.0);
+            mspec = mspec + mI * m_ggx(mN, mV, mL, mrough, mF0);
+        }})""",
+                         GX::MaxLights);
+  }
+  return fmt::format(R"""(
+    if (ubuf.modern.x > 0.0 || ubuf.modern.y > 0.0) {{
+        let mhero = ubuf.modern.y > 0.0;
+        let mk = select(ubuf.modern.x, ubuf.modern.y, mhero);
+        let muv = tex{1}_uv;
+        let mdx = dpdx(muv);
+        let mdy = dpdy(muv);
+        let msz = vec2f(textureDimensions(tex{0}));
+        let mts = 1.0 / max(msz, vec2f(1.0));
+        let mw = vec3f(0.299, 0.587, 0.114);
+        let mc = textureSampleGrad(tex{0}, tex{0}_samp, muv, mdx, mdy).rgb;
+        let m11 = dot(mc, mw);{2}
+        let mgx = (mt2 + 2.0 * mt4 + mt7) - (mt0 + 2.0 * mt3 + mt5);
+        let mgy = (mt5 + 2.0 * mt6 + mt7) - (mt0 + 2.0 * mt1 + mt2);
+        let mavg = (mt0 + mt1 + mt2 + mt3 + mt4 + mt5 + mt6 + mt7) * 0.125;
+        let mvar = (abs(mt0 - mavg) + abs(mt1 - mavg) + abs(mt2 - mavg) + abs(mt3 - mavg) + abs(mt4 - mavg) +
+                    abs(mt5 - mavg) + abs(mt6 - mavg) + abs(mt7 - mavg)) * 0.125;
+        let mfoot = max(length(mdx * msz), length(mdy * msz));
+        let mmicro = 1.0 - smoothstep(0.5, 2.0, mfoot);
+        let mq = muv * msz * vec2f(2.0, 8.0);
+        let mi0 = floor(mq);
+        let mf = fract(mq);
+        let mu = mf * mf * (3.0 - 2.0 * mf);
+        let mn00 = fract(sin(dot(mi0, vec2f(127.1, 311.7))) * 43758.5453);
+        let mn10 = fract(sin(dot(mi0 + vec2f(1.0, 0.0), vec2f(127.1, 311.7))) * 43758.5453);
+        let mn01 = fract(sin(dot(mi0 + vec2f(0.0, 1.0), vec2f(127.1, 311.7))) * 43758.5453);
+        let mn11 = fract(sin(dot(mi0 + vec2f(1.0, 1.0), vec2f(127.1, 311.7))) * 43758.5453);
+        let mnoise = (mix(mix(mn00, mn10, mu.x), mix(mn01, mn11, mu.x), mu.y) * 2.0 - 1.0) * mmicro;
+        let mmax = max(mc.r, max(mc.g, mc.b));
+        let mmin = min(mc.r, min(mc.g, mc.b));
+        let msat = (mmax - mmin) / max(mmax, 1e-3);
+        let mgrey = (1.0 - smoothstep(0.08, 0.2, msat)) * smoothstep(0.25, 0.6, mmax);
+        var mmetal = 0.0;
+        var mglass = 0.0;
+        var mrough = clamp(0.58 + mvar * 2.5 - (m11 - 0.3) * 0.2, 0.38, 0.92);
+        var mrelief = 2.2;
+        if (mhero) {{
+            mglass = smoothstep(0.08, 0.25, mc.g - max(mc.r, mc.b)) * smoothstep(0.25, 0.5, mmax);
+            mmetal = clamp(max(smoothstep(0.25, 0.55, msat) * smoothstep(0.12, 0.35, mmax), mgrey * 0.85), 0.0, 1.0) * (1.0 - mglass);
+            mrough = mix(mix(0.6, 0.26, mmetal), 0.06, mglass);
+            mrelief = 3.2;
+        }} else if ({3}) {{
+            mglass = smoothstep(0.1, 0.3, mc.g - max(mc.r, mc.b)) * smoothstep(0.4, 0.7, mmax) * 0.6;
+            mmetal = clamp(max(smoothstep(0.3, 0.6, msat) * smoothstep(0.2, 0.45, mmax) * 0.5, mgrey * 0.6), 0.0, 1.0) * (1.0 - mglass);
+            mrough = mix(mix(mrough, 0.32, mmetal), 0.1, mglass);
+            mrelief = 2.8;
+        }} else {{
+            mmetal = mgrey * 0.3;
+            mrough = mix(mrough, 0.4, mmetal);
+        }}
+        mrough = clamp(mrough + mnoise * 0.07, 0.05, 0.95);
+        let mslope = vec2f(-mgx, -mgy) * (mrelief * mk);
+        let mslp = mslope * min(1.0, 1.5 / max(length(mslope), 1e-4));
+        let mtn = normalize(vec3f(mslp.x + mnoise * 0.08 * mk, mslp.y, 1.0));
+        let mp = {4};
+        let mdp1 = dpdx(mp);
+        let mdp2 = -dpdy(mp);
+        let mng = {5};
+        let mp2p = cross(mdp2, mng);
+        let mp1p = cross(mng, mdp1);
+        let mtan = mp2p * mdx.x - mp1p * mdy.x;
+        let mbit = mp2p * mdx.y - mp1p * mdy.y;
+        let minv = inverseSqrt(max(max(dot(mtan, mtan), dot(mbit, mbit)), 1e-20));
+        let mN = normalize(mtan * (mtn.x * minv) - mbit * (mtn.y * minv) + mng * mtn.z);
+        let mV = normalize(-mp);
+        let mF0 = mix(vec3f(0.04), clamp(mc * 1.2, vec3f(0.0), vec3f(1.0)), mmetal);
+        let mlit = clamp(dot(prev.rgb, mw) / max(m11, 0.04), 0.1, 1.8);
+        let mao = clamp(1.0 + (m11 - mavg) * 3.0, 0.6, 1.15);
+        let msharp = clamp(1.0 + (m11 - mavg) * 1.5 / max(m11, 0.05), 0.75, 1.3);
+        let msunOn = ubuf.modern_sun.w > 0.0;
+        let mkey = select(normalize(vec3f(0.3, 0.85, 0.45)), -normalize(ubuf.modern_sun.xyz), msunOn);
+        var mdiffN = vec3f(0.0);
+        var mdiffG = vec3f(0.0);
+        var mspec = vec3f(0.0);{6}
+        let mkI = select(0.55, ubuf.modern_sun.w, msunOn);
+        mdiffN = mdiffN + vec3f(mkI) * (max(dot(mN, mkey), 0.0) * 0.6 + 0.4);
+        mdiffG = mdiffG + vec3f(mkI) * (max(dot(mng, mkey), 0.0) * 0.6 + 0.4);
+        mspec = mspec + vec3f(mkI) * m_ggx(mN, mV, mkey, mrough, mF0);
+        if (mhero) {{
+            let mrimL = normalize(vec3f(-0.7, 0.35, -0.6));
+            mspec = mspec + vec3f(0.5) * m_ggx(mN, mV, mrimL, mrough, mF0);
+        }}
+        let mkd = clamp(dot(mdiffN, mw) / max(dot(mdiffG, mw), 0.05), 0.55, 1.45);
+        var mcol = prev.rgb * mix(1.0, mkd * mao * msharp, mk);
+        mcol = mcol * mix(1.0, 0.45, mmetal * mk);
+        let mnv = max(dot(mN, mV), 1e-3);
+        let mR = reflect(-mV, mN);
+        let mup = normalize(ubuf.modern_up.xyz);
+        let mh = dot(mR, mup);
+        let mskyc = select(vec3f(0.55, 0.6, 0.68), vec3f(0.6, 0.62, 0.66) * (0.6 + 0.6 * ubuf.modern_sun.w), msunOn);
+        let menv = mix(vec3f(0.05, 0.05, 0.055), mskyc, smoothstep(-0.35, 0.8, mh));
+        let mFe = mF0 + (max(vec3f(1.0 - mrough), mF0) - mF0) * pow(1.0 - mnv, 5.0);
+        let mrefl = menv * mFe * mix(0.25, 1.0, (1.0 - mrough) * (1.0 - mrough));
+        let mso = clamp(mao * mao, 0.3, 1.0);
+        let mrim = pow(1.0 - mnv, 4.0) * select(0.08, 0.25, mhero) * (1.0 - mmetal * 0.5);
+        mspec = min(mspec, vec3f(6.0));
+        mcol = mcol + (mspec * 0.3 + mrefl + vec3f(0.55, 0.65, 0.8) * mrim) * mso * mlit * mk;
+        mcol = mcol + mc * mglass * 0.25 * mk;
+        prev = vec4f(mcol, prev.a);
+    }})""",
+                     map, coord, taps, lit ? "true" : "false", pos, normal, lights);
+}
+
 // GX_AURORA_SET_PBR: replaces the TEV colour result with a metal/roughness evaluation of
 // texture maps 0-3 (base colour, glTF occlusion/roughness/metal in R/G/B, two-channel
 // tangent-space normal, emissive) lit by channel 0's GX lights and ambient. TEV alpha is
@@ -4556,6 +4738,11 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    gun_heat: vec4f,";
     uniBufAttrs += "\n    gun_heat_pos: vec4f,";
   }
+  if (info.usesModern) {
+    uniBufAttrs += "\n    modern: vec4f,";
+    uniBufAttrs += "\n    modern_sun: vec4f,";
+    uniBufAttrs += "\n    modern_up: vec4f,";
+  }
   if (!prevColorNormalized && !prevAlphaNormalized) {
     fragmentFn += "\n    prev = tev_overflow_vec4f(prev);";
   } else if (!prevColorNormalized) {
@@ -4612,127 +4799,30 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
                                "var glass_samp: sampler;",
                                kVolFogFroxelBinding, kVolFogSamplerBinding);
   }
+  if (info.usesModern) {
+    fragmentFn += modern_material_func(config, info, ppl, vtxOutAttrs, vtxXfrAttrs, vtxOutIdx);
+    // GGX (Smith-Schlick visibility, Schlick Fresnel) for one light, times N.L.
+    uniformPre += R"""(
+fn m_ggx(n: vec3f, v: vec3f, l: vec3f, rough: f32, f0: vec3f) -> vec3f {
+    let h = normalize(l + v);
+    let nl = max(dot(n, l), 0.0);
+    let nv = max(dot(n, v), 1e-3);
+    let nh = max(dot(n, h), 0.0);
+    let vh = max(dot(v, h), 0.0);
+    let a = rough * rough;
+    let a2 = a * a;
+    let d = nh * nh * (a2 - 1.0) + 1.0;
+    let dd = a2 / (3.14159265 * d * d);
+    let k = (rough + 1.0) * (rough + 1.0) / 8.0;
+    let g = (nl / (nl * (1.0 - k) + k)) * (nv / (nv * (1.0 - k) + k));
+    let f = f0 + (vec3f(1.0) - f0) * pow(1.0 - vh, 5.0);
+    return f * (dd * g / max(4.0 * nl * nv, 1e-3)) * nl;
+}
+)""";
+  }
   // The view position is a varying only for a lit draw (an unlit part of the cannon has neither).
   if (info.usesSpecular && ppl && info.lightingEnabled) {
     fragmentFn += "\n    prev = vec4f(prev.rgb + port_spec * ubuf.spec.x, prev.a);";
-    // Port extension: a modern material over the retail texture (GXPortSetHeroMaterial, strength in
-    // spec.y; Samus' suit and arm cannon). From the base texture (the first TEV stage reading a
-    // texture through texture coordinates): a height from its luminance gives relief (a Sobel
-    // normal on the vertex normal's tangent frame) and cavities, its detail is sharpened, and a
-    // brushed micro-detail noise finer than its texels adds grain up close. Its colour tells metal
-    // (saturated or bright grey), glass (green, bright) and paint apart; GGX highlights from a key
-    // and a rim light, Schlick reflections of a sky-over-ground environment and a rim are scaled by
-    // how lit the surface already is (the TEV colour against the texture), so dark rooms stay dark.
-    if (config.hero) {
-      int heroMap = -1;
-      int heroCoord = -1;
-      for (u32 i = 0; i < config.tevStageCount && heroMap < 0; ++i) {
-        const auto& st = config.tevStages[i];
-        if (st.texMapId >= MaxTextures || st.texCoordId >= MaxTexCoord ||
-            !info.sampledTextures.test(st.texMapId) || !info.sampledTexCoords.test(st.texCoordId)) {
-          continue;
-        }
-        const auto src = config.tcgs[st.texCoordId].src;
-        if (src < GX_TG_TEX0 || src > GX_TG_TEX7) {
-          continue;
-        }
-        heroMap = st.texMapId;
-        heroCoord = st.texCoordId;
-      }
-      if (heroMap >= 0) {
-        std::string taps;
-        static constexpr int kTaps[8][3] = {{0, -1, -1}, {1, 0, -1}, {2, 1, -1}, {3, -1, 0},
-                                            {4, 1, 0},   {5, -1, 1}, {6, 0, 1},  {7, 1, 1}};
-        for (const auto& t : kTaps) {
-          taps += fmt::format("\n        let ht{0} = dot(textureSampleGrad(tex{1}, tex{1}_samp, huv + hts * vec2f({2}.0, {3}.0), hdx, hdy).rgb, hw);",
-                              t[0], heroMap, t[1], t[2]);
-        }
-        fragmentFn += fmt::format(R"""(
-    if (ubuf.spec.y > 0.0) {{
-        let hk = ubuf.spec.y;
-        let huv = tex{1}_uv;
-        let hdx = dpdx(huv);
-        let hdy = dpdy(huv);
-        let hsz = vec2f(textureDimensions(tex{0}));
-        let hts = 1.0 / max(hsz, vec2f(1.0));
-        let hw = vec3f(0.299, 0.587, 0.114);
-        let hc = textureSampleGrad(tex{0}, tex{0}_samp, huv, hdx, hdy).rgb;
-        let h11 = dot(hc, hw);{2}
-        let hgx = (ht2 + 2.0 * ht4 + ht7) - (ht0 + 2.0 * ht3 + ht5);
-        let hgy = (ht5 + 2.0 * ht6 + ht7) - (ht0 + 2.0 * ht1 + ht2);
-        let havg = (ht0 + ht1 + ht2 + ht3 + ht4 + ht5 + ht6 + ht7) * 0.125;
-        let hfoot = max(length(hdx * hsz), length(hdy * hsz));
-        let hmicro = 1.0 - smoothstep(0.5, 2.0, hfoot);
-        let hq = huv * hsz * vec2f(2.0, 8.0);
-        let hi = floor(hq);
-        let hf = fract(hq);
-        let hu = hf * hf * (3.0 - 2.0 * hf);
-        let hn00 = fract(sin(dot(hi, vec2f(127.1, 311.7))) * 43758.5453);
-        let hn10 = fract(sin(dot(hi + vec2f(1.0, 0.0), vec2f(127.1, 311.7))) * 43758.5453);
-        let hn01 = fract(sin(dot(hi + vec2f(0.0, 1.0), vec2f(127.1, 311.7))) * 43758.5453);
-        let hn11 = fract(sin(dot(hi + vec2f(1.0, 1.0), vec2f(127.1, 311.7))) * 43758.5453);
-        let hnoise = (mix(mix(hn00, hn10, hu.x), mix(hn01, hn11, hu.x), hu.y) * 2.0 - 1.0) * hmicro;
-        let hmax = max(hc.r, max(hc.g, hc.b));
-        let hmin = min(hc.r, min(hc.g, hc.b));
-        let hsat = (hmax - hmin) / max(hmax, 1e-3);
-        let hglass = smoothstep(0.08, 0.25, hc.g - max(hc.r, hc.b)) * smoothstep(0.25, 0.5, hmax);
-        let hmetal = smoothstep(0.25, 0.55, hsat) * smoothstep(0.12, 0.35, hmax) * (1.0 - hglass);
-        let hgrey = (1.0 - smoothstep(0.08, 0.2, hsat)) * smoothstep(0.25, 0.6, hmax);
-        let hm = clamp(max(hmetal, hgrey * 0.85), 0.0, 1.0);
-        let hrough = clamp(mix(mix(0.62, 0.3, hm), 0.08, hglass) + hnoise * 0.08, 0.06, 0.95);
-        let hslope = vec2f(-hgx, -hgy) * (3.0 * hk);
-        let hslp = hslope * min(1.0, 1.5 / max(length(hslope), 1e-4));
-        let htn = normalize(vec3f(hslp.x + hnoise * 0.08 * hk, hslp.y, 1.0));
-        let hp = in.mv_pos;
-        let hng = normalize(in.mv_nrm);
-        let hdp1 = dpdx(hp);
-        let hdp2 = -dpdy(hp);
-        let hp2p = cross(hdp2, hng);
-        let hp1p = cross(hng, hdp1);
-        let htan = hp2p * hdx.x - hp1p * hdy.x;
-        let hbit = hp2p * hdx.y - hp1p * hdy.y;
-        let hinv = inverseSqrt(max(max(dot(htan, htan), dot(hbit, hbit)), 1e-20));
-        let hN = normalize(htan * (htn.x * hinv) - hbit * (htn.y * hinv) + hng * htn.z);
-        let hV = normalize(-hp);
-        let hL1 = normalize(vec3f(0.45, 0.75, 0.5));
-        let hL2 = normalize(vec3f(-0.7, 0.35, -0.6));
-        let hlit = clamp(dot(prev.rgb, hw) / max(h11, 0.04), 0.15, 1.6);
-        let hkd = clamp((dot(hN, hL1) * 0.5 + 0.5) / max(dot(hng, hL1) * 0.5 + 0.5, 0.2), 0.6, 1.4);
-        let hao = clamp(1.0 + (h11 - havg) * 3.0, 0.65, 1.15);
-        let hsharp = clamp(1.0 + (h11 - havg) * 1.5 / max(h11, 0.05), 0.75, 1.3);
-        var hcol = prev.rgb * mix(1.0, hkd * hao * hsharp, hk);
-        let hF0 = mix(vec3f(0.04), clamp(hc * 1.2, vec3f(0.0), vec3f(1.0)), hm);
-        hcol = hcol * mix(1.0, 0.45, hm * hk);
-        let ha = hrough * hrough;
-        let ha2 = ha * ha;
-        let hnv = max(dot(hN, hV), 1e-3);
-        let hkk = (hrough + 1.0) * (hrough + 1.0) / 8.0;
-        var hspec = vec3f(0.0);
-        for (var hli = 0; hli < 2; hli++) {{
-            let hL = select(hL2, hL1, hli == 0);
-            let hI = select(0.6, 1.0, hli == 0);
-            let hH = normalize(hL + hV);
-            let hnl = max(dot(hN, hL), 0.0);
-            let hnh = max(dot(hN, hH), 0.0);
-            let hvh = max(dot(hV, hH), 0.0);
-            let hdd = hnh * hnh * (ha2 - 1.0) + 1.0;
-            let hD = ha2 / (3.14159265 * hdd * hdd);
-            let hG = (hnl / (hnl * (1.0 - hkk) + hkk)) * (hnv / (hnv * (1.0 - hkk) + hkk));
-            let hFr = hF0 + (vec3f(1.0) - hF0) * pow(1.0 - hvh, 5.0);
-            hspec = hspec + hFr * (hD * hG / max(4.0 * hnl * hnv, 1e-3)) * hnl * hI;
-        }}
-        hspec = min(hspec, vec3f(6.0));
-        let hR = reflect(-hV, hN);
-        let henv = mix(vec3f(0.06, 0.06, 0.07), vec3f(0.55, 0.6, 0.68), smoothstep(-0.4, 0.8, hR.y));
-        let hFe = hF0 + (max(vec3f(1.0 - hrough), hF0) - hF0) * pow(1.0 - hnv, 5.0);
-        let hrefl = henv * hFe * mix(0.35, 1.0, (1.0 - hrough) * (1.0 - hrough));
-        let hrim = pow(1.0 - hnv, 4.0) * 0.25 * (1.0 - hm * 0.5);
-        hcol = hcol + (hspec * 0.3 + hrefl + vec3f(0.55, 0.65, 0.8) * hrim) * hlit * hk;
-        hcol = hcol + hc * hglass * 0.25 * hk;
-        prev = vec4f(hcol, prev.a);
-    }})""", heroMap, heroCoord, taps);
-      }
-    }
     // Port extension: metal glowing with heat around a point (GXPortSetGunHeat): dull red,
     // orange, then yellow-white at the hottest, shimmering a little.
     fragmentFn += R"""(

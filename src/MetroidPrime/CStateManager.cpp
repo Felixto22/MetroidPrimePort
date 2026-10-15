@@ -3560,6 +3560,21 @@ void CStateManager::DrawWorld() const {
   } else {
     GXPortSetShadowCaster(portShadow);
   }
+  // Modern materials on the world, enemies and bosses (port_debug.h ModernMaterials), in the
+  // normal view only; the sun and the world's up in view space.
+  const bool portModern = PortDebug::ModernMaterials() && !thermal && visor != CPlayerState::kPV_XRay &&
+                          !portCollisionOnly;
+  const auto portSetModern = [&](bool on) {
+    const float sunLen = std::sqrt(sPortSunTravel[0] * sPortSunTravel[0] + sPortSunTravel[1] * sPortSunTravel[1] +
+                                   sPortSunTravel[2] * sPortSunTravel[2]);
+    const CVector3f sun(sPortSunTravel[0], sPortSunTravel[1], sPortSunTravel[2]);
+    const CVector3f r = backupViewMatrix.GetRight(), u = backupViewMatrix.GetUp(), f = backupViewMatrix.GetForward();
+    const f32 sunView[3] = {CVector3f::Dot(sun, r), CVector3f::Dot(sun, u), -CVector3f::Dot(sun, f)};
+    const f32 upView[3] = {r.GetZ(), u.GetZ(), -f.GetZ()};
+    GXPortSetModernMaterial(on ? 1.f : 0.f, sunView, sunLen > 1e-3f ? 1.f : 0.f, upView);
+  };
+  if (portModern)
+    portSetModern(true);
 #endif
   for (int i = areas.size() - 1; i >= 0; --i) {
     const CGameArea& area = *areas[i];
@@ -3593,10 +3608,14 @@ void CStateManager::DrawWorld() const {
   }
 #ifdef TARGET_PC
   GXPortSetShadowCaster(false);
+  if (portModern)
+    portSetModern(false);
   if (!portCollisionOnly)
 #endif
     x850_world->DrawSky(CTransform4f::Translate(backupViewMatrix.GetTranslation()));
 #ifdef TARGET_PC
+  if (portModern)
+    portSetModern(true);
   GXPortSetShadowCaster(portShadow);
 #endif
   if (!areas.empty()) {
@@ -3639,6 +3658,8 @@ void CStateManager::DrawWorld() const {
     }
     GXPortSetSoftParticles(portSoft && portCaptured ? GX_TRUE : GX_FALSE);
   }
+  if (!portZoomed)
+    PortFx::FsrSolid();
   PortDrawVolumetricFog(*this, backupViewMatrix, frustum);
   // Remastered's X-ray distortion of the opaque world (pass A of its visor post).
   if (GetPlayerState()->GetActiveVisor(*this) == CPlayerState::kPV_XRay) {
@@ -3963,6 +3984,8 @@ void CStateManager::DrawWorld() const {
     PortFx::DrawFinish(*this, backupViewMatrix);
     PortFx::FsrEnd(backupViewMatrix);
   }
+  if (portModern)
+    portSetModern(false);
   // The HUD, visor and the next pass's draws before its capture don't fade against this frame.
   GXPortSetSoftParticles(GX_FALSE);
 #endif

@@ -36,6 +36,9 @@ void DrawFinish(const CStateManager& mgr, const CTransform4f& view);
 // zoomed, pass), and off with the capture of the finished world at its end (before the HUD).
 void FsrBegin();
 void FsrEnd(const CTransform4f& view);
+// The opaque world is drawn (before the actors and effects): FSR's reactive mask is what they add,
+// so explosions, fire and beams don't linger in its history.
+void FsrSolid();
 // A health pack thrown from one point to another, landing in `seconds` (port_enemy_ai.h).
 void ThrowPack(const CVector3f& from, const CVector3f& to, float seconds);
 // A burst where the arm cannon struck (beam: CPlayerState::EBeamId).

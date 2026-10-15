@@ -42,6 +42,9 @@ struct DrawDesc {
   bool screenReflections = false;
   // Port extension: foam where the surface meets what is under it, within this depth (m; 0: none).
   float foam = 0.f;
+  // Port extension: what is under the surface seen bent by the waves (a fraction of the screen's
+  // height at full slope; 0: none).
+  float refraction = 0.f;
   // Port extension: up to MaxRipples circular ripples (the game's CRippleManager's), each world
   // x, y of its centre, seconds since it started and its strength (0..1, its fade included),
   // read in the plane the mesh's second uv set spans times rippleTile (the retail surface's

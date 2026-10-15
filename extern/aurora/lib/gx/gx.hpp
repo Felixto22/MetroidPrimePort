@@ -485,6 +485,11 @@ struct GXState {
   float specular = 0.f;
   // GX_AURORA_PORT_HERO: the modern material's strength on the specular draws (ShaderConfig::hero).
   float hero = 0.f;
+  // GX_AURORA_PORT_MODERN: the modern material's strength on every opaque draw, the sun (view-space
+  // direction it travels, intensity) and the world's up in view space.
+  float modern = 0.f;
+  Vec4<float> modernSun{};
+  Vec4<float> modernUp{0.f, 1.f, 0.f, 0.f};
   // GX_AURORA_PORT_GUN_HEAT: heat (x) and radius (y), and where (xyz, view space).
   Vec4<float> gunHeat{};
   Vec4<float> gunHeatPos{};
@@ -681,7 +686,8 @@ struct ShaderConfig {
   u8 specular : 1 = 0;
   // GX_AURORA_PORT_WATERFALL: falling water rippling at the impact pushers (the foliage uniform).
   u8 waterfall : 1 = 0;
-  // GX_AURORA_PORT_HERO on a specular draw: the modern material (Samus' suit and cannon).
+  // GX_AURORA_PORT_MODERN or GX_AURORA_PORT_HERO on an opaque textured draw: the modern material
+  // (ShaderInfo::usesModern; Samus' suit and cannon with the hero's parameters).
   u8 hero : 1 = 0;
   std::array<AttrConfig, MaxVtxAttr> attrs;
   std::array<TevSwap, MaxTevSwap> tevSwapTable;
@@ -744,6 +750,7 @@ struct ShaderInfo {
   bool usesRelief : 1 = false;    // a lit retail surface with relief (relief_pick): the relief uniform
   bool usesSpecular : 1 = false;  // ShaderConfig::specular: the specular uniform      // ShaderConfig::soft: the scene copy
   bool usesGlass : 1 = false;     // ShaderConfig::glass: the glass uniform and the scene copy
+  bool usesModern : 1 = false;    // ShaderConfig::hero: the modern material's uniform
   u8 bumpSlot = 0;                // ShaderConfig::bumpSlot: 1 + the normal map's texmap slot, 0 for none
   std::array<s8, MaxTextures> mapCoord{-1, -1, -1, -1, -1, -1, -1, -1}; // texcoord each texmap is read with
   bool usesShadow : 1 = false;    // ShaderConfig::shadow: the shadow uniforms and vs_shadow

@@ -297,6 +297,7 @@ int sAnisotropy = 16;
 int sGraphicsQuality = PortDebug::kGQ_UltraRT;
 int sUpscaling = 0;
 bool sSamusHD = true;
+bool sModernMaterials = true;
 // What each preset sets, Very Low to Ultra + RT. Water, weather and particles are not here.
 struct SGraphicsPreset {
   int ao, sunShadows, shadowRes, glass, bump;
@@ -794,6 +795,8 @@ void ApplySetting(const std::string& key, const std::string& value) {
     sCannonMelee = ParseBool(value);
   } else if (key == "graphics_quality") {
     sGraphicsQuality = std::clamp(std::atoi(value.c_str()), 0, PortDebug::kGQ_Count - 1);
+  } else if (key == "modern_materials") {
+    sModernMaterials = ParseBool(value);
   } else if (key == "samus_hd") {
     sSamusHD = ParseBool(value);
   } else if (key == "upscaling") {
@@ -1030,6 +1033,7 @@ std::string SettingsText() {
   file << "graphics_quality=" << sGraphicsQuality << '\n';
   file << "upscaling=" << sUpscaling << '\n';
   file << "samus_hd=" << (sSamusHD ? 1 : 0) << '\n';
+  file << "modern_materials=" << (sModernMaterials ? 1 : 0) << '\n';
   file << "hard_plus=" << (sHardPlus ? 1 : 0) << '\n';
   file << "enhanced_samus=" << (sEnhancedSamus ? 1 : 0) << '\n';
   file << "modern_gameplay=" << (sModernGameplay ? 1 : 0) << '\n';
@@ -2561,6 +2565,17 @@ void SetGraphicsQuality(int quality) {
 const char* GraphicsQualityName(int quality) {
   static const char* const kNames[] = {"Very Low", "Low", "Medium", "High", "Ultra", "Ultra + RT", "Custom"};
   return quality >= 0 && quality < kGQ_Count ? kNames[quality] : "";
+}
+
+bool ModernMaterials() {
+  EnsureInitialized();
+  return sModernMaterials && !sOriginalExperience;
+}
+
+void SetModernMaterials(bool enabled) {
+  EnsureInitialized();
+  sModernMaterials = enabled;
+  MarkDirty();
 }
 
 bool SamusHD() {
@@ -7261,6 +7276,12 @@ void DrawVideoDisplay() {
     }
     ImGui::SetItemTooltip("A modern material on Samus' suit and arm cannon, made from her own textures: relief,\n"
                           "cavities and sharper detail; metal, glass and paint with highlights and reflections.");
+    bool modernMaterials = sModernMaterials;
+    if (ImGui::Checkbox("Modern materials", &modernMaterials)) {
+      SetModernMaterials(modernMaterials);
+    }
+    ImGui::SetItemTooltip("The same on the whole world, enemies and bosses: relief and cavities from every texture,\n"
+                          "the baked light reshaded by them, highlights from the sun and the lights, reflections.");
   }
   const bool presetLocked = Preset() != nullptr;
   ImGui::BeginDisabled(presetLocked);

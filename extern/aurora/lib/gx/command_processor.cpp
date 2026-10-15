@@ -1369,6 +1369,8 @@ void handle_aurora(ByteReader& reader) noexcept {
     g_gxState.projJitter[1] = g_gxState.projJitterOn ? -2.f * y / float(size.height) : 0.f;
     apply_projection_jitter();
     g_gxState.dirty |= DirtyUniform;
+  } else if (subCmd == GX_AURORA_PORT_FSR_SOLID) {
+    gfx::fsr::record_solid();
   } else if (subCmd == GX_AURORA_PORT_FSR) {
     gfx::fsr::Params params;
     u32 words[sizeof(params) / sizeof(u32)];
@@ -1455,6 +1457,19 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.waterfall = on;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_MODERN) {
+    float v[8];
+    for (float& f : v) {
+      const u32 word = reader.read<u32>();
+      std::memcpy(&f, &word, sizeof(f));
+    }
+    if ((g_gxState.modern > 0.f) != (v[0] > 0.f)) {
+      g_gxState.dirty |= DirtyPipeline;
+    }
+    g_gxState.modern = v[0];
+    g_gxState.modernSun = {v[1], v[2], v[3], v[4]};
+    g_gxState.modernUp = {v[5], v[6], v[7], 0.f};
+    g_gxState.dirty |= DirtyUniform;
   } else if (subCmd == GX_AURORA_PORT_HERO) {
     const u32 word = reader.read<u32>();
     float strength;

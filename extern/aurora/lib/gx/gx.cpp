@@ -605,7 +605,12 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
       g_gxState.clusterActive && !drawId && !depthOnly && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0;
   config.shaderConfig.specular =
       g_gxState.specular > 0.f && !drawId && !depthOnly && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0;
-  config.shaderConfig.hero = config.shaderConfig.specular && g_gxState.hero > 0.f;
+  // The modern material: an opaque retail draw that writes depth (not the sky, particles or decals).
+  config.shaderConfig.hero =
+      (g_gxState.modern > 0.f || g_gxState.hero > 0.f) && !drawId && !depthOnly &&
+      config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0 && g_gxState.depthUpdate && g_gxState.colorUpdate &&
+      (g_gxState.blendMode == GX_BM_NONE ||
+       (g_gxState.blendMode == GX_BM_BLEND && g_gxState.blendFacSrc == GX_BL_ONE && g_gxState.blendFacDst == GX_BL_ZERO));
   config.shaderConfig.perPixel = (g_gxState.perPixelLighting || config.shaderConfig.clustered ||
                                   config.shaderConfig.specular) && !drawId &&
                                  !depthOnly && config.shaderConfig.lineMode == 0;

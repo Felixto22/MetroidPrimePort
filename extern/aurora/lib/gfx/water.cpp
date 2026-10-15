@@ -36,7 +36,7 @@ namespace aurora::gfx::water {
 namespace {
 Module Log("aurora::gfx::water");
 
-constexpr uint32_t UniformSize = 1264;
+constexpr uint32_t UniformSize = 1280;
 constexpr auto EvictAfter = std::chrono::seconds(10);
 
 struct Uniform {
@@ -61,6 +61,7 @@ struct Uniform {
   float trails[16][4];  // DrawDesc::trails, two rows each
   float trailInfo[4];   // count
   float rt[5][4];       // gx::GXState::rtUniform: this view to the traced frame's, its frustum, (on, w, h)
+  float sun[4];         // the modern materials' sun (gx::GXState::modernSun): view-space travel, intensity
 };
 static_assert(sizeof(Uniform) == UniformSize);
 
@@ -155,6 +156,7 @@ struct U {
   rtRows: array<vec4f, 3>,
   rtFrustum: vec4f,
   rtInfo: vec4f,
+  sun: vec4f,
 }
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var normalMap: texture_2d<f32>;
@@ -597,6 +599,22 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
     o1 = fade * (1.0 - omF * tint);
     col = col - omF * tint * in.fog.xyz;
     o0 = fade * col;
+    // Port extension (the modern materials' sun, u.sun): the sun's glint on the waves, GGX at a
+    // calm water's roughness, with Schlick's Fresnel from F0 0.02.
+    if (u.sun.w > 0.0) {
+      let sL = -normalize(u.sun.xyz);
+      let sV = -V;
+      let sH = normalize(sL + sV);
+      let snl = max(dot(N, sL), 0.0);
+      let snv = max(dot(N, sV), 1e-3);
+      let snh = max(dot(N, sH), 0.0);
+      let sa2 = 0.0036;
+      let sd = snh * snh * (sa2 - 1.0) + 1.0;
+      let sD = sa2 / (3.14159265 * sd * sd);
+      let sF = 0.02 + 0.98 * pow(1.0 - max(dot(sV, sH), 0.0), 5.0);
+      let glint = min(sD * sF * snl / max(4.0 * snl * snv, 1e-3), 40.0) * u.sun.w;
+      o0 = o0 + vec3f(1.0, 0.95, 0.85) * (glint * fade * in.fog.w);
+    }
     // Port extension (DrawDesc::foam, pad.y): broken foam along the shallows, lit as the surface.
     if (u.pad.y > 0.0 && d < 1e29) {
       let shore = 1.0 - smoothstep(0.0, u.pad.y, d);
@@ -622,8 +640,20 @@ fn fs_main(in: VOut) -> @location(0) vec4f {
     }
   }
 
+  // Port extension (DrawDesc::refraction, pad.z): what is under the surface seen bent by the waves,
+  // more through deeper water; where the offset lands on something in front of the surface, straight.
+  var rpx = px;
+  if (!BOTTOM && u.pad.z > 0.0 && d < 1e29) {
+    let roff = (N.xy - Ng.xy) * vec2f(1.0, -1.0) * u.pad.z * f32(size.y) * clamp(d * 0.5, 0.0, 1.0);
+    let cand = clamp(px + vec2i(roff), vec2i(0), size - 1);
+    var cz = textureLoad(sceneDepth, cand, 0).r;
+    if (u.misc.x > 0.5) { cz = 1.0 - cz; }
+    let cdz = clamp((cz - u.depth.z) / (u.depth.w - u.depth.z), 0.0, 1.0);
+    let cbehind = u.depth.x * u.depth.y / (u.depth.y - cdz * (u.depth.y - u.depth.x));
+    if (u.misc.y > 0.5 && cbehind > in.clip.w) { rpx = cand; }
+  }
   // Remastered's blend, dst = o0 + dst * (1 - o1), in the light the EFB holds tone mapped.
-  let snap = textureLoad(sceneColor, px, 0);
+  let snap = textureLoad(sceneColor, rpx, 0);
   let y = srgb_dec(snap.rgb);
   let dst = min(vec3f(untone(y.r), untone(y.g), untone(y.b)), vec3f(4.0));
   let x = max(o0 + dst * (1.0 - o1), vec3f(0.0));
@@ -1032,6 +1062,10 @@ void draw(const DrawDesc& desc, const Vertex* verts, uint32_t vertexCount, const
   u.cube[1] = desc.cubeMips;
   u.pad[0] = desc.screenReflections ? 1.f : 0.f;
   u.pad[1] = desc.foam;
+  u.pad[2] = desc.refraction;
+  if (gx.modern > 0.f) {
+    std::memcpy(u.sun, &gx.modernSun, sizeof(u.sun));
+  }
   const uint32_t ripples = std::min(desc.rippleCount, DrawDesc::MaxRipples);
   std::memcpy(u.ripples, desc.ripples, sizeof(float) * 4 * ripples);
   u.rippleInfo[0] = float(ripples);

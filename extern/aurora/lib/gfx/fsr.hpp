@@ -50,6 +50,9 @@ static_assert(sizeof(Params) == 40 * 4);
 
 // Registers the capture task (game thread); false if it could not be.
 bool ensure_task();
+// From the FIFO processor (GX_AURORA_PORT_FSR_SOLID): the opaque world is drawn, the transparent
+// effects not yet (the reactive mask is what they add).
+bool record_solid();
 // From the FIFO processor (GX_AURORA_PORT_FSR): the world's picture is complete.
 bool record(const Params& params);
 // Render worker, at the frame's end before the present: when this frame was captured, makes the

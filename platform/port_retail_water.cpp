@@ -363,6 +363,7 @@ bool Draw(const CStateManager& mgr, uint32_t uid, const CVector3f& boxMin, const
   d.bottom = view.GetTranslation().GetZ() < surfaceZ;
   d.screenReflections = true;
   d.foam = poison ? 0.35f : 0.5f;
+  d.refraction = 0.012f;
 
   // The rings on this surface, newest first: the game's ripples (shots landing, enemies and
   // Samus touching it) and Samus's own wake.

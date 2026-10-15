@@ -392,6 +392,10 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
   if (config.soft != 0) {
     info.usesSoft = true;
   }
+  if (config.hero) {
+    info.usesModern = true;
+    info.uniformSize += 3 * sizeof(Vec4<float>); // GXState::modern/hero, modernSun, modernUp
+  }
   if (config.specular) {
     info.usesSpecular = true;
     info.uniformSize += 3 * sizeof(Vec4<float>); // GXState::specular, gunHeat, gunHeatPos
@@ -649,9 +653,14 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     }
   }
   if (info.usesSpecular) {
-    buf.append(Vec4<float>{g_gxState.specular, g_gxState.hero, 0.f, 0.f});
+    buf.append(Vec4<float>{g_gxState.specular, 0.f, 0.f, 0.f});
     buf.append(g_gxState.gunHeat);
     buf.append(g_gxState.gunHeatPos);
+  }
+  if (info.usesModern) {
+    buf.append(Vec4<float>{g_gxState.modern, g_gxState.hero, 0.f, 0.f});
+    buf.append(g_gxState.modernSun);
+    buf.append(g_gxState.modernUp);
   }
 }
 

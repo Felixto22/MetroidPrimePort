@@ -1217,6 +1217,12 @@ void FsrBegin() {
   GXPortSetJitter(GX_TRUE, sFsrJitter[0], sFsrJitter[1]);
 }
 
+void FsrSolid() {
+  if (sFsrMode != 0) {
+    GXPortFsrCaptureSolid();
+  }
+}
+
 void FsrEnd(const CTransform4f& view) {
   if (sFsrMode == 0) {
     return;

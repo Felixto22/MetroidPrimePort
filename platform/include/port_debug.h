@@ -505,6 +505,10 @@ int GraphicsQuality();
 // from her own textures, metal, glass and paint with real highlights and reflections), whatever
 // the graphics quality. Off in the original experience.
 bool SamusHD();
+// Modern materials: the same kind of material on the whole world, enemies and bosses (the world's
+// baked light reshaded by the relief, the sun's and the lights' highlights, reflections).
+bool ModernMaterials();
+void SetModernMaterials(bool enabled);
 void SetSamusHD(bool enabled);
 void SetGraphicsQuality(int quality);
 const char* GraphicsQualityName(int quality);

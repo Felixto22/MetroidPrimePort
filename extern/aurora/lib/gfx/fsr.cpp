@@ -45,6 +45,7 @@ struct P {
   prevView: mat3x4f,
   frustum: vec4f,
   depth: vec4f,
+  flags: vec4f,
 };
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var depthTex: DEPTH_TYPE;
@@ -53,6 +54,8 @@ struct P {
 @group(0) @binding(4) var outColor: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(5) var outDepth: texture_storage_2d<r32float, write>;
 @group(0) @binding(6) var outMotion: texture_storage_2d<rg32float, write>;
+@group(0) @binding(7) var solidTex: texture_2d<f32>;
+@group(0) @binding(8) var outReactive: texture_storage_2d<r32float, write>;
 
 fn linear_of(z: f32) -> f32 {
   let d = clamp((z - p.depth.z) / max(p.depth.w - p.depth.z, 1e-6), 0.0, 1.0);
@@ -88,6 +91,21 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
   let z = 1.0 - raw;
   // The gun and the HUD don't move with the world: no motion.
   let hud = max(max(abs(c.r - o.r), abs(c.g - o.g)), abs(c.b - o.b)) > 0.012;
+  // Reactive: what the transparent effects (particles, explosions, beams, glows) and the HUD add
+  // over the opaque world. FSR keeps little history there, so they don't smear or linger.
+  var reactive = 0.0;
+  if (p.flags.x > 0.5) {
+    let s = textureLoad(solidTex, px, 0);
+    // Mostly light added (glows, fire, sparks, beams); an actor drawn over the opaque world counts
+    // less, the gun (nearer than the world's depth range) least.
+    let inc = max(max(o.r - s.r, o.g - s.g), o.b - s.b);
+    let dd = max(max(abs(o.r - s.r), abs(o.g - s.g)), abs(o.b - s.b));
+    reactive = clamp(max(inc * 3.5, dd * 1.2), 0.0, 0.9) * select(1.0, 0.3, z < p.depth.z);
+  }
+  if (hud) {
+    reactive = 0.9;
+  }
+  textureStore(outReactive, px, vec4f(reactive, 0.0, 0.0, 0.0));
   if (z < p.depth.z || hud) {
     textureStore(outMotion, px, vec4f(0.0));
     return;
@@ -109,6 +127,7 @@ struct PrepUniform {
   float prevView[12];
   float frustum[4];
   float depth[4];
+  float flags[4]; // the opaque world's copy is this frame's
 };
 
 struct State {
@@ -118,6 +137,10 @@ struct State {
   wgpu::TextureView opaqueView;
   uint32_t opaqueWidth = 0, opaqueHeight = 0;
   wgpu::TextureFormat opaqueFormat = wgpu::TextureFormat::Undefined;
+  // The opaque world before the transparent effects (GXPortFsrCaptureSolid), for the reactive mask.
+  wgpu::Texture solid;
+  wgpu::TextureView solidView;
+  bool haveSolid = false;
   Params params{};
   bool captured = false;
   // The prep pass.
@@ -131,6 +154,8 @@ State g_state;
 
 std::array<Params, 8> g_recorded;
 uint32_t g_nextSlot = 0;
+// The capture task's payload for the opaque world's copy (not a params slot).
+constexpr uint32_t SolidSlot = 0xFFFFFFFFu;
 
 float halton(uint32_t index, uint32_t base) {
   float f = 1.f, r = 0.f;
@@ -151,6 +176,25 @@ void capture(const EncoderTaskContext&, const wgpu::CommandEncoder& cmd, const v
   std::memcpy(&slot, payload, sizeof(slot));
   const auto& source = webgpu::present_source();
   if (!source.texture || source.size.width == 0 || source.size.height == 0) {
+    return;
+  }
+  if (slot == SolidSlot) {
+    auto& t = g_state.solid;
+    if (!t || t.GetWidth() != source.size.width || t.GetHeight() != source.size.height || t.GetFormat() != source.format) {
+      const wgpu::TextureDescriptor descriptor{
+          .label = "FSR Opaque World",
+          .usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst,
+          .size = {source.size.width, source.size.height, 1},
+          .format = source.format,
+      };
+      t = g_device.CreateTexture(&descriptor);
+      g_state.solidView = t.CreateView();
+    }
+    const wgpu::TexelCopyTextureInfo from{.texture = source.texture};
+    const wgpu::TexelCopyTextureInfo to{.texture = t};
+    const wgpu::Extent3D extent{source.size.width, source.size.height, 1};
+    cmd.CopyTextureToTexture(&from, &to, &extent);
+    g_state.haveSolid = true;
     return;
   }
   if (!g_state.opaque || g_state.opaqueWidth != source.size.width || g_state.opaqueHeight != source.size.height ||
@@ -217,7 +261,7 @@ struct D3D {
   HANDLE event = nullptr;
   ffxContext context = nullptr;
   uint32_t renderWidth = 0, renderHeight = 0, displayWidth = 0, displayHeight = 0;
-  Shared color, depth, motion, output;
+  Shared color, depth, motion, reactive, output;
   webgpu::TextureWithSampler outputTex;
   bool failed = false; // a dispatch failed: no more tries this run
 };
@@ -360,12 +404,14 @@ bool ensure_size(uint32_t rw, uint32_t rh, uint32_t dw, uint32_t dh) {
   drop_shared(g_d3d.color);
   drop_shared(g_d3d.depth);
   drop_shared(g_d3d.motion);
+  drop_shared(g_d3d.reactive);
   drop_shared(g_d3d.output);
   g_d3d.outputTex = {};
   g_d3d.renderWidth = g_d3d.renderHeight = g_d3d.displayWidth = g_d3d.displayHeight = 0;
   if (!make_shared(g_d3d.color, rw, rh, DXGI_FORMAT_R16G16B16A16_FLOAT, "FSR Colour") ||
       !make_shared(g_d3d.depth, rw, rh, DXGI_FORMAT_R32_FLOAT, "FSR Depth") ||
       !make_shared(g_d3d.motion, rw, rh, DXGI_FORMAT_R32G32_FLOAT, "FSR Motion") ||
+      !make_shared(g_d3d.reactive, rw, rh, DXGI_FORMAT_R32_FLOAT, "FSR Reactive") ||
       !make_shared(g_d3d.output, dw, dh, DXGI_FORMAT_R16G16B16A16_FLOAT, "FSR Output")) {
     return false;
   }
@@ -455,6 +501,8 @@ void ensure_prep(uint32_t samples) {
       storage(4, wgpu::TextureFormat::RGBA16Float),
       storage(5, wgpu::TextureFormat::R32Float),
       storage(6, wgpu::TextureFormat::RG32Float),
+      sampled(7),
+      storage(8, wgpu::TextureFormat::R32Float),
   };
   const wgpu::BindGroupLayoutDescriptor layoutDescriptor{
       .label = "FSR Prep Layout",
@@ -531,6 +579,14 @@ bool ensure_task() {
   return true;
 }
 
+bool record_solid() {
+  if (g_state.task == InvalidEncoderTask) {
+    return false;
+  }
+  const uint32_t slot = SolidSlot;
+  return record_encoder_task(g_state.task, &slot, sizeof(slot));
+}
+
 bool record(const Params& params) {
   if (g_state.task == InvalidEncoderTask || params.mode == Off) {
     return false;
@@ -577,6 +633,10 @@ const webgpu::TextureWithSampler* upscale(wgpu::CommandEncoder& encoder) {
   std::memcpy(u.prevView, params.prevView, sizeof(u.prevView));
   std::memcpy(u.frustum, params.frustum, sizeof(u.frustum));
   std::memcpy(u.depth, params.depth, sizeof(u.depth));
+  const bool solidOk = g_state.haveSolid && g_state.solid && g_state.solid.GetWidth() == rw &&
+                       g_state.solid.GetHeight() == rh && g_state.solid.GetFormat() == g_state.opaqueFormat;
+  u.flags[0] = solidOk ? 1.f : 0.f;
+  g_state.haveSolid = false;
   webgpu::g_queue.WriteBuffer(g_state.uniforms, 0, &u, sizeof(u));
   {
     const std::array entries{
@@ -587,6 +647,8 @@ const webgpu::TextureWithSampler* upscale(wgpu::CommandEncoder& encoder) {
         wgpu::BindGroupEntry{.binding = 4, .textureView = g_d3d.color.view},
         wgpu::BindGroupEntry{.binding = 5, .textureView = g_d3d.depth.view},
         wgpu::BindGroupEntry{.binding = 6, .textureView = g_d3d.motion.view},
+        wgpu::BindGroupEntry{.binding = 7, .textureView = solidOk ? g_state.solidView : g_state.opaqueView},
+        wgpu::BindGroupEntry{.binding = 8, .textureView = g_d3d.reactive.view},
     };
     const wgpu::BindGroupDescriptor groupDescriptor{
         .label = "FSR Prep",
@@ -621,6 +683,7 @@ const webgpu::TextureWithSampler* upscale(wgpu::CommandEncoder& encoder) {
   d.color = resource_of(g_d3d.color);
   d.depth = resource_of(g_d3d.depth);
   d.motionVectors = resource_of(g_d3d.motion);
+  d.reactive = resource_of(g_d3d.reactive);
   d.output = ffxApiGetResourceDX12(g_d3d.output.resource.Get(), FFX_API_RESOURCE_STATE_COMMON,
                                    FFX_API_RESOURCE_USAGE_UAV);
   d.jitterOffset = {params.jitter[0], params.jitter[1]};
@@ -667,6 +730,7 @@ void shutdown() {
     drop_shared(g_d3d.color);
     drop_shared(g_d3d.depth);
     drop_shared(g_d3d.motion);
+    drop_shared(g_d3d.reactive);
     drop_shared(g_d3d.output);
   }
   if (g_d3d.event != nullptr) {

@@ -349,6 +349,8 @@ typedef struct {
   u32 pad[2];
 } GXPortFsrParams;
 GXBool GXPortFsrCapture(const GXPortFsrParams* params);
+// The opaque world is drawn (before the transparent effects): FSR's reactive mask is what they add.
+void GXPortFsrCaptureSolid(void);
 // Port extension: ray-traced sun shadows (aurora::gfx::rt), with DirectX Raytracing on Dawn's
 // D3D12 device (Windows, a DXR 1.1 GPU). Whether this device can: the first call sets it up.
 GXBool GXPortRtAvailable(void);
@@ -409,6 +411,12 @@ void GXPortSetGunHeat(f32 heat, const f32 pos[3], f32 radius);
 // paint told from its colour, and GGX highlights, reflections and rim light. Stays until changed;
 // 0: off.
 void GXPortSetHeroMaterial(f32 strength);
+// Port extension: the modern material (as GXPortSetHeroMaterial) on every opaque textured draw
+// that writes depth: the world (its baked light reshaded by the relief, the sun's highlights),
+// enemies and bosses (their GX lights' GGX highlights per pixel). `sunView`: the direction light
+// travels from the sun, in view space, and its intensity (0: none); `upView`: the world's up in
+// view space. Stays until changed; strength 0: off.
+void GXPortSetModernMaterial(f32 strength, const f32 sunView[3], f32 sunIntensity, const f32 upView[3]);
 // Port extension: the following draws are falling water: shots' impacts among the foliage
 // pushers (GXPortSetFoliagePushers, those with params w = 1) ripple it, warp its texture and
 // whiten it with foam. Stays until changed.
