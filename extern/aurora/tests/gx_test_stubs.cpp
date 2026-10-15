@@ -61,6 +61,10 @@ void increment_merged_draw_count() noexcept {}
 
 namespace aurora::webgpu {
 GraphicsConfig g_graphicsConfig{};
+const TextureWithSampler& present_source() noexcept {
+  static TextureWithSampler none{};
+  return none;
+}
 } // namespace aurora::webgpu
 
 #include "webgpu/gpu_prof.hpp"

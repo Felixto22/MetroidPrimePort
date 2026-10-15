@@ -68,7 +68,15 @@ jobs:
         run: ./build-win/port_ws_tests.exe
 
       - name: Build FIFO regressions
-        run: cmake --build build-win --target gx_fifo_tests -j
+        shell: pwsh
+        run: |
+          cmake --build build-win --target gx_fifo_tests -j 2>&1 | Tee-Object -FilePath fifo-output.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Select-String -CaseSensitive -Path fifo-output.txt -Pattern '(: (fatal )?error)|(undefined symbol)|(>>> referenced)' |
+              Select-Object -First 40 | ForEach-Object { Write-Output ("::error::" + $_.Line.Trim()) }
+            exit $code
+          }
 
       - name: Test FIFO regressions
         run: ./build-win/extern/aurora/tests/gx_fifo_tests.exe --gtest_brief=1
