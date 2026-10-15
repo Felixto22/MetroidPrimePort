@@ -937,21 +937,6 @@ void xf_load_projection(const u8* data) noexcept {
   g_gxState.dirty |= DirtyUniform;
 }
 
-void apply_projection_jitter() noexcept {
-  auto& proj = g_gxState.proj;
-  if (!g_gxState.projRawLoaded) {
-    g_gxState.projRaw = proj;
-    g_gxState.projRawLoaded = true;
-  }
-  proj = g_gxState.projRaw;
-  // A perspective one only (the HUD's orthographic ones stay put): ndc x = -(p0 x) / z - p1, so a
-  // shift of d in NDC is p1 - d.
-  if (g_gxState.projJitterOn && proj.m3[2] == -1.0f) {
-    proj.m0[2] -= g_gxState.projJitter[0];
-    proj.m1[2] -= g_gxState.projJitter[1];
-  }
-}
-
 // Compare raw bits instead of floats
 bool store_xf_f32(f32& dst, u32 bits) noexcept {
   if (std::bit_cast<u32>(dst) == bits) {
@@ -1206,3 +1191,20 @@ void handle_xf(u16 addr, std::span<const u8> data) noexcept {
 }
 
 } // namespace aurora::gx::fifo
+
+namespace aurora::gx {
+void apply_projection_jitter() noexcept {
+  auto& proj = g_gxState.proj;
+  if (!g_gxState.projRawLoaded) {
+    g_gxState.projRaw = proj;
+    g_gxState.projRawLoaded = true;
+  }
+  proj = g_gxState.projRaw;
+  // A perspective one only (the HUD's orthographic ones stay put): ndc x = -(p0 x) / z - p1, so a
+  // shift of d in NDC is p1 - d.
+  if (g_gxState.projJitterOn && proj.m3[2] == -1.0f) {
+    proj.m0[2] -= g_gxState.projJitter[0];
+    proj.m1[2] -= g_gxState.projJitter[1];
+  }
+}
+} // namespace aurora::gx
