@@ -46,7 +46,16 @@ jobs:
           -DOPENSSL_USE_STATIC_LIBS=TRUE
 
       - name: Build
-        run: cmake --build build-win -j
+        shell: pwsh
+        run: |
+          # The compiler's errors also go out as annotations, readable without the raw log.
+          cmake --build build-win -j 2>&1 | Tee-Object -FilePath build-output.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Select-String -Path build-output.txt -Pattern ': (fatal )?error|error C|error LNK|FAILED:' |
+              Select-Object -First 40 | ForEach-Object { Write-Output ("::error::" + $_.Line.Trim()) }
+            exit $code
+          }
 
       - name: Test
         run: ctest --test-dir build-win -L port --output-on-failure
