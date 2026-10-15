@@ -52,8 +52,9 @@ jobs:
           cmake --build build-win -j 2>&1 | Tee-Object -FilePath build-output.txt
           $code = $LASTEXITCODE
           if ($code -ne 0) {
-            Select-String -Path build-output.txt -Pattern ': (fatal )?error|error C|error LNK|FAILED:' |
-              Select-Object -First 40 | ForEach-Object { Write-Output ("::error::" + $_.Line.Trim()) }
+            Select-String -CaseSensitive -Path build-output.txt -Pattern '(: (fatal )?error)|(error C\d)|(error LNK)|(lld-link)|(undefined symbol)|(unresolved external)|(>>> referenced)|(FAILED:)' |
+              Select-Object -First 45 | ForEach-Object { Write-Output ("::error::" + $_.Line.Trim()) }
+            Get-Content build-output.txt -Tail 15 | ForEach-Object { Write-Output ("::error::tail " + $_.Trim()) }
             exit $code
           }
 
