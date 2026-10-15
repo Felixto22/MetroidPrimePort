@@ -606,11 +606,18 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   config.shaderConfig.specular =
       g_gxState.specular > 0.f && !drawId && !depthOnly && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0;
   // The modern material: an opaque retail draw that writes depth (not the sky, particles or decals).
-  config.shaderConfig.hero =
-      (g_gxState.modern > 0.f || g_gxState.hero > 0.f) && !drawId && !depthOnly &&
-      config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0 && g_gxState.depthUpdate && g_gxState.colorUpdate &&
-      (g_gxState.blendMode == GX_BM_NONE ||
-       (g_gxState.blendMode == GX_BM_BLEND && g_gxState.blendFacSrc == GX_BL_ONE && g_gxState.blendFacDst == GX_BL_ZERO));
+  // Samus (the hero material) draws through the game's alpha blend (CModelFlags::AlphaBlended, even
+  // at full opacity): her lit draws take it whatever the blend.
+  {
+    const bool base = !drawId && !depthOnly && config.shaderConfig.lineMode == 0 && g_gxState.pbr == 0 &&
+                      g_gxState.colorUpdate;
+    const bool opaque =
+        g_gxState.depthUpdate &&
+        (g_gxState.blendMode == GX_BM_NONE ||
+         (g_gxState.blendMode == GX_BM_BLEND && g_gxState.blendFacSrc == GX_BL_ONE && g_gxState.blendFacDst == GX_BL_ZERO));
+    const bool heroDraw = g_gxState.hero > 0.f && g_gxState.colorChannelConfig[GX_COLOR0].lightingEnabled;
+    config.shaderConfig.hero = base && ((g_gxState.modern > 0.f && opaque) || heroDraw);
+  }
   config.shaderConfig.perPixel = (g_gxState.perPixelLighting || config.shaderConfig.clustered ||
                                   config.shaderConfig.specular) && !drawId &&
                                  !depthOnly && config.shaderConfig.lineMode == 0;

@@ -1113,9 +1113,11 @@ auto modern_material_func(const ShaderConfig& config, const ShaderInfo& info, bo
             let mca = max(0.0, dot(ml.cos_att, vec3f(1.0, mcos, mcos * mcos)));
             let mda = max(dot(ml.dist_att, vec3f(1.0, mdist, mdist * mdist)), 1e-3);
             let mI = clamp(ml.color.rgb * (mca / mda), vec3f(0.0), vec3f(2.0));
-            mdiffN = mdiffN + mI * max(dot(mN, mL), 0.0);
-            mdiffG = mdiffG + mI * max(dot(mng, mL), 0.0);
-            mspec = mspec + mI * m_ggx(mN, mV, mL, mrough, mF0);
+            if (!mhero) {{
+                mdiffN = mdiffN + mI * max(dot(mN, mL), 0.0);
+                mdiffG = mdiffG + mI * max(dot(mng, mL), 0.0);
+            }}
+            mspec = mspec + mI * m_ggx(mN, mV, mL, mrough, mF0) * select(1.0, 0.5, mhero);
         }})""",
                          GX::MaxLights);
   }
@@ -1189,30 +1191,32 @@ auto modern_material_func(const ShaderConfig& config, const ShaderInfo& info, bo
         let mao = clamp(1.0 + (m11 - mavg) * 3.0, 0.6, 1.15);
         let msharp = clamp(1.0 + (m11 - mavg) * 1.5 / max(m11, 0.05), 0.75, 1.3);
         let msunOn = ubuf.modern_sun.w > 0.0;
-        let mkey = select(normalize(vec3f(0.3, 0.85, 0.45)), -normalize(ubuf.modern_sun.xyz), msunOn);
+        let mkey = select(select(normalize(vec3f(0.3, 0.85, 0.45)), normalize(vec3f(0.45, 0.75, 0.5)), mhero),
+                          -normalize(ubuf.modern_sun.xyz), msunOn && !mhero);
         var mdiffN = vec3f(0.0);
         var mdiffG = vec3f(0.0);
         var mspec = vec3f(0.0);{6}
-        let mkI = select(0.55, ubuf.modern_sun.w, msunOn);
-        mdiffN = mdiffN + vec3f(mkI) * (max(dot(mN, mkey), 0.0) * 0.6 + 0.4);
-        mdiffG = mdiffG + vec3f(mkI) * (max(dot(mng, mkey), 0.0) * 0.6 + 0.4);
+        let mkI = select(select(0.55, ubuf.modern_sun.w, msunOn), 1.0, mhero);
+        let mwrap = select(0.6, 0.5, mhero);
+        mdiffN = mdiffN + vec3f(mkI) * (max(dot(mN, mkey), 0.0) * mwrap + (1.0 - mwrap));
+        mdiffG = mdiffG + vec3f(mkI) * (max(dot(mng, mkey), 0.0) * mwrap + (1.0 - mwrap));
         mspec = mspec + vec3f(mkI) * m_ggx(mN, mV, mkey, mrough, mF0);
         if (mhero) {{
             let mrimL = normalize(vec3f(-0.7, 0.35, -0.6));
-            mspec = mspec + vec3f(0.5) * m_ggx(mN, mV, mrimL, mrough, mF0);
+            mspec = mspec + vec3f(0.6) * m_ggx(mN, mV, mrimL, mrough, mF0);
         }}
-        let mkd = clamp(dot(mdiffN, mw) / max(dot(mdiffG, mw), 0.05), 0.55, 1.45);
+        let mkd = clamp(dot(mdiffN, mw) / max(dot(mdiffG, mw), 0.05), select(0.55, 0.6, mhero), select(1.45, 1.4, mhero));
         var mcol = prev.rgb * mix(1.0, mkd * mao * msharp, mk);
         mcol = mcol * mix(1.0, 0.45, mmetal * mk);
         let mnv = max(dot(mN, mV), 1e-3);
         let mR = reflect(-mV, mN);
-        let mup = normalize(ubuf.modern_up.xyz);
+        let mup = select(normalize(ubuf.modern_up.xyz), vec3f(0.0, 1.0, 0.0), mhero);
         let mh = dot(mR, mup);
-        let mskyc = select(vec3f(0.55, 0.6, 0.68), vec3f(0.6, 0.62, 0.66) * (0.6 + 0.6 * ubuf.modern_sun.w), msunOn);
+        let mskyc = select(vec3f(0.55, 0.6, 0.68), vec3f(0.6, 0.62, 0.66) * (0.6 + 0.6 * ubuf.modern_sun.w), msunOn && !mhero);
         let menv = mix(vec3f(0.05, 0.05, 0.055), mskyc, smoothstep(-0.35, 0.8, mh));
         let mFe = mF0 + (max(vec3f(1.0 - mrough), mF0) - mF0) * pow(1.0 - mnv, 5.0);
         let mrefl = menv * mFe * mix(0.25, 1.0, (1.0 - mrough) * (1.0 - mrough));
-        let mso = clamp(mao * mao, 0.3, 1.0);
+        let mso = select(clamp(mao * mao, 0.3, 1.0), 1.0, mhero);
         let mrim = pow(1.0 - mnv, 4.0) * select(0.08, 0.25, mhero) * (1.0 - mmetal * 0.5);
         mspec = min(mspec, vec3f(6.0));
         mcol = mcol + (mspec * 0.3 + mrefl + vec3f(0.55, 0.65, 0.8) * mrim) * mso * mlit * mk;
