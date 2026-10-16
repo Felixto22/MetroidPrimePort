@@ -1329,6 +1329,22 @@ PipelineRef pipeline_ref(const gx::PipelineConfig& config) {
   });
 }
 
+PipelineRef pipeline_ref_blocking(const gx::PipelineConfig& config) {
+  return find_gx_pipeline_blocking(config, [=] {
+    phase::Scope compiling(render_worker::is_worker_thread() ? phase::Render : phase::Main, "compiling a GX pipeline");
+    return create_pipeline(config);
+  });
+}
+
+void prewarm_shadow_variant(const gx::PipelineConfig& config) {
+  if (!gx::shadow_prewarm_variant(config)) {
+    return;
+  }
+  gx::PipelineConfig variant = config;
+  variant.shaderConfig.shadow = 1;
+  prewarm_gx_pipeline(variant, [=] { return create_pipeline(variant); });
+}
+
 #ifdef AURORA_ENABLE_RMLUI
 template <>
 PipelineRef pipeline_ref(const rmlui::PipelineConfig& config) {

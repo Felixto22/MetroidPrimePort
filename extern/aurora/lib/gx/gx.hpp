@@ -492,6 +492,8 @@ struct GXState {
   u8 tessLevel = 0;
   // GX_AURORA_PORT_RELIGHT: the lightmapped retail surfaces drawn now are lit live.
   u8 relight = 0;
+  // GX_AURORA_PORT_PIPELINE_BLOCKING: draws wait for their pipeline to compile.
+  u8 pipelineBlocking = 0;
   Vec4<float> modernSun{};
   Vec4<float> modernUp{0.f, 1.f, 0.f, 0.f};
   // GX_AURORA_PORT_GUN_HEAT: heat (x) and radius (y), and where (xyz, view space).

@@ -277,7 +277,7 @@ float RelightAmbient() {
   SkyBodies(sun, moon, elev);
   const float t = std::clamp((elev + 0.1f) / 0.35f, 0.f, 1.f);
   const float day = t * t * (3.f - 2.f * t);
-  return (0.72f - 0.3f * day) * (1.f + 0.3f * sCover);
+  return (0.95f - 0.45f * day) * (1.f + 0.3f * sCover);
 }
 
 // The world's light outdoors for the time of day and the weather (a multiplier).
@@ -286,7 +286,7 @@ void DayGrade(float out[3]) {
   SkyBodies(sun, moon, elev);
   const float day = std::clamp((elev + 0.12f) / 0.32f, 0.f, 1.f);
   const float golden = (1.f - std::clamp((elev - 0.05f) / 0.3f, 0.f, 1.f)) * day;
-  const float night[3] = {0.22f, 0.27f, 0.4f};
+  const float night[3] = {0.44f, 0.5f, 0.66f};
   const float warm[3] = {1.08f, 0.86f, 0.68f};
   const float dull = 1.f - 0.2f * sCover - 0.2f * sStorm;
   for (int i = 0; i < 3; ++i) {

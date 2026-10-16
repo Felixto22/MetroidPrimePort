@@ -496,6 +496,7 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
     // pipeline without the second lookup (shader info depends on the config alone).
     const gfx::PipelineRef ref = xxh3_hash(cache.config, static_cast<HashType>(gfx::ShaderType::GX));
     auto memoIt = sPipelineMemo.find(ref);
+    const bool newConfig = memoIt == sPipelineMemo.end();
     if (memoIt != sPipelineMemo.end() && gfx::touch_pipeline(ref) &&
         (!memoIt->second.shadowCaster || gfx::touch_pipeline(memoIt->second.shadowPipelineRef))) {
       const auto& memo = memoIt->second;
@@ -531,6 +532,14 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
                                                             .shadowPipelineRef = cache.shadowPipelineRef,
                                                             .shadowCaster = cache.shadowCaster,
                                                         });
+    }
+    // Port: the world waits for its shader rather than leaving a hole while it compiles; each new
+    // colour draw also queues its shadow-receiving twin, for when a sun appears.
+    if (g_gxState.pipelineBlocking != 0) {
+      gfx::pipeline_ref_blocking(cache.config);
+    }
+    if (newConfig) {
+      gfx::prewarm_shadow_variant(cache.config);
     }
     cache.fmt = fmt;
     cache.lineMode = lineMode;
@@ -1464,6 +1473,8 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.waterfall = on;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_PIPELINE_BLOCKING) {
+    g_gxState.pipelineBlocking = reader.read<u32>() != 0 ? 1 : 0;
   } else if (subCmd == GX_AURORA_PORT_RELIGHT) {
     const u8 on = reader.read<u32>() != 0 ? 1 : 0;
     if (g_gxState.relight != on) {

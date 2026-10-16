@@ -44,6 +44,13 @@ constexpr bool pipeline_config_compatible(const PipelineConfig& config, bool lig
   return shader.pbr == 0 || shader.pbrLightmapAttr == GX_VA_NULL || lightmapBinding;
 }
 
+// Port: a colour draw without the sun's shadow whose shadow-receiving twin is worth building ahead.
+constexpr bool shadow_prewarm_variant(const PipelineConfig& config) noexcept {
+  const auto& sc = config.shaderConfig;
+  return !sc.shadow && config.shadowPass == 0 && sc.depthOnly == 0 && sc.lineMode == 0 && !sc.drawId &&
+         config.depthUpdate && config.colorUpdate;
+}
+
 wgpu::RenderPipeline create_pipeline([[maybe_unused]] const PipelineConfig& config);
 void render(const DrawData& data, const wgpu::RenderPassEncoder& pass);
 

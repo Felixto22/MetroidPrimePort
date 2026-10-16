@@ -27,6 +27,10 @@ void seed_offscreen_cache(uint32_t width, uint32_t height, wgpu::TextureFormat c
 
 } // namespace aurora::gfx::detail
 
+namespace aurora::gx {
+struct PipelineConfig;
+} // namespace aurora::gx
+
 namespace aurora::gfx {
 struct ColorPassDescriptor {
   const char* label = nullptr;
@@ -124,6 +128,10 @@ template <typename DrawData>
 DrawData* get_last_draw_command();
 template <typename PipelineConfig>
 PipelineRef pipeline_ref(const PipelineConfig& config);
+// Port: a GX pipeline waited for (GX_AURORA_PORT_PIPELINE_BLOCKING), and the shadow-receiving
+// twin of a colour draw's queued in the background.
+PipelineRef pipeline_ref_blocking(const gx::PipelineConfig& config);
+void prewarm_shadow_variant(const gx::PipelineConfig& config);
 
 void resolve_pass_into(TextureHandle texture, ClipRect rect, bool clearColor, bool clearAlpha, bool clearDepth,
                        Vec4<float> clearColorValue, float clearDepthValue, GXTexFmt resolveFormat = GX_TF_RGBA8,

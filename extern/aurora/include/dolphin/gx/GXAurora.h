@@ -384,6 +384,9 @@ extern "C" {
 #define GX_AURORA_PORT_TESS 0x0084
 // Port extension: the following lightmapped retail surfaces are lit live (GXPortSetRelight). Payload: u32 on.
 #define GX_AURORA_PORT_RELIGHT 0x0085
+// Port extension: the following draws wait for their shader instead of being left out while it
+// compiles (GXPortSetPipelineBlocking). Payload: u32 on.
+#define GX_AURORA_PORT_PIPELINE_BLOCKING 0x0086
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

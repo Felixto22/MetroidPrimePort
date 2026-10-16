@@ -631,6 +631,14 @@ static PipelineRef find_pipeline_impl(ShaderType type, const PipelineConfig& con
   return hash;
 }
 
+PipelineRef find_gx_pipeline_blocking(const gx::PipelineConfig& config, NewPipelineCallback&& cb) {
+  return find_pipeline_impl(ShaderType::GX, config, std::move(cb), PipelinePriority::Blocking);
+}
+
+void prewarm_gx_pipeline(const gx::PipelineConfig& config, NewPipelineCallback&& cb) {
+  find_pipeline_impl(ShaderType::GX, config, std::move(cb), PipelinePriority::Background, std::nullopt, true);
+}
+
 static std::string pipeline_cache_path() {
   return io::fs_path_to_string(io::fs_path_from_string(g_config.cachePath) / "pipeline_cache.db");
 }
@@ -1184,6 +1192,16 @@ static size_t load_pipeline_cache_entries(ShaderType type, uint32_t configVersio
 
     find_pipeline_impl(type, config, [=] { return create(config); }, PipelinePriority::Background, firstFrameUsed);
     ++acceptedRows;
+    // Port: the same surface as the sun's shadow receives it (the day and night lights rooms that
+    // had no sun), so those are built before they are needed.
+    if constexpr (std::is_same_v<PipelineConfig, gx::PipelineConfig>) {
+      if (gx::shadow_prewarm_variant(config)) {
+        PipelineConfig variant = config;
+        variant.shaderConfig.shadow = 1;
+        find_pipeline_impl(type, variant, [=] { return create(variant); }, PipelinePriority::Background,
+                           firstFrameUsed, true);
+      }
+    }
   }
 
   if (ret != SQLITE_DONE) {

@@ -284,6 +284,11 @@ void GXPortSetRelight(GXBool on) {
   GX_WRITE_U32(on ? 1u : 0u);
 }
 
+void GXPortSetPipelineBlocking(GXBool on) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_PIPELINE_BLOCKING);
+  GX_WRITE_U32(on ? 1u : 0u);
+}
+
 void GXPortSetRelightAmbient(f32 ambient) { aurora::gfx::shadow::set_relight_ambient(ambient); }
 
 void GXPortFsrCaptureSolid(void) {

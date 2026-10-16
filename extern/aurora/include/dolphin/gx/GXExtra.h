@@ -361,6 +361,9 @@ void GXPortSetTessellation(u32 level);
 void GXPortSetRelight(GXBool on);
 // The sky's ambient on the relit surfaces (0: relighting is off this frame); any thread.
 void GXPortSetRelightAmbient(f32 ambient);
+// Port extension: the following draws wait for their pipeline to compile instead of being skipped
+// until it has (the world: no holes the first time a surface is seen). Stays until changed.
+void GXPortSetPipelineBlocking(GXBool on);
 // Port extension: ray-traced sun shadows (aurora::gfx::rt), with DirectX Raytracing on Dawn's
 // D3D12 device (Windows, a DXR 1.1 GPU). Whether this device can: the first call sets it up.
 GXBool GXPortRtAvailable(void);

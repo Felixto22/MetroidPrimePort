@@ -218,6 +218,8 @@ template <>
 PipelineRef pipeline_ref<gx::PipelineConfig>(const gx::PipelineConfig& config) {
   return 0;
 }
+PipelineRef pipeline_ref_blocking(const gx::PipelineConfig& config) { return 0; }
+void prewarm_shadow_variant(const gx::PipelineConfig& config) {}
 // Never live, so the shader-info memo is rebuilt on every draw.
 bool touch_pipeline(PipelineRef ref) { return false; }
 gx::DrawData g_testLastDraw{};

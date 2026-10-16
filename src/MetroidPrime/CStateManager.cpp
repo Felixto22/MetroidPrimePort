@@ -3616,6 +3616,9 @@ void CStateManager::DrawWorld() const {
   const bool portTess = PortDebug::SmoothSilhouettes() && !portCollisionOnly;
   if (portTess)
     GXPortSetTessellation(3);
+  // The world waits for a shader still compiling rather than leaving its surface out (a hole
+  // onto the sky the first time it is seen).
+  GXPortSetPipelineBlocking(GX_TRUE);
 #endif
   for (int i = areas.size() - 1; i >= 0; --i) {
     const CGameArea& area = *areas[i];
@@ -4035,6 +4038,7 @@ void CStateManager::DrawWorld() const {
   if (portTess)
     GXPortSetTessellation(0);
   CCubeMaterial::PortSetRelight(false);
+  GXPortSetPipelineBlocking(GX_FALSE);
   // The HUD, visor and the next pass's draws before its capture don't fade against this frame.
   GXPortSetSoftParticles(GX_FALSE);
 #endif

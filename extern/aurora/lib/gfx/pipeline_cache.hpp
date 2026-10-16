@@ -47,6 +47,11 @@ void end_pipeline_frame();
 
 template <typename Config>
 PipelineRef find_pipeline(ShaderType type, const Config& config, NewPipelineCallback&& cb);
+// A GX pipeline, waiting until it is built (GX_AURORA_PORT_PIPELINE_BLOCKING: no surface left out
+// while its shader compiles).
+PipelineRef find_gx_pipeline_blocking(const gx::PipelineConfig& config, NewPipelineCallback&& cb);
+// A GX pipeline queued behind the others, for a draw that may need it soon; not waited for.
+void prewarm_gx_pipeline(const gx::PipelineConfig& config, NewPipelineCallback&& cb);
 
 bool get_pipeline(PipelineRef ref, wgpu::RenderPipeline& pipeline);
 
