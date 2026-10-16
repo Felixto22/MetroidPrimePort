@@ -19,6 +19,8 @@
 
 #ifdef TARGET_PC
 #include <algorithm>
+#include <memory>
+#include <unordered_map>
 #endif
 #include "Kyoto/Math/CPlane.hpp"
 #include "Kyoto/Math/CTransform4f.hpp"
@@ -736,6 +738,47 @@ static int sPortGlass = -1;
 static bool sPortFoliage = false;
 // Falling water (PortIsFallingWater): whether GXPortSetWaterfall is on.
 static bool sPortWaterfall = false;
+// Live light on the lightmapped surfaces (PortSetRelight), and whether GXPortSetRelight is on.
+static bool sPortRelightOn = false;
+static bool sPortRelit = false;
+
+uint PortTextureMeanColor(const CTexture& tex);
+
+namespace {
+// A lightmap's stand-in: a 4x4 texture of its mean colour, made once per lightmap.
+struct SPortMeanTexture {
+  alignas(32) uchar data[64];
+  GXTexObj obj;
+};
+
+const GXTexObj* PortLightmapMean(const CTexture& lightmap) {
+  static std::unordered_map< const CTexture*, std::unique_ptr< SPortMeanTexture > > sMeans;
+  auto it = sMeans.find(&lightmap);
+  if (it == sMeans.end()) {
+    std::unique_ptr< SPortMeanTexture > tex(new SPortMeanTexture);
+    const uint mean = PortTextureMeanColor(lightmap);
+    // RGBA8's 4x4 tile: alpha and red pairs, then green and blue pairs.
+    for (int i = 0; i < 16; ++i) {
+      tex->data[i * 2] = 0xff;
+      tex->data[i * 2 + 1] = uchar(mean >> 16);
+      tex->data[32 + i * 2] = uchar(mean >> 8);
+      tex->data[32 + i * 2 + 1] = uchar(mean);
+    }
+    GXInitTexObj(&tex->obj, tex->data, 4, 4, GX_TF_RGBA8, GX_REPEAT, GX_REPEAT, GX_FALSE);
+    GXInitTexObjLOD(&tex->obj, GX_NEAR, GX_NEAR, 0.f, 0.f, 0.f, GX_FALSE, GX_FALSE, GX_ANISO_1);
+    it = sMeans.emplace(&lightmap, std::move(tex)).first;
+  }
+  return &it->second->obj;
+}
+} // namespace
+
+void CCubeMaterial::PortSetRelight(bool on) {
+  sPortRelightOn = on;
+  if (!on && sPortRelit) {
+    sPortRelit = false;
+    GXPortSetRelight(GX_FALSE);
+  }
+}
 
 void CCubeMaterial::PortEndGlass() {
   if (sPortGlass > 0) {
@@ -782,6 +825,15 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
           foliage = PortFoliage::IsFoliageTexture(textures[index].GetTag().GetId());
         }
       }
+    }
+    // Lit live in place of its lightmap (PortSetRelight): an opaque lightmapped retail surface.
+    const bool relit = sPortRelightOn && (glassFlags & kStateFlag_Lightmap) != 0 &&
+                       (glassFlags & (kStateFlag_PortPBR | kStateFlag_DepthSorting)) == 0 &&
+                       flags.GetTrans() == CModelFlags::kT_Opaque && !sbRenderModelShadow &&
+                       !CCubeRenderer::That()->GetThermal() && SBig(reinterpret_cast< const uint* >(GetData())[1]) > 1;
+    if (relit != sPortRelit) {
+      sPortRelit = relit;
+      GXPortSetRelight(relit ? GX_TRUE : GX_FALSE);
     }
     // Falling water ripples where shots go through it.
     const bool water = !foliage && PortDebug::EnhancedWater() && PortIsFallingWater();
@@ -845,9 +897,14 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
     model.PortReadPBRMaterial(static_cast< int >(surface.GetMaterialIndex()), values, &wrap);
     for (uint i = 0; i < texCount; ++i) {
       const uint bits = i < 8 ? wrap >> (i * 4) : 0x5;
-      textures[SBig(*materialDataCur.words)].GetObject()->PortLoad(
-          static_cast< GXTexMapID >(i), static_cast< CTexture::EClampMode >(bits & 3),
-          static_cast< CTexture::EClampMode >((bits >> 2) & 3));
+      const CTexture* tex = textures[SBig(*materialDataCur.words)].GetObject();
+      if (i == 0 && sPortRelit) {
+        // The lightmap gives way to its mean colour: the live light stands in for the rest.
+        GXLoadTexObj(const_cast< GXTexObj* >(PortLightmapMean(*tex)), GX_TEXMAP0);
+      } else {
+        tex->PortLoad(static_cast< GXTexMapID >(i), static_cast< CTexture::EClampMode >(bits & 3),
+                      static_cast< CTexture::EClampMode >((bits >> 2) & 3));
+      }
       ++materialDataCur.words;
     }
 #else

@@ -382,6 +382,8 @@ extern "C" {
 #define GX_AURORA_PORT_FSR_SOLID 0x0083
 // Port extension: Phong tessellation of the lit models (GXPortSetTessellation). Payload: u32 level (0: off).
 #define GX_AURORA_PORT_TESS 0x0084
+// Port extension: the following lightmapped retail surfaces are lit live (GXPortSetRelight). Payload: u32 on.
+#define GX_AURORA_PORT_RELIGHT 0x0085
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

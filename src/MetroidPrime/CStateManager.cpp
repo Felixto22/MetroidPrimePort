@@ -3592,6 +3592,12 @@ void CStateManager::DrawWorld() const {
   // The day and night's sky first, behind everything the world draws (port_fx.h).
   if (!thermal && visor != CPlayerState::kPV_XRay && !portCollisionOnly)
     PortFx::DrawSkyFirst(*this, backupViewMatrix, sPortSunTravel);
+  // Under it the world outdoors is lit live, its lightmaps left out (CCubeMaterial::PortSetRelight):
+  // the sun or moon through the shadow map, and the sky's ambient.
+  const bool portRelight = PortFx::SkyFirstDrawn() &&
+                           (sPortSunTravel[0] != 0.f || sPortSunTravel[1] != 0.f || sPortSunTravel[2] != 0.f);
+  GXPortSetRelightAmbient(portRelight ? PortFx::WorldAmbient() : 0.f);
+  CCubeMaterial::PortSetRelight(portRelight);
   if (portModern)
     portSetModern(true);
   // Smooth silhouettes: the lit models' triangles subdivided and rounded (port_debug.h).
@@ -3620,6 +3626,10 @@ void CStateManager::DrawWorld() const {
   }
 
 #ifdef TARGET_PC
+  // What draws next outside the materials (the grass, the sky) is not relit; the next lightmapped
+  // material turns it back on.
+  CCubeMaterial::PortSetRelight(false);
+  CCubeMaterial::PortSetRelight(portRelight);
   // The grass the GPU builds over the areas' grassy ground, and the debris of shots (in the
   // world's fog, before the sky).
   if (!thermal && visor != CPlayerState::kPV_XRay && !portCollisionOnly) {
@@ -4012,6 +4022,7 @@ void CStateManager::DrawWorld() const {
     portSetModern(false);
   if (portTess)
     GXPortSetTessellation(0);
+  CCubeMaterial::PortSetRelight(false);
   // The HUD, visor and the next pass's draws before its capture don't fade against this frame.
   GXPortSetSoftParticles(GX_FALSE);
 #endif

@@ -60,6 +60,8 @@ const wgpu::TextureView& rt_layer_view();
 uint32_t layer_size();
 // How much the sun's shadow darkens retail (TEV) receivers, 0..1 (0: not at all); any thread.
 void set_retail_strength(float strength);
+// The sky's ambient on relit retail surfaces (GXPortSetRelight), as fade[3]; 0: none. Any thread.
+void set_relight_ambient(float ambient);
 // The map's size per cascade to use when it is first made (any thread; MP_SHADOW_SIZE wins).
 void set_map_size(uint32_t size);
 void shutdown();

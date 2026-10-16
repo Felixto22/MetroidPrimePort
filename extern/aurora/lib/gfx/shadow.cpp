@@ -57,6 +57,8 @@ struct State {
 State g_state;
 // How dark the sun's shadow makes retail (TEV) surfaces (set_retail_strength), as fade[2].
 std::atomic<float> g_retailStrength{0.f};
+// The sky's ambient on relit retail surfaces (set_relight_ambient), as fade[3].
+std::atomic<float> g_relightAmbient{0.f};
 std::vector<gx::DrawData> g_casters;
 std::array<std::vector<gx::DrawData>, 8> g_recorded;
 uint32_t g_nextSlot = 0;
@@ -275,7 +277,7 @@ bool set_frame(const float worldToView[3][4], const cascade::Frustum& frustum, c
     out.fade[1] = -1.f;
   }
   out.fade[2] = g_retailStrength.load(std::memory_order_relaxed);
-  out.fade[3] = 0.f;
+  out.fade[3] = g_relightAmbient.load(std::memory_order_relaxed);
   return true;
 }
 
@@ -381,6 +383,9 @@ void shutdown() {
 }
 void set_retail_strength(float strength) {
   g_retailStrength.store(std::clamp(strength, 0.f, 1.f), std::memory_order_relaxed);
+}
+void set_relight_ambient(float ambient) {
+  g_relightAmbient.store(std::clamp(ambient, 0.f, 4.f), std::memory_order_relaxed);
 }
 void set_map_size(uint32_t size) { g_requestedSize.store(size, std::memory_order_relaxed); }
 } // namespace aurora::gfx::shadow

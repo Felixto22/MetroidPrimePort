@@ -3175,6 +3175,9 @@ uint PortMaterialMean(const CCubeModel& model, const CCubeMaterial& material) {
 }
 } // namespace
 
+// The lightmap stand-in of a relit surface (CCubeMaterial::PortSetRelight): its mean colour.
+uint PortTextureMeanColor(const CTexture& tex) { return PortTextureMean(tex); }
+
 // The opaque world triangles for the ray-traced shadows (aurora::gfx::rt): each model the normal
 // visor draws, each of its unsorted surfaces that is neither alpha-tested nor depth-sorted, its
 // display list walked as DrawSurfaceWireframe walks it (big-endian indices after each primitive's

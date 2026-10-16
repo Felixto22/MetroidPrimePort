@@ -1464,6 +1464,12 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.waterfall = on;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_RELIGHT) {
+    const u8 on = reader.read<u32>() != 0 ? 1 : 0;
+    if (g_gxState.relight != on) {
+      g_gxState.relight = on;
+      g_gxState.dirty |= DirtyPipeline;
+    }
   } else if (subCmd == GX_AURORA_PORT_TESS) {
     const u32 level = std::min<u32>(reader.read<u32>(), 6u);
     if (g_gxState.tessLevel != level) {

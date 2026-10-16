@@ -46,6 +46,9 @@ public:
 #ifdef TARGET_PC
   // Ends the glass shading a glass material started (GXPortSetGlass), if any.
   static void PortEndGlass();
+  // Port: outdoors with the day and night (PortFx), lightmapped surfaces are lit live: the lightmap
+  // gives way to its mean colour and GXPortSetRelight lights the draw. Off ends it.
+  static void PortSetRelight(bool on);
 #endif
   explicit CCubeMaterial(const void* data) : x0_data(data) {}
   static void ResetCachedMaterials();

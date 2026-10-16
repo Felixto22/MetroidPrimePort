@@ -490,6 +490,8 @@ struct GXState {
   float modern = 0.f;
   // GX_AURORA_PORT_TESS: the subdivision level for the lit models' triangles (0: off).
   u8 tessLevel = 0;
+  // GX_AURORA_PORT_RELIGHT: the lightmapped retail surfaces drawn now are lit live.
+  u8 relight = 0;
   Vec4<float> modernSun{};
   Vec4<float> modernUp{0.f, 1.f, 0.f, 0.f};
   // GX_AURORA_PORT_GUN_HEAT: heat (x) and radius (y), and where (xyz, view space).
@@ -695,7 +697,10 @@ struct ShaderConfig {
   // is drawn as tess x tess smaller ones, curved by Phong tessellation (pipeline.cpp issues
   // triangles x 3 tess^2 vertices; the vertex shader fetches the original corners itself). 0: off.
   u8 tess = 0;
-  u8 tessPad[3] = {};
+  // GX_AURORA_PORT_RELIGHT on a retail draw that takes the sun's shadow: lit live by the sun (or
+  // moon) along its normals and the sky's ambient, in place of its lightmap (shadow_fade.w).
+  u8 relit = 0;
+  u8 tessPad[2] = {};
   std::array<AttrConfig, MaxVtxAttr> attrs;
   std::array<TevSwap, MaxTevSwap> tevSwapTable;
   std::array<TevStage, MaxTevStages> tevStages;

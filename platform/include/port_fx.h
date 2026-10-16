@@ -33,6 +33,8 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
 // the whole view, for the world to draw over (retail's skies and cloud domes are left out).
 bool DrawSkyFirst(const CStateManager& mgr, const CTransform4f& view, const float sunTravel[3]);
 bool SkyFirstDrawn();
+// The sky's ambient on the world lit live outdoors (GXPortSetRelightAmbient); 0 without the new sky.
+float WorldAmbient();
 // After the world, the gun and the transparents: the particles and weather fields.
 void DrawParticles(const CStateManager& mgr, const CTransform4f& view, bool sceneCaptured);
 // After the particles, before the HUD: motion blur and depth of field.

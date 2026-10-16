@@ -4692,7 +4692,65 @@ fn vf_apply(c: vec4f, fog: vec4f, w: f32) -> vec4f {
                                  slot, slot * 2, slot * 2 + 1);
     }
   }
-  if (config.pbr == 0 && info.shadowReceive) {
+  if (config.pbr == 0 && info.shadowReceive && config.relit) {
+    // Port extension: a lightmapped retail surface lit live (GXPortSetRelight). The game has put
+    // the lightmap's mean colour in its place, so the TEV result is the surface at the room's
+    // average light: times the sun's (or moon's) light along the vertex normal, through its
+    // shadow, plus the sky's ambient (shadow_fade.w), about 1 on average in daylight.
+    const bool rlNrm = config.attrs[GX_VA_NRM].attrType != GX_NONE;
+    vtxOutAttrs += fmt::format("\n    @location({}) shd_pos: vec3f,", vtxOutIdx++);
+    vtxXfrAttrs += "\n    out.shd_pos = mv_pos;";
+    if (rlNrm) {
+      vtxOutAttrs += fmt::format("\n    @location({}) rl_nrm: vec3f,", vtxOutIdx++);
+      vtxXfrAttrs += "\n    out.rl_nrm = mv_nrm;";
+    }
+    fragmentFn += R"""(
+    {
+        var sun_vis = 1.0;
+        let depth = -in.shd_pos.z;
+        if (ubuf.shadow_fade.z > 0.0) {
+            var bayer = array<f32, 16>(16.0, 144.0, 48.0, 176.0, 208.0, 80.0, 240.0, 112.0,
+                                       64.0, 192.0, 32.0, 160.0, 255.0, 128.0, 224.0, 96.0);
+            let fc = vec2u(in.pos.xy) & vec2u(3u);
+            let dz = depth + 2.5 * (bayer[fc.y * 4u + fc.x] / 255.0);
+            let c = min(dot(select(vec4u(0u), vec4u(1u), vec4f(dz) > ubuf.shadow_splits), vec4u(1u)), 3u);
+            let sp = vec4f(in.shd_pos, 1.0) * ubuf.shadow_recv[c];
+            let suv = vec2f(sp.x * 0.5 + 0.5, 0.5 - sp.y * 0.5);
+            let sref = saturate(sp.z - 0.00025);
+            let st = ubuf.shadow_color.w;
+            var sum = 0.0;
+            for (var sy = -1; sy <= 1; sy++) {
+                for (var sx = -1; sx <= 1; sx++) {
+                    let w = f32((2 - abs(sx)) * (2 - abs(sy))) / 16.0;
+                    sum += w * textureSampleCompareLevel(shadow_map, shadow_samp, suv + vec2f(f32(sx), f32(sy)) * st,
+                                                        c, sref);
+                }
+            }
+            let f = saturate((depth - ubuf.shadow_fade.x) / (ubuf.shadow_fade.y - ubuf.shadow_fade.x));)""" +
+                  rt_shadow_lookup("in.shd_pos") + R"""(
+            sun_vis = max(sum, f * f * (3.0 - 2.0 * f)) * rt_vis;
+        }
+        var rl_n = normalize(cross(dpdx(in.shd_pos), -dpdy(in.shd_pos)));
+        rl_n = select(rl_n, -rl_n, dot(rl_n, -in.shd_pos) < 0.0);
+        // rl-normal
+        let rl_nl = max(dot(rl_n, ubuf.shadow_dir.xyz), 0.0);
+        let rl_light = vec3f(ubuf.shadow_fade.w) * vec3f(0.86, 0.93, 1.07) + ubuf.shadow_color.rgb * (rl_nl * sun_vis);
+        prev = vec4f(prev.rgb * rl_light * 1.05, prev.a);
+    })""";
+    if (rlNrm) {
+      const std::string mark = "        // rl-normal";
+      fragmentFn.replace(fragmentFn.find(mark), mark.size(),
+                         "        let rl_vn = in.rl_nrm;\n"
+                         "        if (dot(rl_vn, rl_vn) > 1e-8) {\n"
+                         "            rl_n = normalize(rl_vn);\n"
+                         "        }");
+    }
+    texBindings += fmt::format("\n@group(2) @binding({})\n"
+                               "var shadow_map: texture_depth_2d_array;\n"
+                               "@group(2) @binding({})\n"
+                               "var shadow_samp: sampler_comparison;",
+                               kShadowMapBinding, kShadowSamplerBinding);
+  } else if (config.pbr == 0 && info.shadowReceive) {
     // Port extension: the sun's shadow on retail (TEV) surfaces. They have their light baked in
     // (lightmaps, vertex colours), so there is no sun term to take out: the cascaded map, read as
     // the PBR receivers read it, darkens the result by shadow_fade.z (0: off) before the fog.

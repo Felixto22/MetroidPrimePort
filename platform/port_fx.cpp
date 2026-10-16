@@ -236,8 +236,14 @@ void SkyBodies(float sun[3], float moon[3], float& elev) {
 void KeyLight(float dir[3], float& intensity, float color[3]) {
   float sun[3], moon[3], elev;
   SkyBodies(sun, moon, elev);
-  const float sunI = std::clamp((elev + 0.05f) / 0.2f, 0.f, 1.f) * (1.f - 0.6f * sStorm) * (1.f - 0.35f * sCover);
-  const float moonI = std::clamp(moon[2] / 0.15f, 0.f, 1.f) * 0.28f * (1.f - 0.7f * sCover);
+  // Each fades in over its first 17 degrees, so a low sun (or moon) lights and shadows little; at
+  // the swap between them both are out.
+  const auto rise = [](float e) {
+    const float t = std::clamp(e / 0.3f, 0.f, 1.f);
+    return t * t * (3.f - 2.f * t);
+  };
+  const float sunI = rise(elev) * (1.f - 0.6f * sStorm) * (1.f - 0.35f * sCover);
+  const float moonI = rise(moon[2]) * 0.28f * (1.f - 0.7f * sCover);
   const float warm = 1.f - std::clamp(elev / 0.35f, 0.f, 1.f);
   if (sunI >= moonI) {
     for (int i = 0; i < 3; ++i) {
@@ -252,6 +258,23 @@ void KeyLight(float dir[3], float& intensity, float color[3]) {
     intensity = moonI;
     color[0] = 0.55f, color[1] = 0.65f, color[2] = 0.9f;
   }
+  // The light (and its shadows) no lower than 15 degrees: no shadow a hundred metres long.
+  const float minZ = 0.26f;
+  if (dir[2] < minZ) {
+    const float h = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1]);
+    const float k = h > 1e-4f ? std::sqrt(1.f - minZ * minZ) / h : 0.f;
+    dir[0] *= k, dir[1] *= k, dir[2] = minZ;
+  }
+}
+
+// The sky's light on the relit world (GXPortSetRelightAmbient), against the key light's: by day
+// the sun gives most of it, by night (which DayGrade darkens as a whole) the sky; more under cloud.
+float RelightAmbient() {
+  float sun[3], moon[3], elev;
+  SkyBodies(sun, moon, elev);
+  const float t = std::clamp((elev + 0.1f) / 0.35f, 0.f, 1.f);
+  const float day = t * t * (3.f - 2.f * t);
+  return (0.72f - 0.3f * day) * (1.f + 0.3f * sCover);
 }
 
 // The world's light outdoors for the time of day and the weather (a multiplier).
@@ -1230,6 +1253,8 @@ bool DrawSkyFirst(const CStateManager& mgr, const CTransform4f& view, const floa
 }
 
 bool SkyFirstDrawn() { return sSkyFirst; }
+
+float WorldAmbient() { return sSkyFirst ? RelightAmbient() : 0.f; }
 
 void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const float sunTravel[3]) {
   RollFluids();

@@ -279,6 +279,13 @@ void GXPortSetTessellation(u32 level) {
   GX_WRITE_U32(level);
 }
 
+void GXPortSetRelight(GXBool on) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_RELIGHT);
+  GX_WRITE_U32(on ? 1u : 0u);
+}
+
+void GXPortSetRelightAmbient(f32 ambient) { aurora::gfx::shadow::set_relight_ambient(ambient); }
+
 void GXPortFsrCaptureSolid(void) {
   if (sDrawIdMode || !aurora::gfx::fsr::ensure_task()) {
     return;

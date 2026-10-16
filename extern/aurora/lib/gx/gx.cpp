@@ -636,6 +636,9 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
     }
     config.shaderConfig.tess = tess ? g_gxState.tessLevel : 0;
   }
+  // Live light on a lightmapped retail surface (the game swaps its lightmap for the mean colour).
+  config.shaderConfig.relit = g_gxState.relight != 0 && !drawId && config.shaderConfig.pbr == 0 &&
+                              shadow_receives(config.shaderConfig);
   config.shaderConfig.perPixel = (g_gxState.perPixelLighting || config.shaderConfig.clustered ||
                                   config.shaderConfig.specular) && !drawId &&
                                  !depthOnly && config.shaderConfig.lineMode == 0;

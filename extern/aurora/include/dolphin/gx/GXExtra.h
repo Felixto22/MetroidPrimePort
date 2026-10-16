@@ -355,6 +355,12 @@ void GXPortFsrCaptureSolid(void);
 // props) are subdivided level x level per triangle and rounded by Phong tessellation, their hard
 // edges kept. Stays until changed; 0: off.
 void GXPortSetTessellation(u32 level);
+// Port extension: the following retail surfaces, their lightmap swapped for its mean colour by the
+// game, are lit live instead: the sun's (or moon's) light through its shadow map, along their
+// normals, plus the sky's ambient (GXPortSetRelightAmbient). Stays until changed.
+void GXPortSetRelight(GXBool on);
+// The sky's ambient on the relit surfaces (0: relighting is off this frame); any thread.
+void GXPortSetRelightAmbient(f32 ambient);
 // Port extension: ray-traced sun shadows (aurora::gfx::rt), with DirectX Raytracing on Dawn's
 // D3D12 device (Windows, a DXR 1.1 GPU). Whether this device can: the first call sets it up.
 GXBool GXPortRtAvailable(void);
