@@ -3594,7 +3594,7 @@ void CStateManager::DrawWorld() const {
     PortFx::DrawSkyFirst(*this, backupViewMatrix, sPortSunTravel);
   // Under it the world outdoors is lit live, its lightmaps left out (CCubeMaterial::PortSetRelight):
   // the sun or moon through the shadow map, and the sky's ambient.
-  const bool portRelight = PortFx::SkyFirstDrawn() &&
+  const bool portRelight = PortFx::SkyFirstDrawn() && (PortFx::Diag() & PortFx::kDiagRelight) != 0 &&
                            (sPortSunTravel[0] != 0.f || sPortSunTravel[1] != 0.f || sPortSunTravel[2] != 0.f);
   GXPortSetRelightAmbient(portRelight ? PortFx::WorldAmbient() : 0.f);
   CCubeMaterial::PortSetRelight(portRelight);

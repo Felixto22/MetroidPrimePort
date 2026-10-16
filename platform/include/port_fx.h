@@ -13,6 +13,8 @@
 #include "Kyoto/Math/CTransform4f.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
 
+#include <cstdint>
+
 class CStateManager;
 class CActor;
 
@@ -35,6 +37,19 @@ bool DrawSkyFirst(const CStateManager& mgr, const CTransform4f& view, const floa
 bool SkyFirstDrawn();
 // The sky's ambient on the world lit live outdoors (GXPortSetRelightAmbient); 0 without the new sky.
 float WorldAmbient();
+// The day and night's parts, for finding which one misdraws (F1 > Day and night > Parts).
+enum DiagBits : uint32_t {
+  kDiagSkyFirst = 1,   // the new sky drawn first, behind the world
+  kDiagHideDomes = 2,  // retail's cloud layers left out
+  kDiagKeyLight = 4,   // the sun or moon drives the shadows and the materials' sun
+  kDiagRelight = 8,    // lightmaps off, the world lit live
+  kDiagGrade = 16,     // the time of day's colour over the world
+  kDiagFogTint = 32,   // the fog lit by the sun or moon
+  kDiagMagenta = 64,   // debug: the new sky drawn magenta
+  kDiagDefault = 63,
+};
+uint32_t Diag();
+void SetDiag(uint32_t bits);
 // After the world, the gun and the transparents: the particles and weather fields.
 void DrawParticles(const CStateManager& mgr, const CTransform4f& view, bool sceneCaptured);
 // After the particles, before the HUD: motion blur and depth of field.

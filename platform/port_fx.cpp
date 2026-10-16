@@ -207,6 +207,9 @@ bool sSkyFirst = false;
 bool sSkyOnlyPass = false;
 bool Outdoors() { return sPlanetWorld && (sSkyDrawn || sDomeCount > 0); }
 bool DayNightOn() { return PortDebug::DayNight() && Outdoors(); }
+
+// The day and night's parts, each on or off to find which one misdraws (port_fx.h DiagBits).
+uint32_t sDiag = kDiagDefault;
 bool WeatherOn() { return PortDebug::DynamicWeather() && Outdoors(); }
 
 float WeatherUnit() {
@@ -1190,7 +1193,7 @@ void SkyTick(const CStateManager& mgr) {
 }
 
 bool ReplacesSkyDome(const CActor& actor) {
-  if (!sSkyFirst) {
+  if (!sSkyFirst || (sDiag & kDiagHideDomes) == 0) {
     return false;
   }
   for (int i = 0; i < sDomeCount; ++i) {
@@ -1202,7 +1205,7 @@ bool ReplacesSkyDome(const CActor& actor) {
 }
 
 bool SkyLight(float travel[3], float& intensity, float color[3]) {
-  if (!DayNightOn()) {
+  if (!DayNightOn() || (sDiag & kDiagKeyLight) == 0) {
     return false;
   }
   float dir[3];
@@ -1242,7 +1245,7 @@ bool WantsSceneCapture() { return PortDebug::ModernParticles() || PortDebug::Hea
 
 bool DrawSkyFirst(const CStateManager& mgr, const CTransform4f& view, const float sunTravel[3]) {
   sSkyFirst = false;
-  if (!DayNightOn()) {
+  if (!DayNightOn() || (sDiag & kDiagSkyFirst) == 0) {
     return false;
   }
   sSkyOnlyPass = true;
@@ -1254,7 +1257,10 @@ bool DrawSkyFirst(const CStateManager& mgr, const CTransform4f& view, const floa
 
 bool SkyFirstDrawn() { return sSkyFirst; }
 
-float WorldAmbient() { return sSkyFirst ? RelightAmbient() : 0.f; }
+float WorldAmbient() { return sSkyFirst && (sDiag & kDiagRelight) != 0 ? RelightAmbient() : 0.f; }
+
+uint32_t Diag() { return sDiag; }
+void SetDiag(uint32_t bits) { sDiag = bits; }
 
 void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const float sunTravel[3]) {
   RollFluids();
@@ -1310,7 +1316,7 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
     l1[4] = 0.55f, l1[5] = 0.65f, l1[6] = 0.9f, l1[7] = 0.f;
     float* l2 = p.lights[2];
     // 3: the whole view, drawn first behind the world; 1: over the painted sky above the horizon.
-    l2[0] = sSkyOnlyPass ? 3.f : !dayNight ? 0.f : 1.f;
+    l2[0] = sSkyOnlyPass ? ((sDiag & kDiagMagenta) != 0 ? 4.f : 3.f) : !dayNight ? 0.f : 1.f;
     l2[1] = dayNight ? std::clamp(-elev / 0.15f, 0.f, 1.f) * (1.f - sCover) : 0.f;
     l2[2] = PortDebug::VolumetricClouds() ? 1.f : 0.f;
     l2[3] = rain ? sFlash : 0.f;
@@ -1364,7 +1370,7 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
       }
       p.sun[3] = 1.f;
       p.sunColor[0] = 0.55f, p.sunColor[1] = 0.5f, p.sunColor[2] = 0.42f;
-      if (DayNightOn()) {
+      if (DayNightOn() && (sDiag & kDiagFogTint) != 0) {
         float d[3], inten, col[3];
         KeyLight(d, inten, col);
         p.sunColor[0] = 0.45f * col[0] * inten, p.sunColor[1] = 0.45f * col[1] * inten, p.sunColor[2] = 0.45f * col[2] * inten;
@@ -1519,7 +1525,7 @@ void DrawFinish(const CStateManager& mgr, const CTransform4f& view) {
   FillCommon(p, view);
   p.misc[0] = 2;
   // The time of day's light over the world outdoors.
-  if (DayNightOn()) {
+  if (DayNightOn() && (sDiag & kDiagGrade) != 0) {
     DayGrade(p.lights[0]);
     p.lights[0][3] = 1.f;
   }

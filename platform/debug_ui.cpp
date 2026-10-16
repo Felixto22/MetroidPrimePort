@@ -5,6 +5,7 @@
 #include "port_env.h"
 #include "port_collision_view.h"
 #include "port_debug.h"
+#include "port_fx.h"
 #include "port_freecam.h"
 #include "port_photo.h"
 #include "port_hd_font.h"
@@ -7333,6 +7334,25 @@ void DrawVideoDisplay() {
     }
     ImGui::SetItemTooltip("Outdoors, a 10-minute day: the sun and the moon cross the sky and light the world (its\n"
                           "shadows, ray traced too, follow them); the sky, the stars and the clouds change with the hour.");
+    if (dayNight && ImGui::TreeNode("Day and night parts")) {
+      // Each part on or off (PortFx::DiagBits), to find which one misdraws.
+      uint32_t diag = PortFx::Diag();
+      const auto part = [&](const char* label, uint32_t bit) {
+        bool on = (diag & bit) != 0;
+        if (ImGui::Checkbox(label, &on)) {
+          diag = on ? diag | bit : diag & ~bit;
+          PortFx::SetDiag(diag);
+        }
+      };
+      part("1 New sky drawn first", PortFx::kDiagSkyFirst);
+      part("2 Old cloud layers hidden", PortFx::kDiagHideDomes);
+      part("3 Sun/moon drive shadows", PortFx::kDiagKeyLight);
+      part("4 Live lighting (lightmaps off)", PortFx::kDiagRelight);
+      part("5 Time-of-day colour", PortFx::kDiagGrade);
+      part("6 Fog lit by sun/moon", PortFx::kDiagFogTint);
+      part("7 DEBUG: new sky in magenta", PortFx::kDiagMagenta);
+      ImGui::TreePop();
+    }
     bool dynamicWeather = sDynamicWeather;
     if (ImGui::Checkbox("Dynamic weather", &dynamicWeather)) {
       SetDynamicWeather(dynamicWeather);

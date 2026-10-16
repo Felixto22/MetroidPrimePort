@@ -369,6 +369,10 @@ fn fs_clouds(in: VertexOutput) -> @location(0) vec4f {
   if (p.lights[4].x < 2.5 && !is_sky(raw_z(dat))) {
     return f;
   }
+  // 4: a debug fill, magenta, to show where nothing of the world drew over it.
+  if (p.lights[4].x > 3.5) {
+    return vec4f(1.0, 0.0, 1.0, f.a);
+  }
   let dir = normalize(to_world_dir(view_ray(in.uv)));
   // The analytic sky over the painted one (which keeps what is at and below the horizon: its hills).
   let painted = srgb_dec(f.rgb);
