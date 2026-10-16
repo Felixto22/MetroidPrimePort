@@ -392,6 +392,7 @@ void shutdown() {}
 namespace aurora::gfx::shadow {
 bool ensure_task() { return false; }
 void set_retail_strength(float) {}
+void set_relight_ambient(float) {}
 void set_map_size(uint32_t) {}
 bool set_frame(const float worldToView[3][4], const cascade::Frustum& frustum, const float sunDir[3], float distance,
                const float color[3], Uniform& out) {
