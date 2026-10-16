@@ -52,7 +52,9 @@ enum DiagBits : uint32_t {
   kDiagRtSun = 512,      // its ray-traced shadow
   kDiagShafts = 1024,    // the cinematic look's light shafts from it
   kDiagModernSun = 2048, // the modern materials' sun
-  kDiagDefault = 63 | 128 | 256 | 512 | 1024 | 2048,
+  kDiagCasters = 4096,   // the world drawn into its shadow map
+  kDiagOffscreen = 8192, // actors out of view drawn into it too
+  kDiagDefault = 63 | 128 | 256 | 512 | 1024 | 2048 | 4096 | 8192,
 };
 uint32_t Diag();
 void SetDiag(uint32_t bits);

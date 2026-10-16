@@ -3575,7 +3575,8 @@ void CStateManager::DrawWorld() const {
   const bool portShadow =
       PortSetupShadow(backupViewMatrix, portVisArea, x8c8_worldLayerState.GetPtr(),
                       x870_cameraManager->IsInCinematicCamera(), !thermal && visor != CPlayerState::kPV_XRay && !portCollisionOnly,
-                      !thermal && visor != CPlayerState::kPV_XRay);
+                      !thermal && visor != CPlayerState::kPV_XRay) &&
+      !PortSkyPartOff(PortFx::kDiagCasters);
   // Ray-traced shadows: the opaque world's shadow is traced, so only its cut-outs (and, after the
   // areas, the actors) cast into the shadow map.
   const bool portRtShadows =
@@ -3729,7 +3730,7 @@ void CStateManager::DrawWorld() const {
   uint portShadowEligible = 0;
   uint portShadowDrawn = 0;
   const auto portShadowOffscreen = [&](const CActor& actor, int areaIdx) {
-    if (!sShadowOffscreen || !portShadow || thermal || portCollisionOnly || &actor == x84c_player ||
+    if (!sShadowOffscreen || !portShadow || PortSkyPartOff(PortFx::kDiagOffscreen) || thermal || portCollisionOnly || &actor == x84c_player ||
         (portRoomGeo[areaIdx] && PortRoomGeo::Hides(*areas[areaIdx], actor.GetEditorId().Value())) ||
         PortRoomGeo::HidesSky(*areas[areaIdx], actor) || PortFx::ReplacesSkyDome(actor)) {
       return;

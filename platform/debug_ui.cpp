@@ -7357,6 +7357,8 @@ void DrawVideoDisplay() {
       part("3b Ray-traced sun shadow", PortFx::kDiagRtSun);
       part("3c Light shafts", PortFx::kDiagShafts);
       part("3d Modern materials' sun", PortFx::kDiagModernSun);
+      part("3e Shadow casters (shadow map pass)", PortFx::kDiagCasters);
+      part("3f Out-of-view actors cast", PortFx::kDiagOffscreen);
       ImGui::TreePop();
     }
     bool dynamicWeather = sDynamicWeather;
