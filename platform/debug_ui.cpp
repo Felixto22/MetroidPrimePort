@@ -7351,6 +7351,12 @@ void DrawVideoDisplay() {
       part("5 Time-of-day colour", PortFx::kDiagGrade);
       part("6 Fog lit by sun/moon", PortFx::kDiagFogTint);
       part("7 DEBUG: new sky in magenta", PortFx::kDiagMagenta);
+      part("8 Sun/moon glow in the fog", PortFx::kDiagFogSun);
+      ImGui::TextUnformatted("Parts of 3:");
+      part("3a Shadow map", PortFx::kDiagShadowMap);
+      part("3b Ray-traced sun shadow", PortFx::kDiagRtSun);
+      part("3c Light shafts", PortFx::kDiagShafts);
+      part("3d Modern materials' sun", PortFx::kDiagModernSun);
       ImGui::TreePop();
     }
     bool dynamicWeather = sDynamicWeather;

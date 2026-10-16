@@ -1364,16 +1364,25 @@ void DrawAtmosphere(const CStateManager& mgr, const CTransform4f& view, const fl
       // The flash lights the air too.
       p.fogColor[0] += sFlash * 0.12f, p.fogColor[1] += sFlash * 0.14f, p.fogColor[2] += sFlash * 0.18f;
     }
-    if (sunLen > 0.f) {
+    // With the day and night the sun (or moon) is low and in view much of the time: the air thinner
+    // and its glow toward the light faint, else everything past a few tens of metres goes the
+    // light's colour, flat, cut off at the silhouettes of what is near.
+    const bool dayNight = DayNightOn();
+    if (dayNight) {
+      p.fog[0] *= 0.45f;
+    }
+    if (sunLen > 0.f && (!dayNight || (sDiag & kDiagFogSun) != 0)) {
       for (int i = 0; i < 3; ++i) {
         p.sun[i] = -sunTravel[i] / sunLen;
       }
       p.sun[3] = 1.f;
       p.sunColor[0] = 0.55f, p.sunColor[1] = 0.5f, p.sunColor[2] = 0.42f;
-      if (DayNightOn() && (sDiag & kDiagFogTint) != 0) {
+      if (dayNight && (sDiag & kDiagFogTint) != 0) {
         float d[3], inten, col[3];
         KeyLight(d, inten, col);
-        p.sunColor[0] = 0.45f * col[0] * inten, p.sunColor[1] = 0.45f * col[1] * inten, p.sunColor[2] = 0.45f * col[2] * inten;
+        p.sunColor[0] = 0.08f * col[0] * inten, p.sunColor[1] = 0.08f * col[1] * inten, p.sunColor[2] = 0.08f * col[2] * inten;
+      } else if (dayNight) {
+        p.sunColor[0] *= 0.15f, p.sunColor[1] *= 0.15f, p.sunColor[2] *= 0.15f;
       }
     }
     p.sunColor[3] = std::min(CGraphics::GetProjectionState().GetFar(), 140.f);

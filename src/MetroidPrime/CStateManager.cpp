@@ -2920,6 +2920,11 @@ static float sPortSunTravel[3] = {0.f, 0.f, 0.f};
 // The key light's intensity outdoors with the day and night (1 otherwise): the shadows and the
 // materials' sun follow it.
 static float sPortSkyIntensity = 1.f;
+// Whether the day and night's sun or moon is the frame's sun (PortFx::SkyLight).
+static bool sPortSkyLit = false;
+// A part of the day and night's sun turned off (PortFx::DiagBits) while it is the frame's sun.
+static bool PortSkyPartOff(uint32_t bit) { return sPortSkyLit && (PortFx::Diag() & bit) == 0; }
+static const float kPortNoSun[3] = {0.f, 0.f, 0.f};
 
 static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CScriptLayerManager* layers,
                             bool cinematic, bool enabled, bool roomLights) {
@@ -2929,6 +2934,7 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
   float color[3] = {0.f, 0.f, 0.f};
   float distance = 0.f;
   sPortSkyIntensity = 1.f;
+  sPortSkyLit = false;
   if (sOn && enabled) {
     static const char* sDirEnv = getenv("MP_SHADOW_DIR");
     static const char* sColorEnv = getenv("MP_SHADOW_COLOR");
@@ -2959,7 +2965,8 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
     }
     // Day and night outdoors: the sun by day, the moon by night, in place of the room's (port_fx.h).
     float skyTravel[3], skyIntensity = 1.f, skyColor[3];
-    if (PortFx::SkyLight(skyTravel, skyIntensity, skyColor)) {
+    sPortSkyLit = PortFx::SkyLight(skyTravel, skyIntensity, skyColor);
+    if (sPortSkyLit) {
       for (int i = 0; i < 3; ++i) {
         dir[i] = skyTravel[i];
         color[i] = skyColor[i] * skyIntensity;
@@ -2971,7 +2978,8 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
     }
   }
   // The cinematic look's light shafts stream from this sun.
-  PortCinematic::SetSun(dir);
+  static const float kNoSun[3] = {0.f, 0.f, 0.f};
+  PortCinematic::SetSun(PortSkyPartOff(PortFx::kDiagShafts) ? kNoSun : dir);
   for (int i = 0; i < 3; ++i) {
     sPortSunTravel[i] = distance > 0.f ? dir[i] : 0.f;
   }
@@ -2993,7 +3001,9 @@ static bool PortSetupShadow(const CTransform4f& view, const CGameArea* area, CSc
   const float frustum[6] = {proj.GetLeft(), proj.GetRight(), proj.GetTop(),
                             proj.GetBottom(), proj.GetNear(), proj.GetFar()};
   GXPortSetShadowMapSize(static_cast< u32 >(PortDebug::ShadowQuality()));
-  GXPortSetShadowStrength(static_cast< float >(PortDebug::SunShadows()) / 100.f * sPortSkyIntensity);
+  GXPortSetShadowStrength(PortSkyPartOff(PortFx::kDiagShadowMap)
+                              ? 0.f
+                              : static_cast< float >(PortDebug::SunShadows()) / 100.f * sPortSkyIntensity);
   GXPortSetPerPixelLighting(PortDebug::EnhancedLighting());
   {
     static int sBump = -1;
@@ -3569,7 +3579,7 @@ void CStateManager::DrawWorld() const {
   // Ray-traced shadows: the opaque world's shadow is traced, so only its cut-outs (and, after the
   // areas, the actors) cast into the shadow map.
   const bool portRtShadows =
-      PortRtShadows::Begin(areas.begin(), areas.size(), backupViewMatrix, sPortSunTravel, portShadow,
+      PortRtShadows::Begin(areas.begin(), areas.size(), backupViewMatrix, PortSkyPartOff(PortFx::kDiagRtSun) ? kPortNoSun : sPortSunTravel, portShadow,
                            !thermal && visor != CPlayerState::kPV_XRay && !portCollisionOnly);
   if (portRtShadows) {
     GXPortSetShadowCasterCutouts();
@@ -3587,7 +3597,8 @@ void CStateManager::DrawWorld() const {
     const CVector3f r = backupViewMatrix.GetRight(), u = backupViewMatrix.GetUp(), f = backupViewMatrix.GetForward();
     const f32 sunView[3] = {CVector3f::Dot(sun, r), CVector3f::Dot(sun, u), -CVector3f::Dot(sun, f)};
     const f32 upView[3] = {r.GetZ(), u.GetZ(), -f.GetZ()};
-    GXPortSetModernMaterial(on ? 1.f : 0.f, sunView, sunLen > 1e-3f ? sPortSkyIntensity : 0.f, upView);
+    GXPortSetModernMaterial(on ? 1.f : 0.f, sunView,
+                            sunLen > 1e-3f && !PortSkyPartOff(PortFx::kDiagModernSun) ? sPortSkyIntensity : 0.f, upView);
   };
   // The day and night's sky first, behind everything the world draws (port_fx.h).
   if (!thermal && visor != CPlayerState::kPV_XRay && !portCollisionOnly)

@@ -46,7 +46,13 @@ enum DiagBits : uint32_t {
   kDiagGrade = 16,     // the time of day's colour over the world
   kDiagFogTint = 32,   // the fog lit by the sun or moon
   kDiagMagenta = 64,   // debug: the new sky drawn magenta
-  kDiagDefault = 63,
+  kDiagFogSun = 128,   // the sun's (or moon's) glow in the fog
+  // The parts of the sun or moon as the frame's sun (kDiagKeyLight):
+  kDiagShadowMap = 256,  // its shadow map darkening the world
+  kDiagRtSun = 512,      // its ray-traced shadow
+  kDiagShafts = 1024,    // the cinematic look's light shafts from it
+  kDiagModernSun = 2048, // the modern materials' sun
+  kDiagDefault = 63 | 128 | 256 | 512 | 1024 | 2048,
 };
 uint32_t Diag();
 void SetDiag(uint32_t bits);
